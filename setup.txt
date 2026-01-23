@@ -1,0 +1,28 @@
+zsh
+# zsh plugins
+zsh-syntax-highlighting
+zsh-autosuggestions
+zsh-completions
+
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+
+# ai agent
+claude code
+
+# brew
+pre-commit
+ruff
+
+# brew --cask
+google-chrome
+
+# app
+Scroll Reverser
+maccy
+karabiner-elements
+rectangle
+obsidian
+kakaotalk
+
+
