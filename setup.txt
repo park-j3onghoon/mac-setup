@@ -25,4 +25,15 @@ rectangle
 obsidian
 kakaotalk
 
+# mac
+키보드 -> 단축키 -> 게임 오버레이 command+esc 제거하기
 
+# pycharm
+## window > active tool window
+hide all tool windows cmd+esc
+## editor actions
+focus editor cmd+5
+## tool windows
+commit cmd+2
+python console cmd+3
+terminal cmd+4
