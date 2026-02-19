@@ -4,7 +4,8 @@
 
 전체 변경 사항을 다시 한 번 검토하라.
 
-**Spec**: {{SPEC_PATH}}
+**Spec**:
+{{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
 
 ## 절차

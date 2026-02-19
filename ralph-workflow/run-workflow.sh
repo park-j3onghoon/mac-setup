@@ -2,25 +2,15 @@
 # Ralph Workflow - Phase 1~8 자동 체이닝 스크립트 (전역)
 #
 # 사용법:
-#   rw <spec_paths...> [options]
+#   rw -s <session_name> <spec_paths...> [options]
 #
 # 예시:
-#   # 단일 spec
-#   ralph-workflow docs/spec_detail_2.md
-#
-#   # 여러 spec 순차 실행
-#   ralph-workflow docs/spec_detail_{2..5}.md
-#
-#   # Phase 3부터 시작
-#   ralph-workflow docs/spec_detail_2.md --start-phase 3
-#
-#   # 이터레이션 스케일업 (기본 최대 5 → 10으로 비례 증가)
-#   rw docs/spec_detail_2.md -n 10
-#
-#   # 모듈 경로 지정 (기본: 자동 감지)
-#   rw docs/spec.md -m src/myapp -t src/myapp/tests
+#   rw -s pr2-impl docs/spec_detail_2.md -m adscenter/displaycam_partner
+#   rw -s pr3-review docs/spec_detail_3.md -m src/myapp --phase 2
+#   rw -s big-feature docs/spec_{1..3}.md -m src/app -n 10
 #
 # 옵션:
+#   -s, --session NAME   세션 이름 (필수). 로그/프롬프트 파일 구분에 사용
 #   --start-phase N      N번 Phase부터 시작 (기본: 1)
 #   --phase N            특정 Phase만 실행
 #   --dry-run            실제 실행 없이 프롬프트만 출력
@@ -29,13 +19,36 @@
 #   -t, --test PATH      테스트 디렉토리 경로
 #   --templates DIR      커스텀 템플릿 디렉토리
 #   --init               프로젝트에 rw 에이전트 symlink 설치
+#
+# 실행 전 체크리스트 (복붙 한번에 실행, 재실행 안전):
+#   source scripts/set_dev_env.sh && \
+#   docker compose --env-file /dev/null -f compose/py3.yml up -d dynamodb redis testdb && \
+#   (docker ps -q -f name="$DEV_CONTAINER" | grep -q . || \
+#     docker compose --env-file /dev/null -f compose/py3.yml \
+#       run -d --rm --no-deps --name "$DEV_CONTAINER" dev bash -c "sleep infinity")
+#
+# 초기 설정 (프로젝트당 1회):
+#   rw --init                                 # 에이전트 symlink 설치
 
 set -euo pipefail
+
+# ─── 프로세스 정리 ───
+CLAUDE_PID=""
+cleanup() {
+  if [[ -n "$CLAUDE_PID" ]] && kill -0 "$CLAUDE_PID" 2>/dev/null; then
+    kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
+    wait "$CLAUDE_PID" 2>/dev/null
+  fi
+}
+trap cleanup EXIT INT TERM
 
 # ─── 경로 설정 ───
 GLOBAL_TEMPLATE_DIR="${0:A:h}"  # 심볼릭 링크 resolve 후 실제 디렉토리
 PROJECT_ROOT="$(pwd)"
 RALPH_STATE_FILE="$PROJECT_ROOT/.claude/ralph-loop.local.md"
+
+# 세션 파일 기본 디렉토리 (mac-setup 내, 세션 이름은 파싱 후 설정)
+SESSIONS_BASE_DIR="$GLOBAL_TEMPLATE_DIR/sessions"
 
 # 프로젝트 로컬 템플릿 (있으면 우선)
 LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
@@ -61,9 +74,41 @@ format_duration() {
 }
 
 notify_mac() {
-  local title=$1
-  local message=$2
+  local title="${1//\"/\\\"}"
+  local message="${2//\"/\\\"}"
   osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
+}
+
+# ─── 세션 상태 관리 ───
+
+# spec 경로를 절대 경로로 변환 + 정렬하여 fingerprint 생성
+compute_spec_fingerprint() {
+  for spec in "$@"; do
+    echo "${spec:A}"  # zsh: 절대 경로 + symlink resolve
+  done | sort | tr '\n' '|' | sed 's/|$//'
+}
+
+save_session_state() {
+  local status=$1 current_phase=$2
+  printf 'SPEC_FINGERPRINT=%s\nCURRENT_PHASE=%s\nSTATUS=%s\n' \
+    "$SPEC_FINGERPRINT" "$current_phase" "$status" > "$SESSION_DIR/state.env"
+}
+
+find_incomplete_session() {
+  local dirs=($SESSIONS_BASE_DIR/*(N/))
+  [[ ${#dirs[@]} -eq 0 ]] && return 1
+  for dir in "${dirs[@]}"; do
+    [[ -f "$dir/state.env" ]] || continue
+    local fp st ph
+    fp=$(grep '^SPEC_FINGERPRINT=' "$dir/state.env" | cut -d= -f2-)
+    st=$(grep '^STATUS=' "$dir/state.env" | cut -d= -f2-)
+    ph=$(grep '^CURRENT_PHASE=' "$dir/state.env" | cut -d= -f2-)
+    if [[ "$fp" == "$SPEC_FINGERPRINT" ]] && [[ "$st" == "in_progress" ]]; then
+      echo "$(basename "$dir")|$ph"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # ─── Phase 설정 ───
@@ -152,6 +197,7 @@ find_template() {
 
 # ─── 인자 파싱 ───
 SPEC_PATHS=()
+SESSION_NAME=""
 START_PHASE=1
 SINGLE_PHASE=0
 DRY_RUN=false
@@ -162,11 +208,23 @@ CUSTOM_TEMPLATE_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --session|-s)
+      SESSION_NAME="$2"
+      shift 2
+      ;;
     --start-phase)
+      if [[ $SINGLE_PHASE -gt 0 ]]; then
+        echo "${RED}에러: --phase와 --start-phase는 동시에 사용할 수 없습니다.${NC}" >&2
+        exit 1
+      fi
       START_PHASE="$2"
       shift 2
       ;;
     --phase)
+      if [[ $START_PHASE -ne 1 ]]; then
+        echo "${RED}에러: --phase와 --start-phase는 동시에 사용할 수 없습니다.${NC}" >&2
+        exit 1
+      fi
       SINGLE_PHASE="$2"
       START_PHASE="$2"
       shift 2
@@ -194,9 +252,9 @@ while [[ $# -gt 0 ]]; do
     --init)
       echo "${CYAN}프로젝트에 rw 에이전트를 설치합니다...${NC}"
       mkdir -p "$PROJECT_ROOT/.claude/agents"
-      local count=0
-      for agent in "$GLOBAL_TEMPLATE_DIR/agents/"*.md; do
-        local name=$(basename "$agent")
+      count=0
+      for agent in "$GLOBAL_TEMPLATE_DIR/agents/"*.md(N); do
+        name=$(basename "$agent")
         if [[ -L "$PROJECT_ROOT/.claude/agents/$name" ]] || [[ -f "$PROJECT_ROOT/.claude/agents/$name" ]]; then
           echo "  ${YELLOW}skip${NC} $name (이미 존재)"
         else
@@ -230,6 +288,17 @@ if [[ ${#SPEC_PATHS[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# 세션 이름 필수 확인
+if [[ -z "$SESSION_NAME" ]]; then
+  echo "${RED}에러: --session (-s) 옵션은 필수입니다.${NC}" >&2
+  echo "예시: rw -s pr2-impl docs/spec.md -m src/app" >&2
+  exit 1
+fi
+
+# 세션 디렉토리 설정 (세션별 격리)
+SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
+mkdir -p "$SESSION_DIR"
+
 # spec 파일 존재 확인
 for spec in "${SPEC_PATHS[@]}"; do
   if [[ ! -f "$spec" ]]; then
@@ -238,11 +307,44 @@ for spec in "${SPEC_PATHS[@]}"; do
   fi
 done
 
+# spec fingerprint 계산 (절대 경로 정렬)
+SPEC_FINGERPRINT=$(compute_spec_fingerprint "${SPEC_PATHS[@]}")
+
+# 기존 미완료 세션 검사 (dry-run 제외)
+if ! $DRY_RUN; then
+  if incomplete_info=$(find_incomplete_session); then
+    IFS='|' read -r OLD_SESSION OLD_PHASE <<< "$incomplete_info"
+    echo ""
+    echo "${YELLOW}동일 spec의 미완료 세션 발견:${NC}"
+    echo "  세션: ${OLD_SESSION}"
+    echo "  중단 Phase: ${OLD_PHASE}"
+    echo ""
+    echo -n "${YELLOW}이어서 하시겠습니까? (yes/no): ${NC}"
+    read -r resume_choice
+    if [[ "$resume_choice" == "yes" ]]; then
+      SESSION_NAME="$OLD_SESSION"
+      SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
+      START_PHASE="$OLD_PHASE"
+      echo "${GREEN}세션 '${SESSION_NAME}' Phase ${START_PHASE}부터 이어서 진행합니다.${NC}"
+    elif [[ "$resume_choice" == "no" ]]; then
+      rm -rf "$SESSIONS_BASE_DIR/$OLD_SESSION"
+      echo "${GREEN}이전 세션 '$OLD_SESSION' 삭제. '$SESSION_NAME'으로 새로 시작합니다.${NC}"
+    else
+      echo "${RED}취소됨. 'yes' 또는 'no'만 입력 가능합니다.${NC}"
+      exit 1
+    fi
+  fi
+fi
+
+# DEV_CONTAINER 환경변수 확인 (실제 실행 시 필수)
+if ! $DRY_RUN && [[ -z "${DEV_CONTAINER:-}" ]]; then
+  echo "${RED}에러: DEV_CONTAINER 환경변수가 설정되지 않았습니다.${NC}" >&2
+  echo "먼저 실행: source scripts/set_dev_env.sh" >&2
+  exit 1
+fi
+
 # ─── MODULE_PATH / TEST_PATH 자동 감지 ───
 if [[ -z "$MODULE_PATH" ]]; then
-  # spec 파일 내용에서 힌트 추출 시도
-  first_spec="${SPEC_PATHS[1]}"
-  # 기본값: 현재 디렉토리 기준
   MODULE_PATH="."
   echo "${YELLOW}--module 미지정. 기본값 '.' 사용. --module로 지정 권장.${NC}"
 fi
@@ -267,10 +369,16 @@ for phase in {1..8}; do
   fi
 done
 
+# ─── Spec 목록 문자열 생성 ───
+SPEC_LIST=""
+for spec in "${SPEC_PATHS[@]}"; do
+  SPEC_LIST+="- $spec"$'\n'
+done
+SPEC_LIST="${SPEC_LIST%$'\n'}"  # 마지막 줄바꿈 제거
+
 # ─── 프롬프트 생성 ───
 generate_prompt() {
   local phase_num=$1
-  local spec_path=$2
   local template_file
   template_file=$(find_template "${PHASE_FILES[$phase_num]}" "$CUSTOM_TEMPLATE_DIR")
 
@@ -285,7 +393,7 @@ generate_prompt() {
 
   local prompt
   prompt=$(<"$template_file")
-  prompt="${prompt//\{\{SPEC_PATH\}\}/$spec_path}"
+  prompt="${prompt//\{\{SPEC_PATH\}\}/$SPEC_LIST}"
   prompt="${prompt//\{\{MODULE_PATH\}\}/$MODULE_PATH}"
   prompt="${prompt//\{\{TEST_PATH\}\}/$TEST_PATH}"
 
@@ -295,22 +403,23 @@ generate_prompt() {
 # ─── Phase 실행 ───
 run_phase() {
   local phase_num=$1
-  local spec_path=$2
-  local end_phase=$3
+  local end_phase=$2
   local phase_name="${PHASE_NAMES[$phase_num]}"
   local promise="${PHASE_PROMISES[$phase_num]}"
   local max_iter="${PHASE_MAX_ITERATIONS[$phase_num]}"
 
   echo ""
   echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo "${CYAN}  [Phase $phase_num/$end_phase] $phase_name${NC}"
-  echo "${CYAN}  Spec: $spec_path${NC}"
+  echo "${CYAN}  [$SESSION_NAME] Phase $phase_num/$end_phase: $phase_name${NC}"
+  for spec in "${SPEC_PATHS[@]}"; do
+    echo "${CYAN}  Spec: $spec${NC}"
+  done
   echo "${CYAN}  Promise: $promise | Max iterations: $max_iter${NC}"
   echo "${CYAN}════════════════════════════════════════════════════════${NC}"
   echo ""
 
   local prompt
-  prompt=$(generate_prompt "$phase_num" "$spec_path")
+  prompt=$(generate_prompt "$phase_num")
 
   if $DRY_RUN; then
     local template_file
@@ -325,52 +434,107 @@ run_phase() {
     return 0
   fi
 
-  # Ralph Loop 상태 파일 생성
+  # 프롬프트/로그를 mac-setup 세션 디렉토리에 저장
+  cd "$PROJECT_ROOT"
   mkdir -p "$PROJECT_ROOT/.claude"
-  cat > "$RALPH_STATE_FILE" <<EOF
----
-active: true
-iteration: 1
-max_iterations: $max_iter
-completion_promise: "$promise"
-started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-phase: $phase_num
-phase_name: "$phase_name"
-spec_path: "$spec_path"
----
+  local prompt_file="$SESSION_DIR/rw-phase-${phase_num}-prompt.md"
+  local log_file="$SESSION_DIR/rw-phase-${phase_num}.log"
+  echo "$prompt" > "$prompt_file"
 
-$prompt
-EOF
-
-  echo "${GREEN}Ralph Loop 상태 파일 생성 완료.${NC}"
-  echo "${GREEN}Claude 세션을 시작합니다...${NC}"
-  echo ""
+  # 이전 상태 파일 정리
+  rm -f "$RALPH_STATE_FILE"
 
   local phase_start=$SECONDS
-  cd "$PROJECT_ROOT"
-  claude -p "$prompt" --allowedTools "Bash(docker exec:*)" "Bash(uv run:*)" "Read" "Write" "Edit" "Grep" "Glob" "Task"
+
+  # Claude 세션을 백그라운드로 시작 (script으로 pty 제공 → stop hook 정상 동작)
+  script -q "$log_file" claude --dangerously-skip-permissions \
+    "/ralph-loop:ralph-loop --max-iterations ${max_iter} --completion-promise '${promise}' Read ${prompt_file} and follow all instructions in it." \
+    </dev/null &
+  CLAUDE_PID=$!
+
+  echo "${GREEN}  Claude 세션 시작 (PID: $CLAUDE_PID)${NC}"
+  echo "${GREEN}  로그: $log_file${NC}"
+  echo ""
+
+  # 상태 파일 생성 대기 (최대 60초)
+  local wait_count=0
+  while [[ ! -f "$RALPH_STATE_FILE" ]]; do
+    if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
+      echo "${RED}  Claude 프로세스가 예기치 않게 종료됨.${NC}"
+      break
+    fi
+    sleep 2
+    wait_count=$((wait_count + 1))
+    if [[ $wait_count -ge 30 ]]; then
+      echo "${RED}  Ralph Loop 상태 파일 생성 타임아웃 (60초).${NC}"
+      kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
+      wait "$CLAUDE_PID" 2>/dev/null
+      rm -f "$prompt_file"
+      return 1
+    fi
+  done
+
+  # 폴링 루프: Ralph Loop 상태 파일 감시
+  local poll_interval=5
+  local last_iter=0
+
+  while true; do
+    # Claude 프로세스 생존 확인
+    if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
+      echo ""
+      echo "${GREEN}  Claude 세션 종료됨.${NC}"
+      break
+    fi
+
+    # 상태 파일 확인
+    if [[ -f "$RALPH_STATE_FILE" ]]; then
+      # 현재 이터레이션 읽기
+      local current_iter
+      current_iter=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$RALPH_STATE_FILE" 2>/dev/null | grep '^iteration:' | sed 's/iteration: *//' 2>/dev/null)
+      if [[ -n "$current_iter" ]] && [[ "$current_iter" != "$last_iter" ]]; then
+        local elapsed=$((SECONDS - phase_start))
+        local dur=$(format_duration "$elapsed")
+        printf "\r${CYAN}  [%s] Phase %d/%d %s — 이터레이션 %s/%s (%s)${NC}          " \
+          "$SESSION_NAME" "$phase_num" "$end_phase" "$phase_name" "$current_iter" "$max_iter" "$dur"
+        last_iter="$current_iter"
+      fi
+    else
+      # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
+      echo ""
+      echo "${GREEN}  Ralph Loop 완료 감지. Claude 세션 종료 중...${NC}"
+      kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
+      wait "$CLAUDE_PID" 2>/dev/null
+      break
+    fi
+
+    sleep "$poll_interval"
+  done
+
+  # 정리
+  CLAUDE_PID=""
+  rm -f "$prompt_file"
+
   local phase_elapsed=$((SECONDS - phase_start))
   local duration=$(format_duration "$phase_elapsed")
 
   if [[ -f "$RALPH_STATE_FILE" ]]; then
-    local final_iter
-    final_iter=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$RALPH_STATE_FILE" | grep '^iteration:' | sed 's/iteration: *//')
-    echo "${YELLOW}[Phase $phase_num/$end_phase] $phase_name: max-iterations ($max_iter) 도달 — ${duration}${NC}"
-    notify_mac "rw [Phase $phase_num/$end_phase]" "$phase_name: MAX-ITER ($duration)"
     rm -f "$RALPH_STATE_FILE"
+    echo "${YELLOW}[$SESSION_NAME] Phase $phase_num/$end_phase $phase_name: 중단됨 — ${duration}${NC}"
+    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num: $phase_name 중단 ($duration)"
     return 1
   else
-    echo "${GREEN}[Phase $phase_num/$end_phase] $phase_name: 완료! — ${duration}${NC}"
-    notify_mac "rw [Phase $phase_num/$end_phase]" "$phase_name: PASS ($duration)"
+    echo "${GREEN}[$SESSION_NAME] Phase $phase_num/$end_phase $phase_name: 완료! — ${duration}${NC}"
+    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num: $phase_name PASS ($duration)"
     return 0
   fi
 }
 
 # ─── 이터레이션 요약 ───
 print_iteration_summary() {
+  local start=$1 end=$2
   echo "${BLUE}Phase별 이터레이션:${NC}"
   local total=0
-  for phase in {1..8}; do
+  for phase in $(seq "$start" "$end"); do
     local iter="${PHASE_MAX_ITERATIONS[$phase]}"
     total=$((total + iter))
     printf "  Phase %d (%s): %d회\n" "$phase" "${PHASE_NAMES[$phase]}" "$iter"
@@ -384,51 +548,62 @@ if [[ $SINGLE_PHASE -gt 0 ]]; then
   END_PHASE=$SINGLE_PHASE
 fi
 
-for spec_path in "${SPEC_PATHS[@]}"; do
-  echo "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-  echo "${CYAN}║         Ralph Workflow - Automated Pipeline         ║${NC}"
-  echo "${CYAN}╠══════════════════════════════════════════════════════╣${NC}"
-  echo "${CYAN}║  Spec: $spec_path${NC}"
-  echo "${CYAN}║  Module: $MODULE_PATH${NC}"
-  echo "${CYAN}║  Test: $TEST_PATH${NC}"
-  if [[ $CUSTOM_MAX_ITERATIONS -gt 0 ]]; then
-    echo "${CYAN}║  Scale: 기본 max=$BASE_MAX → $CUSTOM_MAX_ITERATIONS (비례 스케일링)${NC}"
-  fi
-  echo "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
-  echo ""
-  print_iteration_summary
-
-  RESULTS=()
-  PHASE_DURATIONS=()
-  local workflow_start=$SECONDS
-  for phase in $(seq "$START_PHASE" "$END_PHASE"); do
-    local ps=$SECONDS
-    if run_phase "$phase" "$spec_path" "$END_PHASE"; then
-      local dur=$(format_duration $((SECONDS - ps)))
-      RESULTS+=("[Phase $phase/$END_PHASE] ${PHASE_NAMES[$phase]}: ${GREEN}PASS${NC} ($dur)")
-    else
-      local dur=$(format_duration $((SECONDS - ps)))
-      RESULTS+=("[Phase $phase/$END_PHASE] ${PHASE_NAMES[$phase]}: ${YELLOW}MAX-ITER${NC} ($dur)")
-      echo ""
-      echo "${YELLOW}Phase $phase이 max-iterations에 도달했습니다.${NC}"
-      echo "${YELLOW}계속 진행하시겠습니까? (y/n)${NC}"
-      read -r "continue_choice?"
-      if [[ "$continue_choice" != "y" ]]; then
-        echo "${RED}워크플로우 중단.${NC}"
-        break
-      fi
-    fi
-  done
-
-  local total_duration=$(format_duration $((SECONDS - workflow_start)))
-  echo ""
-  echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo "${CYAN}  워크플로우 결과 요약 — $spec_path${NC}"
-  echo "${CYAN}  총 소요 시간: $total_duration${NC}"
-  echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-  for result in "${RESULTS[@]}"; do
-    echo "  $result"
-  done
-  echo ""
-  notify_mac "rw 완료" "$spec_path — $total_duration"
+echo "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
+echo "${CYAN}║         Ralph Workflow - Automated Pipeline         ║${NC}"
+echo "${CYAN}╠══════════════════════════════════════════════════════╣${NC}"
+echo "${CYAN}║  Session: $SESSION_NAME${NC}"
+for spec in "${SPEC_PATHS[@]}"; do
+  echo "${CYAN}║  Spec: $spec${NC}"
 done
+echo "${CYAN}║  Module: $MODULE_PATH${NC}"
+echo "${CYAN}║  Test: $TEST_PATH${NC}"
+if [[ $CUSTOM_MAX_ITERATIONS -gt 0 ]]; then
+  echo "${CYAN}║  Scale: 기본 max=$BASE_MAX → $CUSTOM_MAX_ITERATIONS (비례 스케일링)${NC}"
+fi
+echo "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
+echo ""
+print_iteration_summary "$START_PHASE" "$END_PHASE"
+
+RESULTS=()
+WORKFLOW_START=$SECONDS
+ALL_DONE=true
+for phase in $(seq "$START_PHASE" "$END_PHASE"); do
+  # 현재 phase 상태 저장
+  if ! $DRY_RUN; then
+    save_session_state "in_progress" "$phase"
+  fi
+  PHASE_START_TS=$SECONDS
+  if run_phase "$phase" "$END_PHASE"; then
+    dur=$(format_duration $((SECONDS - PHASE_START_TS)))
+    RESULTS+=("[$SESSION_NAME] Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: ${GREEN}PASS${NC} ($dur)")
+  else
+    dur=$(format_duration $((SECONDS - PHASE_START_TS)))
+    RESULTS+=("[$SESSION_NAME] Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: ${YELLOW}중단${NC} ($dur)")
+    echo ""
+    echo "${YELLOW}Phase $phase이 중단되었습니다.${NC}"
+    echo "${YELLOW}계속 진행하시겠습니까? (y/n)${NC}"
+    read -r "continue_choice?"
+    if [[ "$continue_choice" != "y" ]]; then
+      echo "${RED}워크플로우 중단.${NC}"
+      ALL_DONE=false
+      break
+    fi
+  fi
+done
+
+# 전체 완료 시 상태 갱신
+if ! $DRY_RUN && $ALL_DONE; then
+  save_session_state "completed" "$END_PHASE"
+fi
+
+TOTAL_DURATION=$(format_duration $((SECONDS - WORKFLOW_START)))
+echo ""
+echo "${CYAN}════════════════════════════════════════════════════════${NC}"
+echo "${CYAN}  [$SESSION_NAME] 워크플로우 결과 요약 (spec ${#SPEC_PATHS[@]}개)${NC}"
+echo "${CYAN}  총 소요 시간: $TOTAL_DURATION${NC}"
+echo "${CYAN}════════════════════════════════════════════════════════${NC}"
+for result in "${RESULTS[@]}"; do
+  echo "  $result"
+done
+echo ""
+notify_mac "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION"

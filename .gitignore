@@ -1,0 +1,5 @@
+# rw (Ralph Workflow) 세션 파일
+ralph-workflow/sessions/
+
+# IDE
+.idea/
