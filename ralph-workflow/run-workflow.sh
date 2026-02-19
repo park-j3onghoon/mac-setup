@@ -457,9 +457,10 @@ run_phase() {
   local phase_start=$SECONDS
 
   # Claude 세션을 백그라운드로 시작 (script으로 pty 제공 → stop hook 정상 동작)
+  # >/dev/null 2>&1: script의 터미널 미러링 출력 억제 (로그 파일에만 기록)
   script -q "$log_file" claude --dangerously-skip-permissions \
     "/ralph-loop:ralph-loop --max-iterations ${max_iter} --completion-promise '${promise}' Read ${prompt_file} and follow all instructions in it." \
-    </dev/null &
+    </dev/null >/dev/null 2>&1 &
   CLAUDE_PID=$!
 
   # 상태 파일 생성 대기 (최대 60초)
