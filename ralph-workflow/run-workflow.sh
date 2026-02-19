@@ -351,7 +351,7 @@ fi
 # DEV_CONTAINER 환경변수 확인 (없으면 자동 source)
 if ! $DRY_RUN && [[ -z "${DEV_CONTAINER:-}" ]]; then
   if [[ -f "$PROJECT_ROOT/scripts/set_dev_env.sh" ]]; then
-    source "$PROJECT_ROOT/scripts/set_dev_env.sh"
+    source "$PROJECT_ROOT/scripts/set_dev_env.sh" >/dev/null 2>&1
   else
     echo "${RED}에러: DEV_CONTAINER 환경변수가 설정되지 않았고, scripts/set_dev_env.sh도 없습니다.${NC}" >&2
     exit 1
@@ -475,14 +475,22 @@ run_phase() {
 
   # 상태 파일 생성 대기 (최대 60초)
   local wait_count=0
+  local init_spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local init_spin_idx=0
   while [[ ! -f "$RALPH_STATE_FILE" ]]; do
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
+      printf "\r\033[K"
       notify_mac_alert "rw [$SESSION_NAME] 에러" "Claude 프로세스가 예기치 않게 종료됨"
       break
     fi
+    local isc="${init_spin_chars:$((init_spin_idx % ${#init_spin_chars})):1}"
+    init_spin_idx=$((init_spin_idx + 1))
+    printf "\r${CYAN}%s Phase %d/%d %s — Claude 시작 중...${NC}  " \
+      "$isc" "$phase_num" "$end_phase" "$phase_name"
     sleep 2
     wait_count=$((wait_count + 1))
     if [[ $wait_count -ge 30 ]]; then
+      printf "\r\033[K"
       notify_mac_alert "rw [$SESSION_NAME] 에러" "Ralph Loop 상태 파일 생성 타임아웃 (60초)"
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
@@ -490,15 +498,19 @@ run_phase() {
       return 1
     fi
   done
+  printf "\r\033[K"
 
   # 폴링 루프: Ralph Loop 상태 파일 감시
   local poll_interval=5
   local last_iter=0
   local current_iter=""
+  local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local spin_idx=0
 
   while true; do
     # Claude 프로세스 생존 확인
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
+      printf "\r\033[K"
       break
     fi
 
@@ -509,8 +521,17 @@ run_phase() {
       if [[ -n "$current_iter" ]] && [[ "$current_iter" != "$last_iter" ]]; then
         last_iter="$current_iter"
       fi
+
+      # 스피너 출력
+      local elapsed=$((SECONDS - phase_start))
+      local dur=$(format_duration "$elapsed")
+      local sc="${spin_chars:$((spin_idx % ${#spin_chars})):1}"
+      spin_idx=$((spin_idx + 1))
+      printf "\r${CYAN}%s Phase %d/%d %s — iter %s/%s (%s)${NC}  " \
+        "$sc" "$phase_num" "$end_phase" "$phase_name" "${last_iter:-0}" "$max_iter" "$dur"
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
+      printf "\r\033[K"
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
       break
