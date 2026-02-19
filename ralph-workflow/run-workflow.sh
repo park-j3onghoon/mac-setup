@@ -1,18 +1,15 @@
 #!/bin/zsh
-# Ralph Workflow - Phase 1~8 자동 체이닝 스크립트 (전역)
+# Ralph Workflow - Phase 0~9 자동 체이닝 스크립트 (전역)
 #
 # 사용법:
 #   rw -s <session_name> <spec_paths...> [options]
 #
 # 예시:
 #   rw -s pr2-impl docs/spec_detail_2.md -m adscenter/displaycam_partner
-#   rw -s pr3-review docs/spec_detail_3.md -m src/myapp --phase 2
 #   rw -s big-feature docs/spec_{1..3}.md -m src/app -n 10
 #
 # 옵션:
 #   -s, --session NAME   세션 이름 (필수). 로그/프롬프트 파일 구분에 사용
-#   --start-phase N      N번 Phase부터 시작 (기본: 1)
-#   --phase N            특정 Phase만 실행
 #   --dry-run            실제 실행 없이 프롬프트만 출력
 #   -n, --max-iterations N  Phase별 비례 스케일링 (기본 최대=5 기준)
 #   -m, --module PATH    구현 대상 모듈 경로
@@ -79,6 +76,19 @@ notify_mac() {
   osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
 }
 
+# ─── 입력 검증 ───
+validate_path() {
+  local value=$1 label=$2
+  if [[ -n "${value//[a-zA-Z0-9_.\/\-]/}" ]]; then
+    echo "${RED}에러: $label에 허용되지 않는 문자가 포함되어 있습니다: $value${NC}" >&2
+    exit 1
+  fi
+  if [[ "$value" == *..* ]]; then
+    echo "${RED}에러: $label에 '..'를 포함할 수 없습니다.${NC}" >&2
+    exit 1
+  fi
+}
+
 # ─── 세션 상태 관리 ───
 
 # spec 경로를 절대 경로로 변환 + 정렬하여 fingerprint 생성
@@ -114,6 +124,7 @@ find_incomplete_session() {
 # ─── Phase 설정 ───
 typeset -A PHASE_NAMES
 PHASE_NAMES=(
+  0 "계획"
   1 "구현"
   2 "리뷰+수정"
   3 "구조 개선"
@@ -122,10 +133,12 @@ PHASE_NAMES=(
   6 "통합 테스트"
   7 "적대적 리뷰"
   8 "배포 판정"
+  9 "커밋"
 )
 
 typeset -A PHASE_FILES
 PHASE_FILES=(
+  0 "phase0-plan.md"
   1 "phase1-implement.md"
   2 "phase2-review-fix.md"
   3 "phase3-structure.md"
@@ -134,10 +147,12 @@ PHASE_FILES=(
   6 "phase6-integration.md"
   7 "phase7-adversarial.md"
   8 "phase8-deploy-judge.md"
+  9 "phase9-commit.md"
 )
 
 typeset -A PHASE_PROMISES
 PHASE_PROMISES=(
+  0 "PLAN DONE"
   1 "IMPL DONE"
   2 "REVIEW DONE"
   3 "REFACTOR DONE"
@@ -146,10 +161,12 @@ PHASE_PROMISES=(
   6 "INTEGRATION DONE"
   7 "ADVERSARIAL DONE"
   8 "SHIP IT"
+  9 "COMMIT DONE"
 )
 
 typeset -A PHASE_BASE_ITERATIONS
 PHASE_BASE_ITERATIONS=(
+  0 3
   1 5
   2 5
   3 3
@@ -158,6 +175,7 @@ PHASE_BASE_ITERATIONS=(
   6 3
   7 3
   8 2
+  9 1
 )
 
 BASE_MAX=5
@@ -198,8 +216,7 @@ find_template() {
 # ─── 인자 파싱 ───
 SPEC_PATHS=()
 SESSION_NAME=""
-START_PHASE=1
-SINGLE_PHASE=0
+START_PHASE=0
 DRY_RUN=false
 CUSTOM_MAX_ITERATIONS=0
 MODULE_PATH=""
@@ -210,23 +227,6 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --session|-s)
       SESSION_NAME="$2"
-      shift 2
-      ;;
-    --start-phase)
-      if [[ $SINGLE_PHASE -gt 0 ]]; then
-        echo "${RED}에러: --phase와 --start-phase는 동시에 사용할 수 없습니다.${NC}" >&2
-        exit 1
-      fi
-      START_PHASE="$2"
-      shift 2
-      ;;
-    --phase)
-      if [[ $START_PHASE -ne 1 ]]; then
-        echo "${RED}에러: --phase와 --start-phase는 동시에 사용할 수 없습니다.${NC}" >&2
-        exit 1
-      fi
-      SINGLE_PHASE="$2"
-      START_PHASE="$2"
       shift 2
       ;;
     --dry-run)
@@ -288,16 +288,20 @@ if [[ ${#SPEC_PATHS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# 세션 이름 필수 확인
+# 세션 이름 필수 확인 + path traversal 방지
 if [[ -z "$SESSION_NAME" ]]; then
   echo "${RED}에러: --session (-s) 옵션은 필수입니다.${NC}" >&2
   echo "예시: rw -s pr2-impl docs/spec.md -m src/app" >&2
   exit 1
 fi
 
-# 세션 디렉토리 설정 (세션별 격리)
+if [[ -n "${SESSION_NAME//[a-zA-Z0-9_-]/}" ]]; then
+  echo "${RED}에러: 세션 이름은 영문, 숫자, 하이픈(-), 밑줄(_)만 허용됩니다: $SESSION_NAME${NC}" >&2
+  exit 1
+fi
+
+# 세션 디렉토리 설정 (세션별 격리, mkdir은 resume 확인 후 수행)
 SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
-mkdir -p "$SESSION_DIR"
 
 # spec 파일 존재 확인
 for spec in "${SPEC_PATHS[@]}"; do
@@ -336,6 +340,15 @@ if ! $DRY_RUN; then
   fi
 fi
 
+# 세션 디렉토리 생성 (resume 후 SESSION_DIR이 확정된 시점)
+mkdir -p "$SESSION_DIR"
+
+# START_PHASE 범위 검증
+if [[ "$START_PHASE" != [0-9] ]]; then
+  echo "${RED}에러: 유효하지 않은 phase 번호입니다: $START_PHASE${NC}" >&2
+  exit 1
+fi
+
 # DEV_CONTAINER 환경변수 확인 (실제 실행 시 필수)
 if ! $DRY_RUN && [[ -z "${DEV_CONTAINER:-}" ]]; then
   echo "${RED}에러: DEV_CONTAINER 환경변수가 설정되지 않았습니다.${NC}" >&2
@@ -358,9 +371,21 @@ if [[ -z "$TEST_PATH" ]]; then
   fi
 fi
 
-# ─── Phase별 실제 이터레이션 계산 ───
+# 경로 입력 검증
+for spec in "${SPEC_PATHS[@]}"; do
+  validate_path "$spec" "spec 경로"
+done
+validate_path "$MODULE_PATH" "--module"
+validate_path "$TEST_PATH" "--test"
+if [[ -n "$CUSTOM_TEMPLATE_DIR" ]]; then
+  validate_path "$CUSTOM_TEMPLATE_DIR" "--templates"
+fi
+
+# ─── 계획 파일 경로 + Phase별 이터레이션 계산 ───
+PLAN_PATH="$PROJECT_ROOT/.claude/rw-plan.md"
+
 typeset -A PHASE_MAX_ITERATIONS
-for phase in {1..8}; do
+for phase in {0..9}; do
   base="${PHASE_BASE_ITERATIONS[$phase]}"
   if [[ $CUSTOM_MAX_ITERATIONS -gt 0 ]]; then
     PHASE_MAX_ITERATIONS[$phase]=$(scale_iterations "$base" "$CUSTOM_MAX_ITERATIONS")
@@ -396,6 +421,7 @@ generate_prompt() {
   prompt="${prompt//\{\{SPEC_PATH\}\}/$SPEC_LIST}"
   prompt="${prompt//\{\{MODULE_PATH\}\}/$MODULE_PATH}"
   prompt="${prompt//\{\{TEST_PATH\}\}/$TEST_PATH}"
+  prompt="${prompt//\{\{PLAN_PATH\}\}/$PLAN_PATH}"
 
   echo "$prompt"
 }
@@ -543,10 +569,7 @@ print_iteration_summary() {
 }
 
 # ─── 메인 ───
-END_PHASE=8
-if [[ $SINGLE_PHASE -gt 0 ]]; then
-  END_PHASE=$SINGLE_PHASE
-fi
+END_PHASE=9
 
 echo "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
 echo "${CYAN}║         Ralph Workflow - Automated Pipeline         ║${NC}"
@@ -568,6 +591,10 @@ RESULTS=()
 WORKFLOW_START=$SECONDS
 ALL_DONE=true
 for phase in $(seq "$START_PHASE" "$END_PHASE"); do
+  # Phase 9 (커밋) 전에 계획 파일 정리 (커밋에 포함 방지)
+  if [[ $phase -eq 9 ]]; then
+    rm -f "$PLAN_PATH"
+  fi
   # 현재 phase 상태 저장
   if ! $DRY_RUN; then
     save_session_state "in_progress" "$phase"

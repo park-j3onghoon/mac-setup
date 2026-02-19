@@ -1,7 +1,7 @@
 # Ralph Workflow
 
-Claude Code + Ralph Loop 기반 Phase 1~8 자동화 파이프라인.
-spec 문서를 입력하면 구현 → 리뷰 → 구조 개선 → 엣지케이스 → 통합 테스트 → 적대적 리뷰 → 배포 판정까지 자동 수행한다.
+Claude Code + Ralph Loop 기반 Phase 0~9 자동화 파이프라인.
+spec 문서를 입력하면 계획 → 구현 → 리뷰 → 구조 개선 → 엣지케이스 → 통합 테스트 → 적대적 리뷰 → 배포 판정 → 커밋까지 자동 수행한다.
 
 ## 설치
 
@@ -47,16 +47,18 @@ rw --init
 설치되는 에이전트:
 | 에이전트 | 역할 | 사용 Phase |
 |---------|------|-----------|
+| planner | 구현 계획 수립 | 0 |
+| plan-reviewer | 계획 검토 (spec 대조) | 0 |
+| yagni-reviewer | 과도한 설계 식별 | 0 |
 | spec-reviewer | spec 대조 리뷰 | 2 |
+| code-reviewer | 코드 품질 리뷰 | 2, 4 |
+| security-reviewer | 보안 취약점 리뷰 | 2 |
 | side-effect-analyzer | 사이드 이펙트 분석 | 2 |
 | structure-optimizer | 구조 최적화 | 3 |
 | edge-case-hunter | 엣지케이스 사냥 | 5 |
 | integration-verifier | 통합 검증 | 6 |
 | adversarial-reviewer | 적대적 리뷰 | 7 |
 | deployment-judge | 배포 판정 | 8 |
-
-Phase 2, 4에서 사용하는 `code-reviewer`, `security-reviewer`는
-[Everything Claude Code](https://github.com/anthropics/everything-claude-code) 플러그인에 포함되어 있다.
 
 ---
 
@@ -68,24 +70,24 @@ Phase 2, 4에서 사용하는 `code-reviewer`, `security-reviewer`는
 # 프로젝트 루트에서 실행
 cd ~/my-project
 
-# spec 1개 실행 (Phase 1~8 전체)
-rw docs/spec.md -m src/myapp
+# spec 1개 실행 (Phase 0~9 전체)
+rw -s pr2-impl docs/spec.md -m src/myapp
 
 # 여러 spec 순차 실행
-rw docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
+rw -s big-feature docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
 ```
 
 ### 옵션
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
+| `-s`, `--session NAME` | 세션 이름 (필수). 로그/상태 파일 구분 | - |
 | `-m`, `--module PATH` | 구현 대상 모듈 경로. lint/mypy/리뷰 범위 지정 | `.` |
 | `-t`, `--test PATH` | 테스트 디렉토리 경로 | `{module}/tests` |
 | `-n`, `--max-iterations N` | 이터레이션 비례 스케일링 (아래 참조) | 5 (기본 최대) |
-| `--start-phase N` | N번 Phase부터 시작 | 1 |
-| `--phase N` | 특정 Phase만 실행 | - |
 | `--templates DIR` | 커스텀 템플릿 디렉토리 | - |
 | `--dry-run` | 실제 실행 없이 프롬프트만 확인 | - |
+| `--init` | 프로젝트에 에이전트 symlink 설치 | - |
 
 ### `--module` 이란?
 
@@ -94,7 +96,7 @@ lint, type check, 리뷰 에이전트들이 이 경로를 대상으로 작동한
 
 ```bash
 # 예시: Django 프로젝트
-rw docs/spec.md -m adscenter/displaycam_partner
+rw -s pr2-impl docs/spec.md -m adscenter/displaycam_partner
 
 # 템플릿 안에서 이렇게 사용됨:
 #   uv run ruff check adscenter/displaycam_partner
@@ -106,42 +108,50 @@ rw docs/spec.md -m adscenter/displaycam_partner
 
 ### `--max-iterations` 비례 스케일링
 
-기본 이터레이션 비율 5:5:3:3:3:3:3:2를 유지하면서 스케일링한다 (올림 적용).
+기본 이터레이션 비율 3:5:5:3:3:3:3:3:2:1을 유지하면서 스케일링한다 (올림 적용).
 
 ```
 기본 (--max-iterations 미지정):
-  Phase 1~2: 5회, Phase 3~7: 3회, Phase 8: 2회  →  총 27회
+  Phase 0: 3회, Phase 1~2: 5회, Phase 3~7: 3회, Phase 8: 2회, Phase 9: 1회
+  → 총 31회
 
 --max-iterations 10:
-  Phase 1~2: 10회, Phase 3~7: 6회, Phase 8: 4회  →  총 54회
+  Phase 0: 6회, Phase 1~2: 10회, Phase 3~7: 6회, Phase 8: 4회, Phase 9: 2회
+  → 총 62회
 
 --max-iterations 20:
-  Phase 1~2: 20회, Phase 3~7: 12회, Phase 8: 8회  →  총 108회
+  Phase 0: 12회, Phase 1~2: 20회, Phase 3~7: 12회, Phase 8: 8회, Phase 9: 4회
+  → 총 124회
+```
+
+### 세션 관리
+
+세션 상태는 `~/git/mac-setup/ralph-workflow/sessions/{session_name}/`에 저장된다.
+워크플로우가 중단되면 동일 spec으로 다시 실행할 때 자동으로 이어서 진행할 수 있다.
+
+```bash
+# 중단된 세션이 있으면 자동 감지
+rw -s pr2-impl docs/spec.md -m src/myapp
+# → "동일 spec의 미완료 세션 발견: Phase 3에서 중단. 이어서 하시겠습니까? (yes/no)"
 ```
 
 ### 사용 예시
 
 ```bash
 # 기본 실행
-rw docs/spec_detail_2.md -m adscenter/displaycam_partner
+rw -s pr2-impl docs/spec_detail_2.md -m adscenter/displaycam_partner
 
 # 품질 최대치 (이터레이션 늘리기)
-rw docs/spec_detail_2.md -m src/myapp -n 15
-
-# Phase 5(엣지케이스)만 다시 실행
-rw docs/spec_detail_2.md -m src/myapp --phase 5
-
-# Phase 3부터 이어서
-rw docs/spec_detail_2.md -m src/myapp --start-phase 3
+rw -s pr2-quality docs/spec_detail_2.md -m src/myapp -n 15
 
 # dry-run으로 프롬프트 확인만
-rw docs/spec_detail_2.md -m src/myapp --dry-run
+rw -s test-run docs/spec_detail_2.md -m src/myapp --dry-run
 
-# 여러 spec 한 번에 (각각 Phase 1~8 순차)
-rw docs/spec_{1..5}.md -m src/myapp -n 10
+# 여러 spec 한 번에
+rw -s big-feature docs/spec_{1..5}.md -m src/myapp -n 10
 
 # 프로젝트별 커스텀 템플릿 사용
-rw docs/spec.md -m src/myapp --templates ./my-templates/
+rw -s custom-run docs/spec.md -m src/myapp --templates ./my-templates/
 ```
 
 ---
@@ -150,18 +160,22 @@ rw docs/spec.md -m src/myapp --templates ./my-templates/
 
 | Phase | 이름 | 기본 | 하는 일 | 사용 에이전트 |
 |-------|------|------|---------|--------------|
-| 1 | 구현 | 5회 | spec 읽고 구현 + 테스트 작성 + 통과 | tester |
-| 2 | 리뷰+수정 | 5회 | 다각도 리뷰 후 이슈 수정 | spec-reviewer, python-reviewer, security-reviewer, side-effect-analyzer |
+| 0 | 계획 | 3회 | spec 분석 → 구현 계획 수립 → 검토 → YAGNI | planner, plan-reviewer, yagni-reviewer |
+| 1 | 구현 | 5회 | 계획에 따라 구현 + 테스트 작성 + 통과 | - |
+| 2 | 리뷰+수정 | 5회 | 다각도 리뷰 후 이슈 수정 | spec-reviewer, code-reviewer, security-reviewer, side-effect-analyzer |
 | 3 | 구조 개선 | 3회 | 큰 함수/파일 분리, 재사용, 데드코드 | structure-optimizer |
-| 4 | 최종 검증 | 3회 | 전체 변경사항 코드 리뷰 | code-reviewer, python-reviewer |
+| 4 | 최종 검증 | 3회 | 전체 변경사항 코드 리뷰 | code-reviewer |
 | 5 | 엣지케이스 | 3회 | 경계값/예외 시나리오 발견 + 테스트 | edge-case-hunter |
 | 6 | 통합 테스트 | 3회 | 기존 코드와 충돌 확인 | integration-verifier |
 | 7 | 적대적 리뷰 | 3회 | reject 관점에서 결함 탐색 | adversarial-reviewer |
 | 8 | 배포 판정 | 2회 | SHIP/NO-SHIP 최종 판정 | deployment-judge |
+| 9 | 커밋 | 1회 | 변경 사항 커밋 | - |
 
 ### Phase 흐름
 
 ```
+Phase 0: 계획 수립 → planner + plan-reviewer + yagni-reviewer
+   ↓
 Phase 1: 구현 → 테스트 통과
    ↓
 Phase 2: 리뷰 → 이슈 수정 → 리뷰 (이슈 0건까지)
@@ -177,13 +191,15 @@ Phase 6: 통합 검증 → 충돌 해결
 Phase 7: 적대적 리뷰 → 결함 수정 → APPROVE까지
    ↓
 Phase 8: 최종 판정 → SHIP IT
+   ↓
+Phase 9: 커밋
 ```
 
 ---
 
 ## 템플릿 탐색 순서
 
-Phase 템플릿(phase1-implement.md 등)은 다음 순서로 탐색된다:
+Phase 템플릿(phase0-plan.md 등)은 다음 순서로 탐색된다:
 
 1. `--templates` 옵션으로 지정한 디렉토리
 2. 프로젝트 로컬: `{프로젝트 루트}/scripts/ralph-workflow/`
@@ -199,6 +215,7 @@ Phase 템플릿(phase1-implement.md 등)은 다음 순서로 탐색된다:
 ~/git/mac-setup/ralph-workflow/     ← 글로벌 (이 레포)
 ├── README.md
 ├── run-workflow.sh                 ← 메인 스크립트
+├── phase0-plan.md
 ├── phase1-implement.md
 ├── phase2-review-fix.md
 ├── phase3-structure.md
@@ -207,8 +224,20 @@ Phase 템플릿(phase1-implement.md 등)은 다음 순서로 탐색된다:
 ├── phase6-integration.md
 ├── phase7-adversarial.md
 ├── phase8-deploy-judge.md
+├── phase9-commit.md
+├── sessions/                       ← 세션 상태 (gitignore 권장)
+│   └── {session-name}/
+│       ├── state.env
+│       ├── rw-phase-0-prompt.md
+│       ├── rw-phase-0.log
+│       └── ...
 └── agents/                         ← 에이전트 템플릿
+    ├── planner.md
+    ├── plan-reviewer.md
+    ├── yagni-reviewer.md
     ├── spec-reviewer.md
+    ├── code-reviewer.md
+    ├── security-reviewer.md
     ├── side-effect-analyzer.md
     ├── structure-optimizer.md
     ├── edge-case-hunter.md
