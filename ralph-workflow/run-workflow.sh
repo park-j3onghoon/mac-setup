@@ -54,7 +54,6 @@ LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
@@ -318,21 +317,14 @@ SPEC_FINGERPRINT=$(compute_spec_fingerprint "${SPEC_PATHS[@]}")
 if ! $DRY_RUN; then
   if incomplete_info=$(find_incomplete_session); then
     IFS='|' read -r OLD_SESSION OLD_PHASE <<< "$incomplete_info"
-    echo ""
-    echo "${YELLOW}동일 spec의 미완료 세션 발견:${NC}"
-    echo "  세션: ${OLD_SESSION}"
-    echo "  중단 Phase: ${OLD_PHASE}"
-    echo ""
-    echo -n "${YELLOW}이어서 하시겠습니까? (yes/no): ${NC}"
+    echo -n "미완료 세션 발견 (${OLD_SESSION}, Phase ${OLD_PHASE}). 이어서? (yes/no): "
     read -r resume_choice
     if [[ "$resume_choice" == "yes" ]]; then
       SESSION_NAME="$OLD_SESSION"
       SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
       START_PHASE="$OLD_PHASE"
-      echo "${GREEN}세션 '${SESSION_NAME}' Phase ${START_PHASE}부터 이어서 진행합니다.${NC}"
     elif [[ "$resume_choice" == "no" ]]; then
       rm -rf "$SESSIONS_BASE_DIR/$OLD_SESSION"
-      echo "${GREEN}이전 세션 '$OLD_SESSION' 삭제. '$SESSION_NAME'으로 새로 시작합니다.${NC}"
     else
       echo "${RED}취소됨. 'yes' 또는 'no'만 입력 가능합니다.${NC}"
       exit 1
@@ -359,7 +351,7 @@ fi
 # ─── MODULE_PATH / TEST_PATH 자동 감지 ───
 if [[ -z "$MODULE_PATH" ]]; then
   MODULE_PATH="."
-  echo "${YELLOW}--module 미지정. 기본값 '.' 사용. --module로 지정 권장.${NC}"
+  notify_mac "rw 경고" "--module 미지정. 기본값 '.' 사용."
 fi
 
 if [[ -z "$TEST_PATH" ]]; then
@@ -434,15 +426,7 @@ run_phase() {
   local promise="${PHASE_PROMISES[$phase_num]}"
   local max_iter="${PHASE_MAX_ITERATIONS[$phase_num]}"
 
-  echo ""
-  echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo "${CYAN}  [$SESSION_NAME] Phase $phase_num/$end_phase: $phase_name${NC}"
-  for spec in "${SPEC_PATHS[@]}"; do
-    echo "${CYAN}  Spec: $spec${NC}"
-  done
-  echo "${CYAN}  Promise: $promise | Max iterations: $max_iter${NC}"
-  echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-  echo ""
+  notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase: $phase_name 시작 (max $max_iter회)"
 
   local prompt
   prompt=$(generate_prompt "$phase_num")
@@ -478,21 +462,17 @@ run_phase() {
     </dev/null &
   CLAUDE_PID=$!
 
-  echo "${GREEN}  Claude 세션 시작 (PID: $CLAUDE_PID)${NC}"
-  echo "${GREEN}  로그: $log_file${NC}"
-  echo ""
-
   # 상태 파일 생성 대기 (최대 60초)
   local wait_count=0
   while [[ ! -f "$RALPH_STATE_FILE" ]]; do
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
-      echo "${RED}  Claude 프로세스가 예기치 않게 종료됨.${NC}"
+      notify_mac "rw [$SESSION_NAME] 에러" "Claude 프로세스가 예기치 않게 종료됨"
       break
     fi
     sleep 2
     wait_count=$((wait_count + 1))
     if [[ $wait_count -ge 30 ]]; then
-      echo "${RED}  Ralph Loop 상태 파일 생성 타임아웃 (60초).${NC}"
+      notify_mac "rw [$SESSION_NAME] 에러" "Ralph Loop 상태 파일 생성 타임아웃 (60초)"
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
       rm -f "$prompt_file"
@@ -507,8 +487,6 @@ run_phase() {
   while true; do
     # Claude 프로세스 생존 확인
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
-      echo ""
-      echo "${GREEN}  Claude 세션 종료됨.${NC}"
       break
     fi
 
@@ -518,16 +496,10 @@ run_phase() {
       local current_iter
       current_iter=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$RALPH_STATE_FILE" 2>/dev/null | grep '^iteration:' | sed 's/iteration: *//' 2>/dev/null)
       if [[ -n "$current_iter" ]] && [[ "$current_iter" != "$last_iter" ]]; then
-        local elapsed=$((SECONDS - phase_start))
-        local dur=$(format_duration "$elapsed")
-        printf "\r${CYAN}  [%s] Phase %d/%d %s — 이터레이션 %s/%s (%s)${NC}          " \
-          "$SESSION_NAME" "$phase_num" "$end_phase" "$phase_name" "$current_iter" "$max_iter" "$dur"
         last_iter="$current_iter"
       fi
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
-      echo ""
-      echo "${GREEN}  Ralph Loop 완료 감지. Claude 세션 종료 중...${NC}"
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
       break
@@ -545,49 +517,19 @@ run_phase() {
 
   if [[ -f "$RALPH_STATE_FILE" ]]; then
     rm -f "$RALPH_STATE_FILE"
-    echo "${YELLOW}[$SESSION_NAME] Phase $phase_num/$end_phase $phase_name: 중단됨 — ${duration}${NC}"
-    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num: $phase_name 중단 ($duration)"
+    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 중단 ($duration)"
     return 1
   else
-    echo "${GREEN}[$SESSION_NAME] Phase $phase_num/$end_phase $phase_name: 완료! — ${duration}${NC}"
-    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num: $phase_name PASS ($duration)"
+    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 완료 ($duration)"
     return 0
   fi
-}
-
-# ─── 이터레이션 요약 ───
-print_iteration_summary() {
-  local start=$1 end=$2
-  echo "${BLUE}Phase별 이터레이션:${NC}"
-  local total=0
-  for phase in $(seq "$start" "$end"); do
-    local iter="${PHASE_MAX_ITERATIONS[$phase]}"
-    total=$((total + iter))
-    printf "  Phase %d (%s): %d회\n" "$phase" "${PHASE_NAMES[$phase]}" "$iter"
-  done
-  echo "  ${BLUE}총 최대: ${total}회${NC}"
 }
 
 # ─── 메인 ───
 END_PHASE=9
 
-echo "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-echo "${CYAN}║         Ralph Workflow - Automated Pipeline         ║${NC}"
-echo "${CYAN}╠══════════════════════════════════════════════════════╣${NC}"
-echo "${CYAN}║  Session: $SESSION_NAME${NC}"
-for spec in "${SPEC_PATHS[@]}"; do
-  echo "${CYAN}║  Spec: $spec${NC}"
-done
-echo "${CYAN}║  Module: $MODULE_PATH${NC}"
-echo "${CYAN}║  Test: $TEST_PATH${NC}"
-if [[ $CUSTOM_MAX_ITERATIONS -gt 0 ]]; then
-  echo "${CYAN}║  Scale: 기본 max=$BASE_MAX → $CUSTOM_MAX_ITERATIONS (비례 스케일링)${NC}"
-fi
-echo "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
-echo ""
-print_iteration_summary "$START_PHASE" "$END_PHASE"
+notify_mac "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개"
 
-RESULTS=()
 WORKFLOW_START=$SECONDS
 ALL_DONE=true
 for phase in $(seq "$START_PHASE" "$END_PHASE"); do
@@ -599,19 +541,12 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
   if ! $DRY_RUN; then
     save_session_state "in_progress" "$phase"
   fi
-  PHASE_START_TS=$SECONDS
   if run_phase "$phase" "$END_PHASE"; then
-    dur=$(format_duration $((SECONDS - PHASE_START_TS)))
-    RESULTS+=("[$SESSION_NAME] Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: ${GREEN}PASS${NC} ($dur)")
+    :
   else
-    dur=$(format_duration $((SECONDS - PHASE_START_TS)))
-    RESULTS+=("[$SESSION_NAME] Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: ${YELLOW}중단${NC} ($dur)")
-    echo ""
-    echo "${YELLOW}Phase $phase이 중단되었습니다.${NC}"
-    echo "${YELLOW}계속 진행하시겠습니까? (y/n)${NC}"
+    echo -n "Phase $phase 중단. 계속? (y/n): "
     read -r "continue_choice?"
     if [[ "$continue_choice" != "y" ]]; then
-      echo "${RED}워크플로우 중단.${NC}"
       ALL_DONE=false
       break
     fi
@@ -624,13 +559,4 @@ if ! $DRY_RUN && $ALL_DONE; then
 fi
 
 TOTAL_DURATION=$(format_duration $((SECONDS - WORKFLOW_START)))
-echo ""
-echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-echo "${CYAN}  [$SESSION_NAME] 워크플로우 결과 요약 (spec ${#SPEC_PATHS[@]}개)${NC}"
-echo "${CYAN}  총 소요 시간: $TOTAL_DURATION${NC}"
-echo "${CYAN}════════════════════════════════════════════════════════${NC}"
-for result in "${RESULTS[@]}"; do
-  echo "  $result"
-done
-echo ""
 notify_mac "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION"
