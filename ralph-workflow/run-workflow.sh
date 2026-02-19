@@ -348,11 +348,14 @@ if [[ "$START_PHASE" != [0-9] ]]; then
   exit 1
 fi
 
-# DEV_CONTAINER 환경변수 확인 (실제 실행 시 필수)
+# DEV_CONTAINER 환경변수 확인 (없으면 자동 source)
 if ! $DRY_RUN && [[ -z "${DEV_CONTAINER:-}" ]]; then
-  echo "${RED}에러: DEV_CONTAINER 환경변수가 설정되지 않았습니다.${NC}" >&2
-  echo "먼저 실행: source scripts/set_dev_env.sh" >&2
-  exit 1
+  if [[ -f "$PROJECT_ROOT/scripts/set_dev_env.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/set_dev_env.sh"
+  else
+    echo "${RED}에러: DEV_CONTAINER 환경변수가 설정되지 않았고, scripts/set_dev_env.sh도 없습니다.${NC}" >&2
+    exit 1
+  fi
 fi
 
 # ─── MODULE_PATH / TEST_PATH 자동 감지 ───
