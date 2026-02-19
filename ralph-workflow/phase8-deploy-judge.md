@@ -7,15 +7,16 @@
 **Spec**:
 {{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
+**체크리스트**: {{CHECKLIST_PATH}} (요구사항 인덱스 — 라인 참조로 원본 spec 확인 가능)
 
 ## 절차
 
 ### 1단계: 배포 판정
-Task(subagent_type='deployment-judge')를 호출한다:
+Task(subagent_type='deployment-judge')를 호출한다. **{{CHECKLIST_PATH}}를 전달**하여:
 - 테스트 통과 여부
 - 테스트 커버리지 80% 이상
 - lint/format/type check 통과 여부
-- Spec 완전성
+- **Spec 완전성**: 체크리스트의 모든 REQ 항목이 `- [x]`이고, 각 항목의 라인 참조를 따라 원본 spec과 대조
 - 아키텍처 준수 (DDD 레이어 의존성 포함)
 - 보안 검증
 - 코드 품질

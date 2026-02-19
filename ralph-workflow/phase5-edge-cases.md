@@ -7,11 +7,12 @@
 **Spec**:
 {{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
+**체크리스트**: {{CHECKLIST_PATH}} (요구사항 인덱스 — 라인 참조로 원본 spec 확인 가능)
 
 ## 절차
 
 ### 1단계: 엣지케이스 탐색
-Task(subagent_type='edge-case-hunter')를 호출한다:
+Task(subagent_type='edge-case-hunter')를 호출한다. **{{CHECKLIST_PATH}}를 전달**하여 각 REQ별 엣지케이스를 탐색:
 - None/빈값/경계값 시나리오
 - 비즈니스 규칙 경계 조건
 - 동시성/Race condition
