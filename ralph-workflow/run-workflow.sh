@@ -99,9 +99,9 @@ compute_spec_fingerprint() {
 }
 
 save_session_state() {
-  local status=$1 current_phase=$2
+  local session_status=$1 current_phase=$2
   printf 'SPEC_FINGERPRINT=%s\nCURRENT_PHASE=%s\nSTATUS=%s\n' \
-    "$SPEC_FINGERPRINT" "$current_phase" "$status" > "$SESSION_DIR/state.env"
+    "$SPEC_FINGERPRINT" "$current_phase" "$session_status" > "$SESSION_DIR/state.env"
 }
 
 find_incomplete_session() {
