@@ -4,7 +4,8 @@
 
 이 코드를 reject하려는 시니어 리뷰어 관점에서 결함을 찾고 수정하라.
 
-**Spec**: {{SPEC_PATH}}
+**Spec**:
+{{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
 
 ## 절차

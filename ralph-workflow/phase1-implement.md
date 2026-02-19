@@ -4,7 +4,8 @@
 
 아래 spec 파일을 읽고 구현하라.
 
-**Spec**: {{SPEC_PATH}}
+**Spec**:
+{{SPEC_PATH}}
 
 ## 절차
 

@@ -4,7 +4,8 @@
 
 코드 구조를 CLAUDE.md에 명시된 아키텍처 원칙에 맞게 최적화하라.
 
-**Spec**: {{SPEC_PATH}}
+**Spec**:
+{{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
 
 ## 절차
