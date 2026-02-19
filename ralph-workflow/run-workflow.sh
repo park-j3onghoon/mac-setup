@@ -385,6 +385,7 @@ fi
 
 # ─── 계획 파일 경로 + Phase별 이터레이션 계산 ───
 PLAN_PATH="$PROJECT_ROOT/.claude/rw-plan.md"
+CHECKLIST_PATH="$PROJECT_ROOT/.claude/rw-checklist.md"
 
 typeset -A PHASE_MAX_ITERATIONS
 for phase in {0..9}; do
@@ -424,6 +425,7 @@ generate_prompt() {
   prompt="${prompt//\{\{MODULE_PATH\}\}/$MODULE_PATH}"
   prompt="${prompt//\{\{TEST_PATH\}\}/$TEST_PATH}"
   prompt="${prompt//\{\{PLAN_PATH\}\}/$PLAN_PATH}"
+  prompt="${prompt//\{\{CHECKLIST_PATH\}\}/$CHECKLIST_PATH}"
 
   echo "$prompt"
 }
@@ -567,7 +569,7 @@ ALL_DONE=true
 for phase in $(seq "$START_PHASE" "$END_PHASE"); do
   # Phase 9 (커밋) 전에 계획 파일 정리 (커밋에 포함 방지)
   if [[ $phase -eq 9 ]]; then
-    rm -f "$PLAN_PATH"
+    rm -f "$PLAN_PATH" "$CHECKLIST_PATH"
   fi
   # 현재 phase 상태 저장
   if ! $DRY_RUN; then
