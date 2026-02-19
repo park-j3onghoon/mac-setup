@@ -32,7 +32,14 @@ docker exec "$DEV_CONTAINER" pytest {{MODULE_PATH}} --reuse-db -x -q
 발견된 충돌을 수정한다.
 
 ### 4단계: 재검증
-수정 후 모든 테스트를 다시 실행한다.
+수정 후 모든 테스트와 lint/format/type check를 다시 실행한다:
+```bash
+docker exec "$DEV_CONTAINER" pytest {{TEST_PATH}} --reuse-db -v
+docker exec "$DEV_CONTAINER" pytest {{MODULE_PATH}} --reuse-db -x -q
+uv run ruff check $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
+uv run ruff format --check $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
+uv run mypy $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
+```
 
 ## 완료 조건
 
@@ -40,5 +47,6 @@ docker exec "$DEV_CONTAINER" pytest {{MODULE_PATH}} --reuse-db -x -q
 - 새 코드 테스트 전체 통과
 - 기존 테스트 영향 없음
 - MODULE_PATH 전체 테스트 통과
+- 변경 파일 ruff check/format/mypy 통과
 
 모든 조건 충족 시 <promise>INTEGRATION DONE</promise> 출력.
