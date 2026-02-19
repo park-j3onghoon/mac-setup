@@ -4,7 +4,8 @@
 
 최종 배포 가능 여부를 판정하라.
 
-**Spec**: {{SPEC_PATH}}
+**Spec**:
+{{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
 
 ## 절차
