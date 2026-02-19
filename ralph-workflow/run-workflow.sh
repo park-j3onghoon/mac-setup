@@ -75,6 +75,13 @@ notify_mac() {
   osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
 }
 
+# 사용자가 닫을 때까지 유지되는 알림 (phase 완료, 에러 등 중요 이벤트용)
+notify_mac_alert() {
+  local title="${1//\"/\\\"}"
+  local message="${2//\"/\\\"}"
+  osascript -e "display alert \"$title\" message \"$message\" as informational" 2>/dev/null &
+}
+
 # ─── 입력 검증 ───
 validate_path() {
   local value=$1 label=$2
@@ -467,13 +474,13 @@ run_phase() {
   local wait_count=0
   while [[ ! -f "$RALPH_STATE_FILE" ]]; do
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
-      notify_mac "rw [$SESSION_NAME] 에러" "Claude 프로세스가 예기치 않게 종료됨"
+      notify_mac_alert "rw [$SESSION_NAME] 에러" "Claude 프로세스가 예기치 않게 종료됨"
       break
     fi
     sleep 2
     wait_count=$((wait_count + 1))
     if [[ $wait_count -ge 30 ]]; then
-      notify_mac "rw [$SESSION_NAME] 에러" "Ralph Loop 상태 파일 생성 타임아웃 (60초)"
+      notify_mac_alert "rw [$SESSION_NAME] 에러" "Ralph Loop 상태 파일 생성 타임아웃 (60초)"
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
       rm -f "$prompt_file"
@@ -484,6 +491,7 @@ run_phase() {
   # 폴링 루프: Ralph Loop 상태 파일 감시
   local poll_interval=5
   local last_iter=0
+  local current_iter=""
 
   while true; do
     # Claude 프로세스 생존 확인
@@ -494,7 +502,6 @@ run_phase() {
     # 상태 파일 확인
     if [[ -f "$RALPH_STATE_FILE" ]]; then
       # 현재 이터레이션 읽기
-      local current_iter
       current_iter=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$RALPH_STATE_FILE" 2>/dev/null | grep '^iteration:' | sed 's/iteration: *//' 2>/dev/null)
       if [[ -n "$current_iter" ]] && [[ "$current_iter" != "$last_iter" ]]; then
         last_iter="$current_iter"
@@ -518,10 +525,10 @@ run_phase() {
 
   if [[ -f "$RALPH_STATE_FILE" ]]; then
     rm -f "$RALPH_STATE_FILE"
-    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 중단 ($duration)"
+    notify_mac_alert "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 중단 ($duration)"
     return 1
   else
-    notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 완료 ($duration)"
+    notify_mac_alert "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 완료 ($duration)"
     return 0
   fi
 }
@@ -560,4 +567,4 @@ if ! $DRY_RUN && $ALL_DONE; then
 fi
 
 TOTAL_DURATION=$(format_duration $((SECONDS - WORKFLOW_START)))
-notify_mac "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION"
+notify_mac_alert "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION"
