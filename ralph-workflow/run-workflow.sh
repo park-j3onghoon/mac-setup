@@ -79,11 +79,11 @@ notify_mac() {
 validate_path() {
   local value=$1 label=$2
   if [[ -n "${value//[a-zA-Z0-9_.\/\-]/}" ]]; then
-    echo "${RED}에러: $label에 허용되지 않는 문자가 포함되어 있습니다: $value${NC}" >&2
+    echo "${RED}에러: ${label}에 허용되지 않는 문자가 포함되어 있습니다: $value${NC}" >&2
     exit 1
   fi
   if [[ "$value" == *..* ]]; then
-    echo "${RED}에러: $label에 '..'를 포함할 수 없습니다.${NC}" >&2
+    echo "${RED}에러: ${label}에 '..'를 포함할 수 없습니다.${NC}" >&2
     exit 1
   fi
 }
@@ -426,7 +426,7 @@ run_phase() {
   local promise="${PHASE_PROMISES[$phase_num]}"
   local max_iter="${PHASE_MAX_ITERATIONS[$phase_num]}"
 
-  notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase: $phase_name 시작 (max $max_iter회)"
+  notify_mac "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase: $phase_name 시작 (max ${max_iter}회)"
 
   local prompt
   prompt=$(generate_prompt "$phase_num")
