@@ -7,13 +7,14 @@
 **Spec**:
 {{SPEC_PATH}}
 **구현 디렉토리**: {{MODULE_PATH}}
+**체크리스트**: {{CHECKLIST_PATH}} (요구사항 인덱스 — 라인 참조로 원본 spec 확인 가능)
 
 ## 절차
 
 ### 1단계: 적대적 리뷰
-Task(subagent_type='adversarial-reviewer')를 호출한다:
-- Spec 한 줄씩 대조
-- 비즈니스 규칙 전수 검사
+Task(subagent_type='adversarial-reviewer')를 호출한다. **{{CHECKLIST_PATH}}를 전달**하여:
+- 체크리스트의 모든 REQ 항목을 하나씩 순회하며, 라인 참조를 따라 원본 spec을 읽고 코드와 대조
+- 비즈니스 규칙 전수 검사 (모든 상태/조건 조합 매트릭스)
 - 테스트 assert 유효성 검증
 - 에러 핸들링 완전성
 - 네이밍 일관성
