@@ -84,7 +84,7 @@ cd ~/my-project
 # spec 1개 실행 (Phase 0~19 전체)
 rw -s pr2-impl docs/spec.md -m src/myapp
 
-# 여러 spec 순차 실행
+# 여러 spec을 하나의 단위로 함께 처리 (모든 Phase에 전체 spec 목록이 전달됨)
 rw -s big-feature docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
 ```
 
@@ -94,7 +94,7 @@ rw -s big-feature docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
 |------|------|--------|
 | `-s`, `--session NAME` | 세션 이름 (필수). 로그/상태 파일 구분 | - |
 | `-m`, `--module PATH` | 구현 대상 모듈 경로. lint/mypy/리뷰 범위 지정 | `.` |
-| `-t`, `--test PATH` | 테스트 디렉토리 경로 | `{module}/tests` |
+| `-t`, `--test PATH` | 테스트 디렉토리 경로 (자동 감지: `{module}/tests` 존재 시 사용, 없으면 `{module}`) | 자동 |
 | `-n`, `--multiplier N` | 이터레이션 배수 (float 허용, 아래 참조) | `1` |
 | `--templates DIR` | 커스텀 템플릿 디렉토리 | - |
 | `--dry-run` | 실제 실행 없이 프롬프트만 확인 | - |
@@ -154,7 +154,7 @@ rw -s pr2-quality docs/spec_detail_2.md -m src/myapp -n 2
 # dry-run으로 프롬프트 확인만
 rw -s test-run docs/spec_detail_2.md -m src/myapp --dry-run
 
-# 여러 spec 한 번에
+# 여러 spec을 하나의 단위로 함께 처리
 rw -s big-feature docs/spec_{1..5}.md -m src/myapp -n 1.5
 
 # 프로젝트별 커스텀 템플릿 사용
