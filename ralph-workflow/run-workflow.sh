@@ -181,7 +181,7 @@ compute_spec_lines() {
   local total=0
   for spec in "${SPEC_PATHS[@]}"; do
     local lines
-    lines=$(wc -l < "$spec" 2>/dev/null)
+    lines=$(wc -l < "$spec" 2>/dev/null | tr -d ' ')
     total=$((total + ${lines:-0}))
   done
   printf '%s\n' "$total"
