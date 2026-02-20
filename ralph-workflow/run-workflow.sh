@@ -52,6 +52,10 @@ SESSIONS_BASE_DIR="$GLOBAL_TEMPLATE_DIR/sessions"
 # 프로젝트 로컬 템플릿 (있으면 우선)
 LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
 
+# ─── 정체 감지 ───
+STALL_THRESHOLD=900   # 이터레이션 변화 없이 이 시간(초) 경과 시 알림 (15분)
+LOG_STALE_THRESHOLD=300  # 로그 파일 수정 없이 이 시간(초) 경과 시 알림 (5분)
+
 # ─── 색상 ───
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -129,6 +133,40 @@ _notify_dispatch() {
       fi ;;
     *) printf '[%s] %s: %s\n' "$level" "$title" "$message" ;;
   esac
+}
+
+# ─── 이벤트 로그 ───
+# 정체/에러 등 주요 이벤트를 타임스탬프와 함께 기록 (분석용)
+EVENT_LOG_FILE=""  # SESSION_DIR 확정 후 설정
+
+log_event() {
+  [[ -z "$EVENT_LOG_FILE" ]] && return
+  local level=$1 event=$2 detail=${3:-}
+  printf '%s [%s] %s: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$event" "${detail//$'\n'/ }" >> "$EVENT_LOG_FILE"
+}
+
+# 로그 파일 tail에서 에러 패턴 탐지
+# 반환: 감지된 패턴 문자열 (없으면 빈 문자열)
+detect_log_errors() {
+  local log_file=$1
+  [[ ! -f "$log_file" ]] && return
+  # 마지막 4KB만 스캔 (성능)
+  local tail_content
+  tail_content=$(tail -c 4096 "$log_file" 2>/dev/null | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' 2>/dev/null || true)
+  [[ -z "$tail_content" ]] && return
+
+  local pattern
+  # rate limit / API 에러 패턴 (Claude CLI, API 공통)
+  # 429/503은 단어 경계(\b)로 제한하여 토큰수·줄번호 false positive 방지
+  pattern=$(printf '%s\n' "$tail_content" | grep -ioE 'rate.?limit|overloaded|(^|[^0-9])429([^0-9]|$)|(^|[^0-9])503([^0-9]|$)|too many requests|usage.?limit|quota.?exceed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|APIError|server.?error' | head -1 || true)
+  [[ -n "$pattern" ]] && printf '%s\n' "${pattern:l}"  # 소문자 정규화 (중복 알림 방지)
+}
+
+# 로그 파일 수정 시각 (epoch seconds)
+get_log_mtime() {
+  local log_file=$1
+  [[ ! -f "$log_file" ]] && printf '%s\n' 0 && return
+  stat -f %m "$log_file" 2>/dev/null || printf '%s\n' 0
 }
 
 # ─── 입력 검증 ───
@@ -338,9 +376,17 @@ find_template() {
 # ─── Promise 검증 ───
 check_promise_in_log() {
   local log_file=$1 promise=$2
-  # ANSI escape 제거 후 promise 문자열 검색
-  sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' "$log_file" 2>/dev/null \
-    | grep -qF "$promise" 2>/dev/null
+  local sed_clean='s/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\x1b][^\x07]*\x07//g; s/\x1b(B//g; s/\r//g'
+
+  # 1차: 정확한 매칭 (명령어 에코 제외 — false positive 방지, 스트리밍)
+  if sed "$sed_clean" "$log_file" 2>/dev/null \
+     | grep -v 'completion-promise' | grep -qF "$promise" 2>/dev/null; then
+    return 0
+  fi
+  # 2차: 공백 제거 매칭 (ANSI 제거 시 공백 소실 대응, e.g. "PLANDONE")
+  local promise_nospace="${promise// /}"
+  sed "${sed_clean}; s/ //g" "$log_file" 2>/dev/null \
+    | grep -v 'completion.*promise' | grep -qF "$promise_nospace" 2>/dev/null
 }
 
 # ─── 인자 파싱 ───
@@ -475,6 +521,7 @@ fi
 
 # 세션 디렉토리 생성 (resume 후 SESSION_DIR이 확정된 시점)
 mkdir -p "$SESSION_DIR"
+EVENT_LOG_FILE="$SESSION_DIR/rw-events.log"
 
 # START_PHASE 범위 검증 (0~19)
 if ! printf '%s' "$START_PHASE" | grep -qE '^[0-9]+$' || [[ "$START_PHASE" -gt 19 ]]; then
@@ -662,11 +709,21 @@ run_phase() {
   local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
   local spin_idx=0
   local last_heartbeat=$SECONDS
+  local last_progress=$SECONDS
+  local last_stall_alert=$SECONDS
+  local last_log_mtime=$(get_log_mtime "$log_file")
+  local last_log_check=$SECONDS
+  local log_stale_alerted=false
+  local last_error_scan=$SECONDS
+  local last_detected_error=""
+
+  log_event "INFO" "phase_start" "phase=$phase_num name=$phase_name max_iter=$max_iter"
 
   while true; do
     # Claude 프로세스 생존 확인
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
       printf "\r\033[K"
+      log_event "INFO" "process_exit" "phase=$phase_num iter=${last_iter:-0}"
       break
     fi
 
@@ -677,6 +734,9 @@ run_phase() {
       current_iter=$(sed -n '/^---$/,/^---$/{ /^---$/d; p; }' "$RALPH_STATE_FILE" 2>/dev/null | grep '^iteration:' | sed 's/iteration: *//' 2>/dev/null)
       if [[ -n "$current_iter" ]] && [[ "$current_iter" != "$last_iter" ]]; then
         last_iter="$current_iter"
+        last_progress=$SECONDS
+        last_stall_alert=$SECONDS
+        log_stale_alerted=false  # 이터레이션 진행 → 로그 정체 알림 리셋
       fi
 
       # 스피너 출력
@@ -692,9 +752,43 @@ run_phase() {
         notify_info "rw [$SESSION_NAME]" "Phase $phase_num 진행 중 ($dur)${retry_label}"
         last_heartbeat=$SECONDS
       fi
+
+      # 정체 감지: 이터레이션 변화 없이 STALL_THRESHOLD 경과
+      if (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
+        local stall_min=$(( (SECONDS - last_progress) / 60 ))  # 실제 마지막 진행 이후 총 시간
+        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num 정체: ${stall_min}분간 이터레이션 변화 없음 (iter ${last_iter:-0}/${max_iter})"
+        log_event "WARN" "stall_iter" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
+        last_stall_alert=$SECONDS  # 알림 타이머만 리셋 (실제 진행 시간은 유지)
+      fi
+
+      # 로그 파일 정체 감지: 로그 mtime이 LOG_STALE_THRESHOLD 이상 변하지 않음
+      local cur_log_mtime=$(get_log_mtime "$log_file")
+      if [[ "$cur_log_mtime" != "$last_log_mtime" ]]; then
+        last_log_mtime=$cur_log_mtime
+        last_log_check=$SECONDS
+        log_stale_alerted=false
+      elif ! $log_stale_alerted && (( SECONDS - last_log_check >= LOG_STALE_THRESHOLD )); then
+        local stale_min=$(( (SECONDS - last_log_check) / 60 ))
+        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: 로그 출력 ${stale_min}분간 없음 — 프로세스 행(hang) 의심"
+        log_event "WARN" "stall_log" "phase=$phase_num iter=${last_iter:-0} stale_min=$stale_min"
+        log_stale_alerted=true
+      fi
+
+      # 에러 패턴 스캔 (30초마다)
+      if (( SECONDS - last_error_scan >= 30 )); then
+        local detected
+        detected=$(detect_log_errors "$log_file")
+        if [[ -n "$detected" ]] && [[ "$detected" != "$last_detected_error" ]]; then
+          notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: 에러 감지 — $detected"
+          log_event "ERROR" "log_error" "phase=$phase_num iter=${last_iter:-0} pattern=$detected"
+          last_detected_error="$detected"
+        fi
+        last_error_scan=$SECONDS
+      fi
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
       printf "\r\033[K"
+      sleep 2  # script pty 버퍼 flush 대기 (promise 텍스트가 로그에 기록되도록)
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
       break
@@ -829,6 +923,7 @@ NOTES_EOF
 fi
 
 notify_alert "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개 (${SPEC_LINES}줄, +${SPEC_ADDEND}/phase)"
+log_event "INFO" "workflow_start" "session=$SESSION_NAME phases=${START_PHASE}~${END_PHASE} specs=${#SPEC_PATHS[@]}"
 
 WORKFLOW_START=$SECONDS
 ALL_DONE=true
@@ -865,18 +960,31 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
           EXTENDED_PHASES+=("$phase")
           PHASE_RETRIES[$phase]=$((retry - 1))
           notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase: ${max_retries}회 재시도 후 promise 미감지, 강제 진행"
+          log_event "WARN" "force_proceed" "phase=$phase retries=$((retry - 1))"
           phase_success=true  # 강제 진행
           break
         fi
         notify_alert "rw [$SESSION_NAME]" "Phase $phase: promise 미감지, 재시도 $retry/${max_retries}"
+        log_event "INFO" "retry" "phase=$phase retry=$retry max=$max_retries"
       fi
     else
       # Phase 실패 (크래시, 타임아웃 등)
-      echo -n "Phase $phase 중단. 계속? (y/n): "
-      read -r continue_choice
-      if [[ "$continue_choice" != "y" ]]; then
-        ALL_DONE=false
-        break 2  # 외부 for 루프도 탈출
+      log_event "ERROR" "phase_fail" "phase=$phase retry=$retry"
+      notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase 실패 — 2분 내 응답 없으면 자동 진행"
+      echo -n "Phase $phase 중단. 계속? (y/n, 2분 후 자동 y): "
+      if read -t 120 -r continue_choice; then
+        # 사용자 입력 있음
+        if [[ "$continue_choice" == "n" ]]; then
+          log_event "INFO" "user_abort" "phase=$phase"
+          ALL_DONE=false
+          break 2  # 외부 for 루프도 탈출
+        fi
+        log_event "INFO" "user_continue" "phase=$phase"
+      else
+        # 타임아웃 → 자동 진행
+        echo ""  # read 타임아웃 후 줄바꿈
+        notify_alert "rw [$SESSION_NAME]" "Phase $phase 실패 — 2분 타임아웃, 자동 진행"
+        log_event "WARN" "auto_continue" "phase=$phase reason=timeout_120s"
       fi
       break  # 내부 while만 탈출, 다음 phase로
     fi
@@ -885,6 +993,7 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
   if $phase_success; then
     COMPLETED_PHASES+=("$phase")
     notify_alert "rw [$SESSION_NAME]" "Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: 완료"
+    log_event "INFO" "phase_done" "phase=$phase name=${PHASE_NAMES[$phase]} retries=${PHASE_RETRIES[$phase]:-0}"
   fi
 done
 
@@ -908,3 +1017,4 @@ fi
 TOTAL_TOKENS_FMT=$(format_tokens "$(compute_total_tokens)")
 
 notify_alert "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION — ↓ $TOTAL_TOKENS_FMT"
+log_event "INFO" "workflow_end" "session=$SESSION_NAME duration=$TOTAL_DURATION tokens=$TOTAL_TOKENS_FMT completed=${#COMPLETED_PHASES[@]} all_done=$ALL_DONE"
