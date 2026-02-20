@@ -18,6 +18,7 @@
 2. **모든 spec 파일을 매 이터레이션마다 함께 처리** — 체크리스트 라인 참조로 해당 줄만 Read
 3. **이전 이터레이션 이어받기** — 체크리스트/결과 파일로 진행 상황 추적
 4. **수정 발생 시 promise 출력 금지** — 수정 없는 클린 이터레이션에서만 promise 출력
+5. **검증 이터레이션 필수** — 첫 이터레이션에서는 promise를 출력하지 않는다. 최소 1회 전체 재검증을 통과해야 한다.
 
 ## 절차
 
@@ -89,5 +90,7 @@ uv run mypy $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
 - Spec Digest 보강 완료 (새 REQ/교차 참조 반영)
 - 모든 테스트 통과
 - 변경 파일 ruff check/format/mypy 통과
+
+- **검증 이터레이션 ≥ 1** (첫 이터레이션 이후 최소 1회 전체 재검증 통과)
 
 모든 조건 충족 시 <promise>SPEC VERIFIED</promise> 출력.

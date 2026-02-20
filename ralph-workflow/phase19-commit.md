@@ -9,6 +9,10 @@
 **구현 디렉토리**: {{MODULE_PATH}}
 **체크리스트**: {{CHECKLIST_PATH}} (커밋 메시지 작성 시 참조용, 커밋 대상 아님)
 
+## 공통 원칙
+
+1. **검증 이터레이션 필수** — 첫 이터레이션에서는 promise를 출력하지 않는다. 최소 1회 전체 재검증을 통과해야 한다.
+
 ## 절차
 
 ### 1단계: 최종 상태 확인
@@ -53,5 +57,7 @@ git commit -m "<type>: <description>"
 - 커밋 메시지가 Conventional Commits 형식
 - .env, 시크릿, .claude/rw-plan.md, .claude/rw-checklist.md, .claude/rw-spec-digest.md, .claude/rw-notes.md 등 민감/임시 파일 미포함
 - git status가 clean (추적되지 않는 임시 파일 제외)
+
+- **검증 이터레이션 ≥ 1** (첫 이터레이션 이후 최소 1회 전체 재검증 통과)
 
 모든 조건 충족 시 <promise>COMMIT DONE</promise> 출력.
