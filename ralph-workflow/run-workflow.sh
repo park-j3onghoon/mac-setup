@@ -581,6 +581,13 @@ for phase in {0..19}; do
   PHASE_MAX_ITERATIONS[$phase]=$(compute_iterations "$base" "$N_MULTIPLIER" "$SPEC_ADDEND")
 done
 
+# 최소 이터레이션: promise가 감지되어도 이 횟수 미만이면 조기 완료로 간주하여 재시도
+# max(2, ceil(N_MULTIPLIER)) — 모든 Phase에 동일 적용
+MIN_ITERATIONS=$(awk -v n="$N_MULTIPLIER" 'BEGIN{
+  v = (n == int(n)) ? int(n) : int(n) + 1; print (v > 2) ? v : 2
+}')
+LAST_PHASE_ITER=0  # run_phase에서 메인 루프로 마지막 이터레이션 전달
+
 # ─── Spec 목록 문자열 생성 ───
 SPEC_LIST=""
 for spec in "${SPEC_PATHS[@]}"; do
@@ -831,6 +838,7 @@ run_phase() {
   # 통계 누적 (재시도 시 기존 값에 더함)
   PHASE_DURATIONS[$phase_num]=$((${PHASE_DURATIONS[$phase_num]:-0} + phase_elapsed))
   PHASE_TOKENS[$phase_num]=$((${PHASE_TOKENS[$phase_num]:-0} + tokens))
+  LAST_PHASE_ITER=${last_iter:-0}
 
   # 이터레이션 라벨
   local iter_label=""
@@ -891,7 +899,7 @@ print_summary() {
   echo "  Ralph Workflow 실행 요약  [$SESSION_NAME]"
   echo "═══════════════════════════════════════════════════════════"
   echo ""
-  echo "  Spec: ${SPEC_LINES}줄, +${SPEC_ADDEND}/phase (300줄당 +1), multiplier: ×${N_MULTIPLIER}"
+  echo "  Spec: ${SPEC_LINES}줄, +${SPEC_ADDEND}/phase (300줄당 +1), multiplier: ×${N_MULTIPLIER}, 최소 iter: ${MIN_ITERATIONS}"
   echo ""
 
   for phase in "${COMPLETED_PHASES[@]}"; do
@@ -945,8 +953,8 @@ if [[ "$START_PHASE" -eq 0 ]] && [[ ! -f "$NOTES_PATH" ]]; then
 NOTES_EOF
 fi
 
-notify_alert "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개 (${SPEC_LINES}줄, +${SPEC_ADDEND}/phase)"
-log_event "INFO" "workflow_start" "session=$SESSION_NAME phases=${START_PHASE}~${END_PHASE} specs=${#SPEC_PATHS[@]}"
+notify_alert "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개 (${SPEC_LINES}줄, ×${N_MULTIPLIER}, 최소 iter ${MIN_ITERATIONS})"
+log_event "INFO" "workflow_start" "session=$SESSION_NAME phases=${START_PHASE}~${END_PHASE} specs=${#SPEC_PATHS[@]} min_iter=$MIN_ITERATIONS"
 
 WORKFLOW_START=$SECONDS
 ALL_DONE=true
@@ -972,10 +980,23 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
       promise="${PHASE_PROMISES[$phase]}"
 
       if $DRY_RUN || check_promise_in_log "$log_file" "$promise"; then
-        # promise 확인됨 → 성공
-        phase_success=true
-        PHASE_RETRIES[$phase]=$retry
-        break
+        if ! $DRY_RUN && (( LAST_PHASE_ITER < MIN_ITERATIONS )); then
+          # promise 감지되었지만 최소 이터레이션 미달 → 재시도
+          log_event "INFO" "min_iter_not_met" "phase=$phase iter=$LAST_PHASE_ITER min=$MIN_ITERATIONS"
+          retry=$((retry + 1))
+          if (( retry > max_retries )); then
+            PHASE_RETRIES[$phase]=$((retry - 1))
+            phase_success=true
+            break
+          fi
+          notify_alert "rw [$SESSION_NAME]" "Phase $phase: iter ${LAST_PHASE_ITER} < 최소 ${MIN_ITERATIONS}, 재시도 $retry/${max_retries}"
+          log_event "INFO" "retry" "phase=$phase retry=$retry max=$max_retries reason=min_iter"
+        else
+          # promise 확인됨 + 최소 이터레이션 충족 → 성공
+          phase_success=true
+          PHASE_RETRIES[$phase]=$retry
+          break
+        fi
       else
         # promise 미감지 → max-iter 도달
         retry=$((retry + 1))
