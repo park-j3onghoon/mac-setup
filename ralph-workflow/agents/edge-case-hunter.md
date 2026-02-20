@@ -1,6 +1,6 @@
 ---
 name: edge-case-hunter
-description: Edge case and boundary condition specialist. Discovers scenarios with None/empty/boundary values, concurrent access, and external failures. Adds tests for each discovered case. Use after review phase to harden code.
+description: Edge case and boundary condition specialist. Discovers scenarios with None/empty/boundary values, concurrent access, and external failures. Adds tests for each discovered case. Use in Phase 17 to harden code with edge case tests.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 ---
@@ -15,6 +15,16 @@ model: opus
 1. **대상 디렉토리** (구현 코드가 있는 디렉토리)
 2. **테스트 디렉토리** (테스트 파일이 있는 경로)
 3. **spec 파일 경로** (비즈니스 규칙 경계 조건 파악용)
+4. **체크리스트 파일 경로** (선택, rw-checklist.md)
+
+## 체크리스트 기반 사냥 (체크리스트가 전달된 경우)
+
+체크리스트가 전달되면 **각 REQ별로** 엣지케이스를 탐색한다:
+
+1. 체크리스트의 REQ 항목을 하나씩 순회한다.
+2. 각 항목의 라인 참조를 따라 원본 spec의 비즈니스 규칙을 Read(offset, limit)로 읽는다.
+3. 해당 규칙의 경계 조건/예외 시나리오를 도출한다.
+4. 기존 테스트에서 이미 커버된 것과 아닌 것을 분류한다.
 
 ## 사냥 카테고리
 

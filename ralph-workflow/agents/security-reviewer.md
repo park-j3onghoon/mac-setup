@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Security vulnerability reviewer. Checks for injection, input validation, secret exposure, authentication/authorization, and OWASP Top 10 issues. Use in Phase 2.
+description: Security vulnerability reviewer. Checks for injection, input validation, secret exposure, authentication/authorization, and OWASP Top 10 issues. Use in Phase 6.
 tools: Read, Bash, Grep, Glob
 model: opus
 ---
