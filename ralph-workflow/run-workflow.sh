@@ -73,7 +73,7 @@ format_duration() {
 
 format_tokens() {
   local n=${1:-0}
-  [[ ! "$n" =~ ^[0-9]+$ ]] && printf '%s\n' "-" && return
+  printf '%s' "$n" | grep -qE '^[0-9]+$' || { printf '%s\n' "-"; return; }
   [[ $n -le 0 ]] && printf '%s\n' "-" && return
   if [[ $n -ge 1000000 ]]; then
     awk -v n="$n" 'BEGIN{printf "%.1fM\n", n/1000000}'
@@ -372,7 +372,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --multiplier|-n)
       N_MULTIPLIER="$2"
-      if [[ ! "$N_MULTIPLIER" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+      if ! printf '%s' "$N_MULTIPLIER" | grep -qE '^[0-9]+\.?[0-9]*$'; then
         echo "${RED}에러: -n 값은 양수 숫자여야 합니다: $N_MULTIPLIER${NC}" >&2
         exit 1
       fi
@@ -483,7 +483,7 @@ fi
 mkdir -p "$SESSION_DIR"
 
 # START_PHASE 범위 검증 (0~19)
-if ! [[ "$START_PHASE" =~ ^[0-9]+$ ]] || [[ "$START_PHASE" -gt 19 ]]; then
+if ! printf '%s' "$START_PHASE" | grep -qE '^[0-9]+$' || [[ "$START_PHASE" -gt 19 ]]; then
   echo "${RED}에러: 유효하지 않은 phase 번호입니다: $START_PHASE (0~19 범위)${NC}" >&2
   exit 1
 fi
