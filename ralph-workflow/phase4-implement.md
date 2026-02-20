@@ -13,6 +13,11 @@
 **계획**: {{PLAN_PATH}} (Phase 0에서 작성된 구현 계획)
 **메모**: {{NOTES_PATH}} (이전 Phase의 발견/수정 사항. 읽고 참조하라. 수정 시 기록하라.)
 
+## 공통 원칙
+
+1. **수정 발생 시 promise 출력 금지** — 수정 없는 클린 이터레이션에서만 promise 출력
+2. **검증 이터레이션 필수** — 첫 이터레이션에서는 promise를 출력하지 않는다. 최소 1회 전체 재검증을 통과해야 한다.
+
 ## DDD 레이어 규칙
 
 구현 시 다음 의존성 방향을 반드시 준수한다:
@@ -126,5 +131,7 @@ uv run mypy $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
 - 변경 파일 ruff check/format 경고 0건
 - 변경 파일 mypy 에러 0건
 - DDD 레이어 의존성 위반 없음
+
+- **검증 이터레이션 ≥ 1** (첫 이터레이션 이후 최소 1회 전체 재검증 통과)
 
 모든 조건 충족 시 <promise>IMPL DONE</promise> 출력.
