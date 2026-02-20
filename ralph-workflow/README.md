@@ -139,8 +139,10 @@ iterations = ceil((base + floor(spec_lines / 300)) × multiplier)
 ```bash
 # 중단된 세션이 있으면 자동 감지
 rw -s pr2-impl docs/spec.md -m src/myapp
-# → "동일 spec의 미완료 세션 발견: Phase 3에서 중단. 이어서 하시겠습니까? (yes/no)"
+# → "미완료 세션 발견 (pr2-impl, Phase 3). 이어서? (yes/no)"
 ```
+
+재개 시 해당 Phase의 이터레이션은 처음부터 다시 돈다. 단, Phase 템플릿의 이어받기 로직(체크리스트 `[x]` 상태, 섹션 `[V]` 상태 등)이 이전에 완료한 작업을 감지하므로 중복 작업은 발생하지 않는다.
 
 ### 사용 예시
 
@@ -148,7 +150,7 @@ rw -s pr2-impl docs/spec.md -m src/myapp
 # 기본 실행
 rw -s pr2-impl docs/spec_detail_2.md -m adscenter/displaycam_partner
 
-# 품질 최대치 (이터레이션 2배)
+# 이터레이션 2배 (더 꼼꼼하게)
 rw -s pr2-quality docs/spec_detail_2.md -m src/myapp -n 2
 
 # dry-run으로 프롬프트 확인만
