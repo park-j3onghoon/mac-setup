@@ -798,9 +798,17 @@ run_phase() {
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
       printf "\r\033[K"
-      kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
+      # script에 SIGTERM → 자식(claude) 종료 → script가 버퍼 flush 후 자연 종료
+      # 프로세스 그룹 킬(-) 대신 script만 종료하여 로그 손실 방지
+      kill "$CLAUDE_PID" 2>/dev/null
+      local kill_wait=0
+      while kill -0 "$CLAUDE_PID" 2>/dev/null && (( kill_wait < 10 )); do
+        sleep 1
+        kill_wait=$((kill_wait + 1))
+      done
+      # 10초 후에도 안 죽으면 강제 종료
+      kill -9 "$CLAUDE_PID" 2>/dev/null || true
       wait "$CLAUDE_PID" 2>/dev/null
-      sleep 1  # script 종료 후 OS 파일시스템 flush 대기
       break
     fi
 
