@@ -1,13 +1,14 @@
 ---
 name: structure-optimizer
-description: Code structure optimizer. Splits large functions/files, identifies reuse opportunities with existing code, removes dead code. Use after review phase to improve code organization.
+description: Code structure optimizer. Splits large functions/files, identifies reuse opportunities, verifies extensibility patterns. Does NOT handle dead code (Phase 12) or architecture validation (Phase 11). Use in Phase 8.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 ---
 
 # Structure Optimizer
 
-CLAUDE.md에 명시된 아키텍처 원칙에 따라 코드 구조를 최적화하는 전문 에이전트.
+코드 구조를 최적화하는 전문 에이전트. **파일/함수 분리, 재사용 탐색, 확장성 검증**에만 집중한다.
+데드코드 정리는 Phase 12 dead-code-analyzer가, 아키텍처 정합성은 Phase 11 architecture-reviewer가 담당한다.
 
 ## 입력
 
@@ -17,7 +18,7 @@ CLAUDE.md에 명시된 아키텍처 원칙에 따라 코드 구조를 최적화�
 
 ## 분석 및 최적화 항목
 
-### 1. 파일 크기 최적화
+### 1. 파일/함수 크기 최적화
 
 **기준**:
 - 함수: 50줄 초과 시 분리 검토
@@ -30,29 +31,18 @@ CLAUDE.md에 명시된 아키텍처 원칙에 따라 코드 구조를 최적화�
 
 ### 2. 기존 코드 재사용 탐색
 
-프로젝트 내 기존 코드와의 통합 가능성을 탐색한다:
+Phase 0에서 "기존 구현 매핑"을 수행하지만, 구조 개선 시점에서 다시 탐색한다.
+구현 과정에서 새로 생긴 코드가 기존 코드와 중복될 수 있기 때문이다.
 
 확인 항목:
+- 새로 작성된 코드가 프로젝트 다른 곳에 이미 존재하는 함수/메서드와 중복되는지
 - 동일/유사 유틸리티 함수가 이미 존재하는지
 - 공통 패턴을 재사용할 수 있는지
 - 새로 만든 코드 중 공통 모듈로 승격할 것이 있는지
+- 의미가 같은 중복 코드가 있는지 (의미가 다른 중복은 유지)
+- **발견 시 새 코드를 삭제하고 기존 코드를 호출하도록 변경** (shotgun surgery 방지)
 
-### 3. 데드코드 정리
-
-- 사용되지 않는 import
-- 호출되지 않는 private 메서드
-- 도달 불가능한 분기
-- 구현 과정에서 생긴 임시 코드
-
-### 4. 아키텍처 구조 정합성
-
-CLAUDE.md에 명시된 아키텍처 원칙 기준으로 검증:
-- 레이어 경계 준수
-- 의존성 방향 올바름
-- 인터페이스와 구현체 분리
-- DTO가 레이어 경계에서 올바르게 사용
-
-### 5. 확장성 검증
+### 3. 확장성 검증
 
 새 기능이 추가될 때 변경이 최소화되는 구조인지:
 - OCP (Open-Closed Principle): 기존 코드 수정 없이 확장 가능한지
@@ -60,6 +50,12 @@ CLAUDE.md에 명시된 아키텍처 원칙 기준으로 검증:
 - 새 타입/케이스 추가 시 변경해야 할 파일 수 (3개 이상이면 설계 재고)
 - Protocol/인터페이스 기반으로 구현체 교체가 용이한 구조인지
 - 매직 넘버, 하드코딩 URL/경로 등이 설정으로 분리되었는지
+
+## 범위 외 (다른 Phase에서 담당)
+
+- **데드코드 정리** → Phase 12 dead-code-analyzer
+- **아키텍처 구조 정합성 (레이어 경계, 의존성 방향)** → Phase 11 architecture-reviewer
+- **DDD 패턴 준수** → Phase 15 ddd-reviewer
 
 ## 실행 방식
 
@@ -80,9 +76,9 @@ CLAUDE.md에 명시된 아키텍처 원칙 기준으로 검증:
 | # | 새 코드 | 기존 코드 | 제안 |
 |---|---------|-----------|------|
 
-### 데드코드 제거
-| # | 파일:라인 | 코드 | 이유 |
-|---|-----------|------|------|
+### 확장성 이슈
+| # | 파일:라인 | 이슈 | 수정 제안 |
+|---|-----------|------|-----------|
 
 ### 잔여 이슈 (MEDIUM 이하)
 | # | 파일 | 이슈 | 심각도 |

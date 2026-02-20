@@ -1,6 +1,6 @@
 ---
 name: integration-verifier
-description: Integration verification specialist. Checks compatibility with existing codebase, detects import conflicts, hook interference, URL collisions, and runs full test suite. Use after structure optimization to verify nothing is broken.
+description: Integration verification specialist. Checks compatibility with existing codebase, detects import conflicts, hook interference, URL collisions, and runs full test suite. Use in Phase 9 to verify nothing is broken after structure optimization.
 tools: Read, Bash, Grep, Glob
 model: opus
 ---
