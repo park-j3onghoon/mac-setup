@@ -27,6 +27,7 @@ Task(subagent_type='quality-inspector')를 호출한다:
 - 반환 타입이 명시되었는지
 - 변수/함수명이 의도를 명확히 전달하는지
 - 도메인 용어와 일치하는지
+- **기존 코드베이스의 네이밍 패턴과 일관성**: 동일/유사 기능의 함수가 다른 이름을 쓰고 있지 않은지 (예: 기존에 `get_by_id`이면 새 코드도 `get_by_id`, `fetch_by_id`로 섞지 않음). {{MODULE_PATH}}와 프로젝트의 기존 네이밍 패턴을 Grep으로 확인하고 불일치 시 통일한다.
 - 에러 메시지가 디버깅에 충분한지
 - 함수 50줄 이하, 파일 800줄 이하
 - 중복 코드, 매직 넘버, 불필요한 복잡성
@@ -51,6 +52,7 @@ uv run mypy $(git diff --name-only $(git merge-base HEAD master) -- '*.py')
 ## 완료 조건
 
 - quality-inspector CRITICAL/HIGH 이슈 0건
+- 기존 코드베이스와 네이밍 패턴 일관성 확인 완료
 - 모든 public 함수에 타입 힌트 존재
 - 함수 50줄 이하
 - 파일 800줄 이하
