@@ -113,7 +113,7 @@ NOTIFY_BACKEND="mac"  # 향후: "kakao", "sms", "slack"
 notify_info() {   # 자동 소멸 (heartbeat용)
   _notify_dispatch "info" "$1" "$2"
 }
-notify_alert() {  # 닫을 때까지 유지 (phase 시작/끝)
+notify_alert() {  # 중요 알림 (phase 시작/끝) — 자동 소멸, 다른 소리
   _notify_dispatch "alert" "$1" "$2"
 }
 _notify_dispatch() {
@@ -123,7 +123,7 @@ _notify_dispatch() {
   case "$NOTIFY_BACKEND" in
     mac)
       if [[ "$level" == "alert" ]]; then
-        osascript -e "display alert \"$title\" message \"$message\" as informational" 2>/dev/null &
+        osascript -e "display notification \"$message\" with title \"$title\" sound name \"Hero\"" 2>/dev/null || true
       else
         osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
       fi ;;
