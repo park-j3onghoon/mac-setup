@@ -832,10 +832,16 @@ run_phase() {
   PHASE_DURATIONS[$phase_num]=$((${PHASE_DURATIONS[$phase_num]:-0} + phase_elapsed))
   PHASE_TOKENS[$phase_num]=$((${PHASE_TOKENS[$phase_num]:-0} + tokens))
 
+  # 이터레이션 라벨
+  local iter_label=""
+  if [[ -n "${last_iter:-}" ]] && [[ "${last_iter:-0}" != "0" ]]; then
+    iter_label=" (iter ${last_iter}/${max_iter})"
+  fi
+
   if [[ -f "$RALPH_STATE_FILE" ]]; then
     # 상태 파일이 남아 있음 = 실행 중 중단됨
     rm -f "$RALPH_STATE_FILE"
-    echo "${RED}✘ Phase $phase_num $phase_name — $duration — ↓ $tokens_fmt${retry_label}${NC}"
+    echo "${RED}✘ Phase $phase_num $phase_name — $duration — ↓ $tokens_fmt${iter_label}${retry_label}${NC}"
     notify_alert "rw [$SESSION_NAME]" "Phase $phase_num/$end_phase $phase_name: 중단 ($duration, ↓ $tokens_fmt)"
     return 1
   elif ! $state_file_seen; then
@@ -845,7 +851,7 @@ run_phase() {
     return 1
   else
     # 상태 파일 생성 후 삭제됨 = 실행 완료 (promise 여부는 메인 루프에서 확인)
-    echo "${GREEN}✔ Phase $phase_num $phase_name — $duration — ↓ $tokens_fmt${retry_label}${NC}"
+    echo "${GREEN}✔ Phase $phase_num $phase_name — $duration — ↓ $tokens_fmt${iter_label}${retry_label}${NC}"
     return 0
   fi
 }
