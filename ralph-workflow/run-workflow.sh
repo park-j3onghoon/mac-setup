@@ -178,13 +178,7 @@ find_incomplete_session() {
 
 # ─── Spec 크기 분석 ───
 compute_spec_lines() {
-  local total=0
-  for spec in "${SPEC_PATHS[@]}"; do
-    local lines
-    lines=$(wc -l < "$spec" 2>/dev/null | tr -d ' ')
-    total=$((total + ${lines:-0}))
-  done
-  printf '%s\n' "$total"
+  cat "${SPEC_PATHS[@]}" 2>/dev/null | wc -l | tr -d '[:space:]'
 }
 
 # spec 줄 수에 따른 이터레이션 추가분 (300줄마다 +1)
