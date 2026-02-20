@@ -78,6 +78,7 @@ docker exec "$DEV_CONTAINER" pytest {{TEST_PATH}} --reuse-db -v -x
 - [ ] **CQS**: 상태를 변경하는 메서드가 값을 반환하지 않는가? (프레임워크 컨벤션 제외)
 - [ ] **Aggregate 경계**: 하나의 트랜잭션에서 여러 Aggregate를 수정하지 않는가?
 - [ ] **최소 요소**: 같은 목적의 클래스/함수가 이미 있지 않은가? 불필요한 레이어를 추가하지 않았는가?
+- [ ] **긍정 네이밍**: 변수/함수명에 부정 표현 대신 긍정 표현을 사용했는가? (예: `is_valid` O, `is_invalid` X / `is_active` O, `is_not_active` X / `can_proceed` O, `cannot_proceed` X). 조건문도 `if is_valid` 형태가 `if not is_invalid`보다 낫다.
 
 **e) 체크리스트 업데이트**:
 구현 완료한 REQ 항목을 {{CHECKLIST_PATH}}에서 `- [x]`로 변경한다.
