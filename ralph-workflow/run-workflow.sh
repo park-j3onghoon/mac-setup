@@ -53,8 +53,9 @@ SESSIONS_BASE_DIR="$GLOBAL_TEMPLATE_DIR/sessions"
 LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
 
 # ─── 정체 감지 ───
-STALL_THRESHOLD=900   # 이터레이션 변화 없이 이 시간(초) 경과 시 알림 (15분)
+STALL_THRESHOLD=900    # 이터레이션 변화 없이 이 시간(초) 경과 시 알림 (15분)
 LOG_STALE_THRESHOLD=300  # 로그 파일 수정 없이 이 시간(초) 경과 시 알림 (5분)
+STALL_KILL_THRESHOLD=3600  # 이터레이션 변화 없이 이 시간(초) 경과 시 프로세스 강제 종료 (60분)
 
 # ─── 색상 ───
 RED='\033[0;31m'
@@ -754,8 +755,18 @@ run_phase() {
       fi
 
       # 정체 감지: 이터레이션 변화 없이 STALL_THRESHOLD 경과
-      if (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
-        local stall_min=$(( (SECONDS - last_progress) / 60 ))  # 실제 마지막 진행 이후 총 시간
+      local stall_secs=$(( SECONDS - last_progress ))
+      if (( stall_secs >= STALL_KILL_THRESHOLD )); then
+        # 장시간 정체 → 프로세스 강제 종료 (재시도로 전환)
+        local stall_min=$(( stall_secs / 60 ))
+        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: ${stall_min}분간 정체 → 강제 종료"
+        log_event "ERROR" "stall_kill" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
+        printf "\r\033[K"
+        kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
+        wait "$CLAUDE_PID" 2>/dev/null
+        break
+      elif (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
+        local stall_min=$(( stall_secs / 60 ))  # 실제 마지막 진행 이후 총 시간
         notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num 정체: ${stall_min}분간 이터레이션 변화 없음 (iter ${last_iter:-0}/${max_iter})"
         log_event "WARN" "stall_iter" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
         last_stall_alert=$SECONDS  # 알림 타이머만 리셋 (실제 진행 시간은 유지)
@@ -776,8 +787,7 @@ run_phase() {
 
       # 에러 패턴 스캔 (30초마다)
       if (( SECONDS - last_error_scan >= 30 )); then
-        local detected
-        detected=$(detect_log_errors "$log_file")
+        local detected=$(detect_log_errors "$log_file")
         if [[ -n "$detected" ]] && [[ "$detected" != "$last_detected_error" ]]; then
           notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: 에러 감지 — $detected"
           log_event "ERROR" "log_error" "phase=$phase_num iter=${last_iter:-0} pattern=$detected"
@@ -788,9 +798,9 @@ run_phase() {
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
       printf "\r\033[K"
-      sleep 2  # script pty 버퍼 flush 대기 (promise 텍스트가 로그에 기록되도록)
       kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
       wait "$CLAUDE_PID" 2>/dev/null
+      sleep 1  # script 종료 후 OS 파일시스템 flush 대기
       break
     fi
 
