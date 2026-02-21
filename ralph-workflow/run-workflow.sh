@@ -582,10 +582,8 @@ for phase in {0..19}; do
 done
 
 # 최소 이터레이션: promise가 감지되어도 이 횟수 미만이면 조기 완료로 간주하여 재시도
-# max(2, ceil(N_MULTIPLIER)) — 모든 Phase에 동일 적용
-MIN_ITERATIONS=$(awk -v n="$N_MULTIPLIER" 'BEGIN{
-  v = (n == int(n)) ? int(n) : int(n) + 1; print (v > 2) ? v : 2
-}')
+# -n은 max iterations에만 영향. 최소는 항상 2 (작업 1회 + 검증 1회)
+MIN_ITERATIONS=2
 LAST_PHASE_ITER=0  # run_phase에서 메인 루프로 마지막 이터레이션 전달
 
 # ─── Spec 목록 문자열 생성 ───
