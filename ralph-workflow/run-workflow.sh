@@ -54,8 +54,9 @@ LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
 
 # ─── 정체 감지 ───
 STALL_THRESHOLD=900    # 이터레이션 변화 없이 이 시간(초) 경과 시 알림 (15분)
-LOG_STALE_THRESHOLD=300  # 로그 파일 수정 없이 이 시간(초) 경과 시 알림 (5분)
-STALL_KILL_THRESHOLD=3600  # 이터레이션 변화 없이 이 시간(초) 경과 시 프로세스 강제 종료 (60분)
+STALL_KILL_THRESHOLD=3600  # 로그 의미있는 성장 없이 이 시간(초) 경과 시 프로세스 강제 종료 (60분)
+LOG_GROWTH_CHECK_INTERVAL=900  # 로그 성장 체크 간격 (15분)
+LOG_MEANINGFUL_GROWTH=102400   # 의미있는 성장 임계값 (100KB) — UI 노이즈 ~50KB/15분 vs 실제 작업 ~150KB+/15분
 
 # ─── 색상 ───
 RED='\033[0;31m'
@@ -163,11 +164,11 @@ detect_log_errors() {
   [[ -n "$pattern" ]] && printf '%s\n' "${pattern:l}"  # 소문자 정규화 (중복 알림 방지)
 }
 
-# 로그 파일 수정 시각 (epoch seconds)
-get_log_mtime() {
+# 로그 파일 크기 (bytes)
+get_log_size() {
   local log_file=$1
   [[ ! -f "$log_file" ]] && printf '%s\n' 0 && return
-  stat -f %m "$log_file" 2>/dev/null || printf '%s\n' 0
+  wc -c < "$log_file" 2>/dev/null || printf '%s\n' 0
 }
 
 # ─── 입력 검증 ───
@@ -342,10 +343,12 @@ compute_iterations() {
   }'
 }
 
-# Phase별 최대 재시도 횟수 = iterations × 3
+# Phase별 최대 재시도 횟수 = iterations × 3 (최대 9회)
 compute_max_retries() {
   local iterations=$1
-  printf '%s\n' $(( iterations * 3 ))
+  local retries=$(( iterations * 3 ))
+  (( retries > 9 )) && retries=9
+  printf '%s\n' "$retries"
 }
 
 # ─── 템플릿 파일 탐색 (로컬 우선 → 글로벌 폴백) ───
@@ -605,10 +608,6 @@ for phase in {0..19}; do
   PHASE_MAX_ITERATIONS[$phase]=$(compute_iterations "$base" "$N_MULTIPLIER" "$SPEC_ADDEND")
 done
 
-# 최소 이터레이션: promise가 감지되어도 이 횟수 미만이면 조기 완료로 간주하여 재시도
-# -n은 max iterations에만 영향. 최소는 항상 2 (작업 1회 + 검증 1회)
-MIN_ITERATIONS=2
-LAST_PHASE_ITER=0  # run_phase에서 메인 루프로 마지막 이터레이션 전달
 
 # ─── Spec 목록 문자열 생성 ───
 SPEC_LIST=""
@@ -741,8 +740,9 @@ run_phase() {
   local last_heartbeat=$SECONDS
   local last_progress=$SECONDS
   local last_stall_alert=$SECONDS
-  local last_log_mtime=$(get_log_mtime "$log_file")
-  local last_log_check=$SECONDS
+  local last_checkpoint_size=$(get_log_size "$log_file")
+  local last_growth_check=$SECONDS
+  local last_log_active=$SECONDS
   local last_error_scan=$SECONDS
   local last_detected_error=""
 
@@ -752,6 +752,8 @@ run_phase() {
     # Claude 프로세스 생존 확인
     if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
       printf "\r\033[K"
+      wait "$CLAUDE_PID" 2>/dev/null
+      sleep 1  # 로그 파일 flush 대기
       log_event "INFO" "process_exit" "phase=$phase_num iter=${last_iter:-0}"
       break
     fi
@@ -781,15 +783,20 @@ run_phase() {
         last_heartbeat=$SECONDS
       fi
 
-      # 로그 파일 활성 감지: mtime 변화 추적
-      local cur_log_mtime=$(get_log_mtime "$log_file")
+      # 로그 파일 활성 감지: SIZE 증가량 추적
+      # UI 노이즈(스피너/상태바)는 ~50KB/15분, 실제 작업은 ~150KB+/15분
       local log_active=false
-      if [[ "$cur_log_mtime" != "$last_log_mtime" ]]; then
-        last_log_mtime=$cur_log_mtime
-        last_log_check=$SECONDS
-        log_active=true
+      if (( SECONDS - last_growth_check >= LOG_GROWTH_CHECK_INTERVAL )); then
+        local cur_log_size=$(get_log_size "$log_file")
+        local growth=$((cur_log_size - last_checkpoint_size))
+        if (( growth > LOG_MEANINGFUL_GROWTH )); then
+          last_log_active=$SECONDS
+          log_active=true
+        fi
+        last_checkpoint_size=$cur_log_size
+        last_growth_check=$SECONDS
       fi
-      local log_stale_secs=$(( SECONDS - last_log_check ))
+      local log_stale_secs=$(( SECONDS - last_log_active ))
 
       # 강제 종료: 로그 정체 STALL_KILL_THRESHOLD(60분) 이상 → 프로세스 죽음
       if (( log_stale_secs >= STALL_KILL_THRESHOLD )); then
@@ -812,7 +819,7 @@ run_phase() {
       if (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
         local stall_secs=$(( SECONDS - last_progress ))
         local stall_min=$(( stall_secs / 60 ))
-        if $log_active || (( log_stale_secs < LOG_STALE_THRESHOLD )); then
+        if $log_active || (( log_stale_secs < LOG_GROWTH_CHECK_INTERVAL )); then
           notify_info "rw [$SESSION_NAME]" "Phase $phase_num: iter ${last_iter:-0}/${max_iter} — ${stall_min}분 경과 (로그 활성, 작업 중)"
           log_event "INFO" "long_iter" "phase=$phase_num iter=${last_iter:-0} elapsed=${stall_min}m"
         else
@@ -836,16 +843,22 @@ run_phase() {
     else
       # 상태 파일 삭제됨 = Ralph Loop 완료 (promise 감지 또는 max-iter 도달)
       printf "\r\033[K"
-      # 1단계: script에 SIGTERM → 버퍼 flush + 자연 종료 대기 (최대 5초)
-      kill "$CLAUDE_PID" 2>/dev/null
+      # 1단계: Claude가 자연 종료될 때까지 대기 (최대 30초)
+      # state file 삭제 시점과 Claude 최종 출력 사이에 갭이 있으므로 즉시 kill하지 않는다
       local kill_wait=0
-      while kill -0 "$CLAUDE_PID" 2>/dev/null && (( kill_wait < 5 )); do
+      while kill -0 "$CLAUDE_PID" 2>/dev/null && (( kill_wait < 30 )); do
         sleep 1
         kill_wait=$((kill_wait + 1))
       done
-      # 2단계: 프로세스 그룹 킬 — 고아 자식 프로세스 정리
-      kill -- -"$CLAUDE_PID" 2>/dev/null || true
+      # 2단계: 30초 후에도 살아있으면 강제 종료
+      if kill -0 "$CLAUDE_PID" 2>/dev/null; then
+        kill "$CLAUDE_PID" 2>/dev/null
+        sleep 2
+        kill -- -"$CLAUDE_PID" 2>/dev/null || true
+      fi
       wait "$CLAUDE_PID" 2>/dev/null
+      # 3단계: 로그 파일 flush 대기
+      sleep 1
       break
     fi
 
@@ -869,8 +882,6 @@ run_phase() {
   # 통계 누적 (재시도 시 기존 값에 더함)
   PHASE_DURATIONS[$phase_num]=$((${PHASE_DURATIONS[$phase_num]:-0} + phase_elapsed))
   PHASE_TOKENS[$phase_num]=$((${PHASE_TOKENS[$phase_num]:-0} + tokens))
-  LAST_PHASE_ITER=${last_iter:-0}
-
   # 이터레이션 라벨
   local iter_label=""
   if [[ -n "${last_iter:-}" ]] && [[ "${last_iter:-0}" != "0" ]]; then
@@ -930,7 +941,7 @@ print_summary() {
   echo "  Ralph Workflow 실행 요약  [$SESSION_NAME]"
   echo "═══════════════════════════════════════════════════════════"
   echo ""
-  echo "  Spec: ${SPEC_LINES}줄, +${SPEC_ADDEND}/phase (300줄당 +1), multiplier: ×${N_MULTIPLIER}, 최소 iter: ${MIN_ITERATIONS}"
+  echo "  Spec: ${SPEC_LINES}줄, +${SPEC_ADDEND}/phase (300줄당 +1), multiplier: ×${N_MULTIPLIER}"
   echo ""
 
   for phase in "${COMPLETED_PHASES[@]}"; do
@@ -984,8 +995,8 @@ if [[ "$START_PHASE" -eq 0 ]] && [[ ! -f "$NOTES_PATH" ]]; then
 NOTES_EOF
 fi
 
-notify_alert "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개 (${SPEC_LINES}줄, ×${N_MULTIPLIER}, 최소 iter ${MIN_ITERATIONS})"
-log_event "INFO" "workflow_start" "session=$SESSION_NAME phases=${START_PHASE}~${END_PHASE} specs=${#SPEC_PATHS[@]} min_iter=$MIN_ITERATIONS"
+notify_alert "rw [$SESSION_NAME] 시작" "Phase ${START_PHASE}~${END_PHASE}, spec ${#SPEC_PATHS[@]}개 (${SPEC_LINES}줄, ×${N_MULTIPLIER})"
+log_event "INFO" "workflow_start" "session=$SESSION_NAME phases=${START_PHASE}~${END_PHASE} specs=${#SPEC_PATHS[@]}"
 
 WORKFLOW_START=$SECONDS
 ALL_DONE=true
@@ -1011,23 +1022,10 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
       promise="${PHASE_PROMISES[$phase]}"
 
       if $DRY_RUN || check_promise_in_log "$log_file" "$promise"; then
-        if ! $DRY_RUN && (( LAST_PHASE_ITER < MIN_ITERATIONS )); then
-          # promise 감지되었지만 최소 이터레이션 미달 → 재시도
-          log_event "INFO" "min_iter_not_met" "phase=$phase iter=$LAST_PHASE_ITER min=$MIN_ITERATIONS"
-          retry=$((retry + 1))
-          if (( retry > max_retries )); then
-            PHASE_RETRIES[$phase]=$((retry - 1))
-            phase_success=true
-            break
-          fi
-          notify_alert "rw [$SESSION_NAME]" "Phase $phase: iter ${LAST_PHASE_ITER} < 최소 ${MIN_ITERATIONS}, 재시도 $retry/${max_retries}"
-          log_event "INFO" "retry" "phase=$phase retry=$retry max=$max_retries reason=min_iter"
-        else
-          # promise 확인됨 + 최소 이터레이션 충족 → 성공
-          phase_success=true
-          PHASE_RETRIES[$phase]=$retry
-          break
-        fi
+        # promise 확인됨 → 성공
+        phase_success=true
+        PHASE_RETRIES[$phase]=$retry
+        break
       else
         # promise 미감지 → max-iter 도달
         retry=$((retry + 1))
