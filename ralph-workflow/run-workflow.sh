@@ -759,32 +759,51 @@ run_phase() {
         last_heartbeat=$SECONDS
       fi
 
-      # 정체 감지: 이터레이션 변화 없이 STALL_THRESHOLD 경과
-      local stall_secs=$(( SECONDS - last_progress ))
-      if (( stall_secs >= STALL_KILL_THRESHOLD )); then
-        # 장시간 정체 → 프로세스 강제 종료 (재시도로 전환)
-        local stall_min=$(( stall_secs / 60 ))
-        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: ${stall_min}분간 정체 → 강제 종료"
-        log_event "ERROR" "stall_kill" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
-        printf "\r\033[K"
-        kill -- -"$CLAUDE_PID" 2>/dev/null || kill "$CLAUDE_PID" 2>/dev/null
-        wait "$CLAUDE_PID" 2>/dev/null
-        break
-      elif (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
-        local stall_min=$(( stall_secs / 60 ))  # 실제 마지막 진행 이후 총 시간
-        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num 정체: ${stall_min}분간 이터레이션 변화 없음 (iter ${last_iter:-0}/${max_iter})"
-        log_event "WARN" "stall_iter" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
-        last_stall_alert=$SECONDS  # 알림 타이머만 리셋 (실제 진행 시간은 유지)
-      fi
-
-      # 로그 파일 정체 감지: 로그 mtime이 LOG_STALE_THRESHOLD 이상 변하지 않음
+      # 로그 파일 활성 감지: mtime 변화 추적
       local cur_log_mtime=$(get_log_mtime "$log_file")
+      local log_active=false
       if [[ "$cur_log_mtime" != "$last_log_mtime" ]]; then
         last_log_mtime=$cur_log_mtime
         last_log_check=$SECONDS
         log_stale_alerted=false
-      elif ! $log_stale_alerted && (( SECONDS - last_log_check >= LOG_STALE_THRESHOLD )); then
-        local stale_min=$(( (SECONDS - last_log_check) / 60 ))
+        log_active=true
+      fi
+      local log_stale_secs=$(( SECONDS - last_log_check ))
+
+      # 정체 감지: 이터레이션 변화 없이 STALL_THRESHOLD 경과
+      local stall_secs=$(( SECONDS - last_progress ))
+      if (( stall_secs >= STALL_KILL_THRESHOLD )) && (( log_stale_secs >= LOG_STALE_THRESHOLD )); then
+        # 이터레이션 정체 + 로그 정체 → 진짜 죽음, 강제 종료
+        local stall_min=$(( stall_secs / 60 ))
+        notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: ${stall_min}분간 정체 + 로그 무응답 → 강제 종료"
+        log_event "ERROR" "stall_kill" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min log_stale=${log_stale_secs}s"
+        printf "\r\033[K"
+        kill "$CLAUDE_PID" 2>/dev/null
+        local kill_wait=0
+        while kill -0 "$CLAUDE_PID" 2>/dev/null && (( kill_wait < 5 )); do
+          sleep 1
+          kill_wait=$((kill_wait + 1))
+        done
+        kill -- -"$CLAUDE_PID" 2>/dev/null || true
+        wait "$CLAUDE_PID" 2>/dev/null
+        break
+      elif (( SECONDS - last_stall_alert >= STALL_THRESHOLD )); then
+        local stall_min=$(( stall_secs / 60 ))
+        if $log_active || (( log_stale_secs < LOG_STALE_THRESHOLD )); then
+          # 이터레이션 정체이지만 로그 활성 → 긴 이터레이션 진행 중
+          notify_info "rw [$SESSION_NAME]" "Phase $phase_num: iter ${last_iter:-0}/${max_iter} — ${stall_min}분 경과 (로그 활성, 작업 중)"
+          log_event "INFO" "long_iter" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min"
+        else
+          # 이터레이션 정체 + 로그 정체 → 행(hang) 의심
+          notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num 정체: ${stall_min}분간 이터레이션 변화 없음 + 로그 무응답"
+          log_event "WARN" "stall_iter" "phase=$phase_num iter=${last_iter:-0} stall_min=$stall_min log_stale=${log_stale_secs}s"
+        fi
+        last_stall_alert=$SECONDS
+      fi
+
+      # 로그 정체 단독 알림 (이터레이션 정체와 별개)
+      if ! $log_stale_alerted && (( log_stale_secs >= LOG_STALE_THRESHOLD )); then
+        local stale_min=$(( log_stale_secs / 60 ))
         notify_alert "rw [$SESSION_NAME] ⚠" "Phase $phase_num: 로그 출력 ${stale_min}분간 없음 — 프로세스 행(hang) 의심"
         log_event "WARN" "stall_log" "phase=$phase_num iter=${last_iter:-0} stale_min=$stale_min"
         log_stale_alerted=true
