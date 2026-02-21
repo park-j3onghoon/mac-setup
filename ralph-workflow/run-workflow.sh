@@ -436,6 +436,30 @@ while [[ $# -gt 0 ]]; do
       CUSTOM_TEMPLATE_DIR="$2"
       shift 2
       ;;
+    --clean)
+      local sessions=($SESSIONS_BASE_DIR/*(N/))
+      if [[ ${#sessions[@]} -eq 0 ]]; then
+        echo "${YELLOW}삭제할 세션이 없습니다.${NC}"
+        exit 0
+      fi
+      echo "${CYAN}세션 목록:${NC}"
+      for dir in "${sessions[@]}"; do
+        local name=$(basename "$dir")
+        local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+        local files=$(ls "$dir" 2>/dev/null | wc -l | tr -d ' ')
+        echo "  ${name} (${size}, ${files}개 파일)"
+      done
+      echo ""
+      echo -n "${YELLOW}모든 세션을 삭제합니다. 계속? (y/n): ${NC}"
+      read -r confirm
+      if [[ "$confirm" == "y" ]]; then
+        rm -rf "$SESSIONS_BASE_DIR"/*(N/)
+        echo "${GREEN}${#sessions[@]}개 세션 삭제 완료.${NC}"
+      else
+        echo "취소됨."
+      fi
+      exit 0
+      ;;
     --init)
       echo "${CYAN}프로젝트에 rw 에이전트를 설치합니다...${NC}"
       mkdir -p "$PROJECT_ROOT/.claude/agents"
