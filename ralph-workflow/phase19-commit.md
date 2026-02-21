@@ -11,7 +11,7 @@
 
 ## 공통 원칙
 
-1. **검증 이터레이션 필수** — 첫 이터레이션에서는 promise를 출력하지 않는다. 최소 1회 전체 재검증을 통과해야 한다.
+1. **수정 없는 클린 이터레이션에서만 promise 출력** — 수정이 발생한 이터레이션에서는 promise를 출력하지 않는다.
 
 ## 절차
 
@@ -58,6 +58,6 @@ git commit -m "<type>: <description>"
 - .env, 시크릿, .claude/rw-plan.md, .claude/rw-checklist.md, .claude/rw-spec-digest.md, .claude/rw-notes.md 등 민감/임시 파일 미포함
 - git status가 clean (추적되지 않는 임시 파일 제외)
 
-- **검증 이터레이션 ≥ 1** (첫 이터레이션 이후 최소 1회 전체 재검증 통과)
+- **클린 이터레이션 ≥ 1** (수정 없는 이터레이션이 최소 1회 있어야 함)
 
 모든 조건 충족 시 <promise>COMMIT DONE</promise> 출력.
