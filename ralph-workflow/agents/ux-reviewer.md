@@ -3,6 +3,7 @@ name: ux-reviewer
 description: User experience flow reviewer. Validates API call sequences, error message clarity, state transitions, and edge case UX. Use in Phase 16 to verify user-facing behavior.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # UX Reviewer
