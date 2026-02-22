@@ -76,7 +76,7 @@ cw -s dry docs/spec.md -m src/myapp --dry-run
 - `--assistant NAME`: `--review` 실행 도우미 (`codex`, `claude`, `none`, 기본 `codex`)
 - `--templates DIR`: 커스텀 Phase 템플릿 디렉토리
 - `--dry-run`: 실행 없이 각 Phase 프롬프트만 점검
-- `--init`: 프로젝트에 `codex-workflow` 에이전트 문서 링크 생성 (`.codex/agents`)
+- `--init`: 프로젝트 `AGENTS.md`에 cw 가이드 블록 설치/업데이트
 - `--clean`: 저장된 세션 디렉토리 정리
 
 ## 이터레이션 계산
@@ -136,11 +136,15 @@ Base 합계는 `53`이다.
 3. 0-토큰 재시도는 phase의 일반 `max-iterations`와 별도로 관리된다.
 4. 로그가 장시간 의미 있게 증가하지 않으면 해당 이터레이션을 강제 종료하고 실패 처리한다.
 
-## 템플릿 호환성
+## Codex 네이티브 운영
 
-Phase 템플릿은 `ralph-workflow` 구조를 그대로 가져왔다.
-일부 템플릿의 Claude 전용 표현(`Task(subagent_type=...)`)은 런너 프롬프트에서
-"해당 역할을 Codex가 직접 수행"하도록 보정한다.
+- Codex는 `.codex/agents`를 표준 자동 로딩 경로로 보지 않는다.
+- `cw`는 phase 템플릿에 `Task(subagent_type='...')`가 있으면, 해당 이름의 문서(`agents/<name>.md`)를 자동으로 찾아 프롬프트에 첨부한다.
+- 우선순위:
+  1. `--templates DIR/agents/<name>.md`
+  2. `scripts/codex-workflow/agents/<name>.md` (프로젝트 로컬 override)
+  3. `codex-workflow/agents/<name>.md` (기본 템플릿)
+- `cw --init`은 `.codex/agents` 링크를 만들지 않고, 프로젝트 `AGENTS.md`에 cw 운용 블록을 설치/업데이트한다.
 
 ## 파일 구성
 
