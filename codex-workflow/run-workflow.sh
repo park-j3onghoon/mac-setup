@@ -22,7 +22,7 @@
 #   --reasoning-effort L codex 추론 강도 (기본: xhigh)
 #   --templates DIR      커스텀 템플릿 디렉토리
 #   --dry-run            실제 실행 없이 프롬프트 확인
-#   --init               프로젝트에 cw 에이전트 symlink 설치
+#   --init               프로젝트 AGENTS.md에 cw 가이드 블록 설치/업데이트
 #   --clean              저장된 세션 정리
 
 set -euo pipefail
@@ -263,6 +263,123 @@ find_template() {
   fi
 
   printf '%s\n' ""
+}
+
+# 에이전트 문서 탐색 (커스텀 우선 → 로컬 → 글로벌)
+find_agent_doc() {
+  local agent_name=$1
+  local custom_dir=$2
+
+  if [[ -n "$custom_dir" ]] && [[ -f "$custom_dir/agents/${agent_name}.md" ]]; then
+    printf '%s\n' "$custom_dir/agents/${agent_name}.md"
+    return
+  fi
+
+  if [[ -f "$LOCAL_TEMPLATE_DIR/agents/${agent_name}.md" ]]; then
+    printf '%s\n' "$LOCAL_TEMPLATE_DIR/agents/${agent_name}.md"
+    return
+  fi
+
+  if [[ -f "$GLOBAL_TEMPLATE_DIR/agents/${agent_name}.md" ]]; then
+    printf '%s\n' "$GLOBAL_TEMPLATE_DIR/agents/${agent_name}.md"
+    return
+  fi
+
+  printf '%s\n' ""
+}
+
+# 템플릿의 Task(subagent_type='...') 목록 추출
+extract_task_agent_names() {
+  local template_content=$1
+  print -r -- "$template_content" \
+    | grep -oE "Task\\(subagent_type='[^']+'\\)" \
+    | sed -E "s/Task\\(subagent_type='([^']+)'\\)/\\1/" \
+    | sort -u
+}
+
+# Task(subagent_type='...') 대응 에이전트 문서를 프롬프트에 첨부
+build_task_agent_guides() {
+  local template_content=$1
+  local custom_dir=$2
+  local names
+  names=$(extract_task_agent_names "$template_content")
+  [[ -z "$names" ]] && return 0
+
+  local output=""
+  local agent_name
+  while IFS= read -r agent_name; do
+    [[ -z "$agent_name" ]] && continue
+    local doc_path
+    doc_path=$(find_agent_doc "$agent_name" "$custom_dir")
+    if [[ -n "$doc_path" ]]; then
+      output+=$'\n'"### Agent Reference: ${agent_name}"$'\n'
+      output+="source: ${doc_path}"$'\n\n'
+      output+="$(<"$doc_path")"$'\n'
+    else
+      output+=$'\n'"### Agent Reference: ${agent_name}"$'\n'
+      output+="source: (not found)"$'\n'
+      output+="- 경고: 해당 에이전트 문서를 찾지 못했다. 현재 phase 템플릿 지시를 기준으로 직접 판단해 수행한다."$'\n'
+    fi
+  done <<< "$names"
+
+  printf '%s\n' "$output"
+}
+
+write_cw_agents_block() {
+  cat <<'EOF'
+<!-- CW_WORKFLOW_GUIDE_START -->
+## Codex Workflow (`cw`)
+
+- Codex는 `.codex/agents`를 표준 자동 로딩 경로로 사용하지 않는다.
+- `cw`는 phase 템플릿의 `Task(subagent_type='...')`를 해석할 때,
+  - `scripts/codex-workflow/agents/<name>.md` (프로젝트 override) 또는
+  - `codex-workflow/agents/<name>.md` (기본 템플릿)
+  문서를 프롬프트에 자동 첨부해 참조한다.
+- 장기/전역 규칙은 `AGENTS.md`와 Codex Skills를 기준으로 관리한다.
+<!-- CW_WORKFLOW_GUIDE_END -->
+EOF
+}
+
+install_or_update_project_agents_md() {
+  local agents_md="$PROJECT_ROOT/AGENTS.md"
+  local start_marker="<!-- CW_WORKFLOW_GUIDE_START -->"
+  local end_marker="<!-- CW_WORKFLOW_GUIDE_END -->"
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  if [[ -f "$agents_md" ]]; then
+    local in_block=0
+    local replaced=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" == "$start_marker" ]]; then
+        in_block=1
+        replaced=1
+        write_cw_agents_block >> "$tmp_file"
+        continue
+      fi
+      if [[ "$line" == "$end_marker" ]]; then
+        in_block=0
+        continue
+      fi
+      if (( ! in_block )); then
+        printf '%s\n' "$line" >> "$tmp_file"
+      fi
+    done < "$agents_md"
+
+    if (( ! replaced )); then
+      [[ -s "$tmp_file" ]] && printf '\n' >> "$tmp_file"
+      write_cw_agents_block >> "$tmp_file"
+    fi
+  else
+    cat > "$tmp_file" <<'EOF'
+# AGENTS.md
+
+EOF
+    write_cw_agents_block >> "$tmp_file"
+  fi
+
+  mv "$tmp_file" "$agents_md"
+  printf '%s\n' "$agents_md"
 }
 
 workspace_fingerprint() {
@@ -838,20 +955,9 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --init)
-      echo "${CYAN}프로젝트에 codex-workflow 에이전트 파일을 링크합니다...${NC}"
-      mkdir -p "$PROJECT_ROOT/.codex/agents"
-      count=0
-      for agent in "$GLOBAL_TEMPLATE_DIR/agents/"*.md(N); do
-        name=$(basename "$agent")
-        if [[ -L "$PROJECT_ROOT/.codex/agents/$name" ]] || [[ -f "$PROJECT_ROOT/.codex/agents/$name" ]]; then
-          echo "  ${YELLOW}skip${NC} $name (이미 존재)"
-        else
-          ln -sf "$agent" "$PROJECT_ROOT/.codex/agents/$name"
-          echo "  ${GREEN}link${NC} $name"
-          count=$((count + 1))
-        fi
-      done
-      echo "${GREEN}완료! ${count}개 파일 링크됨.${NC}"
+      echo "${CYAN}프로젝트 AGENTS.md에 cw 가이드를 설치/업데이트합니다...${NC}"
+      agents_md_path=$(install_or_update_project_agents_md)
+      echo "${GREEN}완료! AGENTS.md 갱신: ${agents_md_path}${NC}"
       exit 0
       ;;
     --help|-h)
@@ -1022,6 +1128,8 @@ generate_prompt() {
   template="${template//\{\{CHECKLIST_PATH\}\}/$CHECKLIST_PATH}"
   template="${template//\{\{DIGEST_PATH\}\}/$DIGEST_PATH}"
   template="${template//\{\{NOTES_PATH\}\}/$NOTES_PATH}"
+  local task_agent_guides
+  task_agent_guides=$(build_task_agent_guides "$template" "$CUSTOM_TEMPLATE_DIR")
 
   cat <<EOF_PROMPT
 # Codex Workflow Runner Context
@@ -1030,7 +1138,7 @@ generate_prompt() {
 - 현재 반복: ${iter_num}/${max_iter}
 
 실행 원칙:
-1) 템플릿에 Task(subagent_type='...') 같은 Claude 전용 지시가 나오면, 해당 역할의 관점으로 네가 직접 리뷰/분석을 수행한다.
+1) 템플릿에 Task(subagent_type='...')가 나오면, 아래에 첨부된 해당 agent reference 문서를 먼저 읽고 그 기준으로 수행한다.
 2) phase 템플릿 지시를 실제 코드/문서 수정으로 반영한다.
 3) 수정할 것이 없다면 코드 변경 없이 결과만 간결하게 정리한다.
 
@@ -1040,6 +1148,17 @@ generate_prompt() {
 
 ${template}
 EOF_PROMPT
+
+  if [[ -n "$task_agent_guides" ]]; then
+    cat <<EOF_PROMPT
+
+---
+
+# Agent References For This Phase
+
+${task_agent_guides}
+EOF_PROMPT
+  fi
 }
 
 run_phase_iteration() {
