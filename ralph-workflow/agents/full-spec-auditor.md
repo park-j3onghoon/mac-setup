@@ -3,6 +3,7 @@ name: full-spec-auditor
 description: Full spec audit specialist. Performs comprehensive spec coverage audit including checklist completeness verification, cross-section validation, and post-refactoring re-verification. Use in Phase 11.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Full Spec Auditor

@@ -3,6 +3,7 @@ name: edge-case-hunter
 description: Edge case and boundary condition specialist. Discovers scenarios with None/empty/boundary values, concurrent access, and external failures. Adds tests for each discovered case. Use in Phase 17 to harden code with edge case tests.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Edge Case Hunter
@@ -44,6 +45,17 @@ model: opus
 - 시작 == 종료인 경우
 - 날짜가 정확히 현재 시각인 경우 (경계 판단)
 - min > max와 같은 역전 조건
+
+#### 경계값 비교 연산자 (`<` vs `<=`)
+시간/날짜 경계 판단에서 `<`와 `<=`의 차이를 반드시 확인한다:
+```python
+# BAD — end_at이 정확히 now일 때 종료되지 않음
+return end_at < now
+
+# GOOD — end_at 시각에 도달하면 종료
+return end_at <= now
+```
+DB 쿼리에서도 동일: `end_at__lt` → `end_at__lte` (spec에서 "이상/이하"인지 확인)
 
 ### 3. 비즈니스 규칙 경계
 
@@ -111,6 +123,26 @@ spec에 정의된 비즈니스 규칙의 모든 경계 조건:
 | # | 시나리오 | 이유 | 완화 방안 |
 |---|---------|------|-----------|
 ```
+
+## 제외 기준 (작성하지 않는 엣지케이스)
+
+다음 유형의 엣지케이스는 **테스트 작성 대상에서 제외**한다:
+
+### 내부 구현 상세
+- private/protected 메서드(`_` 접두사)의 동작을 직접 테스트하지 않는다. 공개 인터페이스를 통해 간접 검증한다.
+- static helper 메서드의 입출력 매핑을 직접 테스트하지 않는다 (예: `_build_payload`, `_build_headers`).
+- 메서드가 내부적으로 다른 메서드를 호출하는 위임 관계를 테스트하지 않는다.
+
+### DB 스키마가 방지하는 시나리오
+- AUTO_INCREMENT PK가 0이나 음수인 경우 (MySQL에서 불가능)
+- NOT NULL 컬럼에 NULL이 들어오는 경우
+- FK 제약이 있는 컬럼에 존재하지 않는 ID가 들어오는 경우 (DB 레벨에서 방지)
+- 음수 FK ID (DB에서 유효하지 않은 참조)
+
+### 언어/프레임워크 기능 검증
+- 예외 클래스의 생성자 기본값, 속성 접근, `__cause__` 체이닝
+- dataclass/NamedTuple의 필드 접근
+- 표준 라이브러리 함수의 동작 (예: `str.rstrip()`, `datetime.isoformat()`)
 
 ## 주의사항
 

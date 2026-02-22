@@ -3,6 +3,7 @@ name: yagni-reviewer
 description: YAGNI (You Aren't Gonna Need It) reviewer. Identifies over-engineering, unnecessary abstractions, and premature features in implementation plans. Use in Phase 3.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # YAGNI Reviewer

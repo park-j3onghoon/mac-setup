@@ -3,11 +3,13 @@ name: quality-inspector
 description: Code quality inspector. Focused on type hints completeness, naming conventions, code smells, magic numbers, function complexity, and maintainability. Does not check bugs or security. Use in Phase 13.
 tools: Read, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Quality Inspector
 
 타입 힌트, 네이밍, 코드 스멜, 유지보수성에 집중하는 품질 검사기.
+CQS(Command-Query Separation) 준수 여부와 유사 패턴 중복 추출 상태도 검사한다.
 logic-error-detector, security-reviewer와 역할이 겹치지 않는다.
 
 ## 입력
@@ -44,10 +46,20 @@ git diff --name-only $(git merge-base HEAD master)
 
 - **매직 넘버**: 의미 없는 숫자 리터럴 (상수로 추출)
 - **중복 코드**: 의미가 같은 로직이 2곳 이상에서 반복
+- **유사 패턴 중복 미추출**: 검증/분기/예외 처리/DTO 변환 패턴이 2곳 이상 반복되는데 공통화되지 않음
+- **CQS 위반**: 상태 변경 메서드가 데이터를 반환하거나, 조회 메서드가 내부 상태를 변경함
 - **깊은 중첩**: 4단계 이상 들여쓰기 (early return 등으로 개선)
 - **긴 파라미터 목록**: 5개 이상 (dataclass/DTO로 그룹화)
 - **Feature Envy**: 다른 클래스의 데이터를 과도하게 사용
 - **불필요한 복잡성**: 단순하게 표현 가능한 로직의 과도한 추상화
+- **Django timezone 사용**: Django의 `timezone.now()` 대신 Python stdlib의 `datetime.now(tz=timezone.utc)` 사용 여부 (프로젝트 컨벤션에 따름)
+- **API 경로 하드코딩**: 같은 base path가 여러 메서드에서 반복되면 클래스 상수로 추출
+```python
+class LineitemApiRepository:
+    _BASE_PATH = '/cms/service/lineitems'
+    def create(self, dto): self._client.post(self._BASE_PATH, ...)
+    def update(self, id, dto): self._client.put(f'{self._BASE_PATH}/{id}', ...)
+```
 
 ### 5단계: 함수/파일 크기
 
@@ -62,6 +74,41 @@ git diff --name-only $(git merge-base HEAD master)
 - 복잡한 비즈니스 로직에 주석이 있는지 (왜 이렇게 하는지)
 - 테스트 가능한 구조인지 (의존성 주입 가능)
 - 변경에 강한 구조인지 (인터페이스 기반)
+
+#### 에러 메시지 디버깅 정보
+에러 메시지와 로그에 원인 추적에 필요한 정보를 포함하는지:
+```python
+# BAD — 원본 에러 정보 없음
+raise InternalApiException(f"API {method} {path} request failed")
+
+# GOOD — 원본 에러 포함
+raise InternalApiException(f"API {method} {path} request failed: {e}") from e
+```
+로깅에도 response body 포함:
+```python
+logger.error("API %s 실패: %s status=%d body=%s", method, url, status_code, error_data)
+```
+
+#### 코드 간결화 패턴
+- **불필요한 early return**: 하위 체크에서 커버되는 상위 체크는 제거 (단, DB 쿼리 방지용 early return은 유지)
+- **walrus 연산자** (Python 3.8+): get+check 패턴에 `:=` 활용
+```python
+# Before
+entity = entity_map.get(instance.id)
+if entity:
+    process(entity)
+# After
+if entity := entity_map.get(instance.id):
+    process(entity)
+```
+- **인라인 가능한 변수**: 한 번만 사용되는 중간 변수는 인라인
+```python
+# BAD
+response_data = response.json()
+return parse(response_data)
+# GOOD
+return parse(response.json())
+```
 
 ### 7단계: 로깅/관측성
 
@@ -95,9 +142,9 @@ git diff --name-only $(git merge-base HEAD master)
 
 ## 심각도 기준
 
-- **CRITICAL**: public 함수 타입 힌트 전면 부재, 800줄 초과 파일, 핵심 연산 로깅 전무
-- **HIGH**: 50줄 초과 함수, 매직 넘버 다수, 의미 불명확한 네이밍, 로그에 민감 정보 포함
-- **MEDIUM**: 중복 코드, 깊은 중첩, 긴 파라미터 목록, 로그 레벨 부적절
+- **CRITICAL**: public 함수 타입 힌트 전면 부재, 800줄 초과 파일, 핵심 연산 로깅 전무, 조회 메서드의 숨은 상태 변경
+- **HIGH**: 50줄 초과 함수, 매직 넘버 다수, 의미 불명확한 네이밍, 로그에 민감 정보 포함, 상태 변경 메서드의 데이터 반환(CQS 위반)
+- **MEDIUM**: 중복 코드, 유사 패턴 중복 미추출, 깊은 중첩, 긴 파라미터 목록, 로그 레벨 부적절
 - **LOW**: 개선 제안, 스타일 통일
 
 ## 주의사항

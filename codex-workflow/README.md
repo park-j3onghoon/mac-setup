@@ -1,0 +1,154 @@
+# Codex Workflow
+
+`ralph-workflow`를 참고해 만든 Codex 전용 Phase 0~19 자동화 워크플로우.
+
+핵심 동작:
+- spec 문서를 기준으로 20개 Phase를 순차 실행
+- 각 Phase는 `max-iterations` 내에서 반복 실행
+- 각 이터레이션은 로그 기반 정체 감지 + token limit(0-토큰) 자동 재시도 안전망으로 보호
+- 아래 조건 중 하나를 만족하면 다음 Phase로 이동
+  1. 이번 이터레이션에서 워크스페이스 변경 없음(수렴)
+  2. `max-iterations` 도달
+
+기본 실행 모델/추론:
+- 모델: `gpt-5.3-codex`
+- 추론 강도: `xhigh`
+
+## 요구사항
+
+- Codex CLI 설치 + 로그인 완료
+- Git 저장소 루트에서 실행
+
+## 설치
+
+```bash
+chmod +x ~/git/mac-setup/codex-workflow/run-workflow.sh
+mkdir -p ~/.local/bin
+ln -sf ~/git/mac-setup/codex-workflow/run-workflow.sh ~/.local/bin/cw
+```
+
+확인:
+
+```bash
+cw --help
+```
+
+## 사용법
+
+```bash
+# 기본 실행
+cd ~/my-project
+cw -s pr2-impl docs/spec.md -m src/myapp
+
+# 여러 spec을 하나의 세션으로 처리
+cw -s big-feature docs/spec_1.md docs/spec_2.md -m src/myapp
+
+# 이터레이션 배수 조정
+cw -s pr2-quality docs/spec.md -m src/myapp -n 1.5
+
+# 모델/추론 강도 지정 (기본값과 동일)
+cw -s pr2-impl docs/spec.md -m src/myapp --model gpt-5.3-codex --reasoning-effort xhigh
+
+# 특정 Phase부터 시작
+cw -s pr2-impl docs/spec.md -m src/myapp --from 4
+
+# 큰 spec 분할
+cw --spec-split docs/large-spec.md --max-lines 500 --review-hours 1.5
+
+# 완료된 세션 리뷰 시작
+cw --review -s pr2-impl --assistant codex
+
+# dry-run (프롬프트/단계만 확인)
+cw -s dry docs/spec.md -m src/myapp --dry-run
+```
+
+## 옵션
+
+- `-s, --session NAME`: 세션 이름 (필수)
+- `-m, --module PATH`: 구현 대상 모듈 경로 (기본 `.`)
+- `-t, --test PATH`: 테스트 경로 (기본: `{module}/tests` 있으면 그 경로, 없으면 `{module}`)
+- `-n, --multiplier N`: 이터레이션 배수 (float 허용)
+- `--from N`: 시작 phase 번호 (0~19)
+- `--model MODEL`: `codex exec --model`로 전달할 모델 (기본 `gpt-5.3-codex`)
+- `--reasoning-effort LEVEL`: `codex exec -c model_reasoning_effort="..."`로 전달할 추론 강도 (기본 `xhigh`)
+- `--spec-split FILE`: 큰 spec을 PR 단위로 분할 (`--max-lines N`, `--review-hours H`, 기본 1.5h)
+- `--review`: 세션 리뷰 파일 생성 + 리뷰 세션 시작 (`-s` 필요)
+- `--assistant NAME`: `--review` 실행 도우미 (`codex`, `claude`, `none`, 기본 `codex`)
+- `--templates DIR`: 커스텀 Phase 템플릿 디렉토리
+- `--dry-run`: 실행 없이 각 Phase 프롬프트만 점검
+- `--init`: 프로젝트에 `codex-workflow` 에이전트 문서 링크 생성 (`.codex/agents`)
+- `--clean`: 저장된 세션 디렉토리 정리
+
+## 이터레이션 계산
+
+Phase별 이터레이션 수:
+
+```text
+iterations = ceil((base + floor(spec_lines / 300)) × multiplier)
+```
+
+Base 합계는 `53`이다.
+
+## 세션/재개
+
+세션 상태 저장 위치:
+
+```text
+~/git/mac-setup/codex-workflow/sessions/{session_name}/
+```
+
+동일 spec fingerprint의 미완료 세션이 있으면 자동으로 재개 여부를 물어본다.
+`--from`을 지정하면 자동 재개 감지를 건너뛰고 지정한 phase부터 시작한다.
+
+주요 로그/산출물:
+
+- 이벤트 로그: `~/git/mac-setup/codex-workflow/sessions/{session_name}/cw-events.log`
+- 이터레이션 로그: `cw-phase-{phase}-iter-{iter}.log`
+- 0-토큰 재시도 로그: `cw-phase-{phase}-iter-{iter}-zt-{retry}.log`
+- 프롬프트 스냅샷: `cw-phase-{phase}-iter-{iter}-prompt.md`
+
+## 종료 조건 (Phase 단위)
+
+각 Phase 반복에서 아래 순서로 판정한다:
+
+1. 이터레이션 전/후 워크스페이스 fingerprint가 같으면 `no-change`로 완료
+2. 변경이 있으면 다음 iteration
+3. `max-iterations`에 도달하면 해당 Phase 종료 후 다음 Phase로 진행
+4. 이터레이션 실행 실패(정체 강제 종료 포함)면 워크플로우 중단
+
+즉, 별도 완료 마커 출력 계약 없이 코드 변경 유무만으로 단계 전환한다.
+
+## 실행 안전망 (정체 감지 / 0-토큰)
+
+`run-workflow.sh`는 각 이터레이션을 백그라운드로 실행하고 로그를 폴링하며, 다음 안전망을 적용한다.
+
+- 장시간 실행 경고 주기: `STALL_THRESHOLD=900` (15분)
+- 로그 성장 체크 주기: `LOG_GROWTH_CHECK_INTERVAL=900` (15분)
+- 의미 있는 로그 성장 기준: `LOG_MEANINGFUL_GROWTH=102400` (100KB)
+- 로그 무성장 강제 종료 기준: `STALL_KILL_THRESHOLD=3600` (60분)
+- 0-토큰 대기 시간: `ZERO_TOKEN_WAIT=600` (10분)
+- 0-토큰 최대 재시도: `MAX_ZERO_TOKEN_RETRIES=60` (최대 약 10시간)
+
+동작 요약:
+
+1. 로그에서 rate/token limit 패턴을 주기적으로 탐지한다.
+2. 이터레이션 결과가 `0 tokens`이고 token limit 패턴이면 10분 대기 후 **같은 iter를 재시도**한다.
+3. 0-토큰 재시도는 phase의 일반 `max-iterations`와 별도로 관리된다.
+4. 로그가 장시간 의미 있게 증가하지 않으면 해당 이터레이션을 강제 종료하고 실패 처리한다.
+
+## 템플릿 호환성
+
+Phase 템플릿은 `ralph-workflow` 구조를 그대로 가져왔다.
+일부 템플릿의 Claude 전용 표현(`Task(subagent_type=...)`)은 런너 프롬프트에서
+"해당 역할을 Codex가 직접 수행"하도록 보정한다.
+
+## 파일 구성
+
+```text
+codex-workflow/
+├── run-workflow.sh
+├── phase0-plan.md
+├── ...
+├── phase19-commit.md
+└── agents/
+```

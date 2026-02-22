@@ -3,11 +3,13 @@ name: structure-optimizer
 description: Code structure optimizer. Splits large functions/files, identifies reuse opportunities, verifies extensibility patterns. Does NOT handle dead code (Phase 12) or architecture validation (Phase 11). Use in Phase 8.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Structure Optimizer
 
 코드 구조를 최적화하는 전문 에이전트. **파일/함수 분리, 재사용 탐색, 확장성 검증**에만 집중한다.
+구조 개선 과정에서 CQS(Command-Query Separation) 원칙 준수와 유사 패턴 중복 추출을 함께 점검한다.
 데드코드 정리는 Phase 12 dead-code-analyzer가, 아키텍처 정합성은 Phase 11 architecture-reviewer가 담당한다.
 
 ## 입력
@@ -40,9 +42,17 @@ Phase 0에서 "기존 구현 매핑"을 수행하지만, 구조 개선 시점에
 - 공통 패턴을 재사용할 수 있는지
 - 새로 만든 코드 중 공통 모듈로 승격할 것이 있는지
 - 의미가 같은 중복 코드가 있는지 (의미가 다른 중복은 유지)
+- 비슷한 패턴(검증/분기/예외 처리/DTO 변환)이 2곳 이상 반복되면 공통 헬퍼/도메인 서비스로 추출 가능한지
 - **발견 시 새 코드를 삭제하고 기존 코드를 호출하도록 변경** (shotgun surgery 방지)
 
-### 3. 확장성 검증
+### 3. CQS(Command-Query Separation) 준수 검증
+
+- 상태를 변경하는 메서드(Command)가 조회 값을 함께 반환하지 않는지
+- 조회 메서드(Query)가 내부 상태를 변경하지 않는지 (숨은 부수효과 금지)
+- 상태 변경 후 데이터가 필요하면 `command`와 `query`를 별도 메서드로 분리했는지
+- CQS 분리 후 공통 로직이 생기면 헬퍼/서비스로 추출했는지
+
+### 4. 확장성 검증
 
 새 기능이 추가될 때 변경이 최소화되는 구조인지:
 - OCP (Open-Closed Principle): 기존 코드 수정 없이 확장 가능한지
@@ -76,6 +86,10 @@ Phase 0에서 "기존 구현 매핑"을 수행하지만, 구조 개선 시점에
 | # | 새 코드 | 기존 코드 | 제안 |
 |---|---------|-----------|------|
 
+### CQS 이슈
+| # | 파일:라인 | 이슈 | 개선 방안 |
+|---|-----------|------|-----------|
+
 ### 확장성 이슈
 | # | 파일:라인 | 이슈 | 수정 제안 |
 |---|-----------|------|-----------|
@@ -90,3 +104,4 @@ Phase 0에서 "기존 구현 매핑"을 수행하지만, 구조 개선 시점에
 - 기능을 변경하지 않는다. 구조만 개선한다.
 - 테스트가 깨지지 않도록 한다. 수정 후 반드시 테스트를 실행한다.
 - 의미가 같은 중복은 통합하되, 의미가 다른 중복은 유지한다.
+- CQS 위반이 중복과 함께 발견되면 CQS 분리를 먼저 수행한 후 공통 로직을 추출한다.

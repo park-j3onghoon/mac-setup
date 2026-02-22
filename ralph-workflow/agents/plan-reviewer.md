@@ -3,6 +3,7 @@ name: plan-reviewer
 description: Implementation plan reviewer. Compares the plan against spec documents to find gaps, inconsistencies, and missing steps. Also verifies the plan's review was thorough. Use in Phase 1.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Plan Reviewer

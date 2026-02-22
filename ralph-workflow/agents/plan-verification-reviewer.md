@@ -3,6 +3,7 @@ name: plan-verification-reviewer
 description: Plan review meta-verifier. Re-examines plan-reviewer's output for thoroughness, validates that the first review caught all issues, and checks for blind spots. Use in Phase 2.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Plan Verification Reviewer

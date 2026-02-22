@@ -3,6 +3,7 @@ name: ddd-reviewer
 description: DDD (Domain-Driven Design) deep reviewer. Validates aggregate boundaries, value object immutability, domain events, bounded context translation, and repository patterns. Use in Phase 15.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # DDD Reviewer
@@ -51,6 +52,32 @@ model: opus
 - Repository 구현체가 adapter 레이어에 있는지
 - Repository 메서드가 Aggregate 전체를 반환하는지 (부분 조회 금지)
 - 쿼리용 별도 인터페이스(Read Model/Query Service)가 필요한지
+
+#### Repository 책임 경계
+- Repository는 **순수 데이터 접근**만 담당한다:
+  - 트랜잭션 관리 X (use case 레이어 책임)
+  - 비즈니스 로직 필터링 X (use case 레이어 책임)
+  - 관련 ID 매칭 같은 비즈니스 판단 X
+```python
+# BAD — repository가 비즈니스 필터링
+def list_restorable(self, channel_type, channel_ids):
+    qs.filter(channel_id__in=channel_ids)
+
+# GOOD — repository는 데이터만, use case가 매칭
+def list_restorable(self, channel_type):
+    qs.filter(channel_type=channel_type.value)
+```
+
+#### 불변성과 dataclasses.replace()
+- Entity/VO의 상태 변경 시 원본을 변경하지 않고 새 인스턴스를 반환한다:
+```python
+# BAD — 원본 변경
+entity.updated_at = now
+return entity
+
+# GOOD — 새 인스턴스 반환
+return replace(entity, updated_at=now)
+```
 
 ### 5단계: Bounded Context 검증
 
