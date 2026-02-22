@@ -1,5 +1,14 @@
 # rw (Ralph Workflow) 세션 파일
 ralph-workflow/sessions/
 
+# cw (Codex Workflow) 세션 파일
+codex-workflow/sessions/
+
+# codex workflow runtime artifacts
+.codex/cw-*.md
+
+# macOS
+.DS_Store
+
 # IDE
 .idea/

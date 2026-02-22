@@ -3,6 +3,7 @@ name: test-quality-reviewer
 description: Test quality and effectiveness reviewer. Validates mock accuracy, test isolation, negative test coverage, test data realism, and assert completeness. Ensures tests actually catch bugs. Use in Phase 17.
 tools: Read, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Test Quality Reviewer
@@ -115,6 +116,16 @@ mock_repo.get.return_value = Entity(id=1, status=Status.ACTIVE, created_at=now)
 - **HIGH**: 핵심 필드 검증 누락, 네거티브 테스트 없음, mock 경로 오류
 - **MEDIUM**: 테스트 데이터 비현실적, Given-When-Then 불명확
 - **LOW**: 테스트 네이밍 개선, 중복 assert
+
+### 7단계: 불필요한 테스트 식별
+
+다음 유형의 테스트는 **삭제 대상으로 보고**한다:
+
+- **내부 구현 테스트**: private/protected 메서드(`_build_payload`, `_request` 등)를 직접 호출하여 테스트하는 경우. 공개 인터페이스를 통한 간접 검증으로 충분하다.
+- **단순 위임 테스트**: `put()`이 `_request('PUT', ...)`를 호출하는지 등 메서드 간 위임 관계만 확인하는 테스트.
+- **예외 속성 테스트**: 예외 클래스의 기본 속성값, `__cause__` 체이닝 등 언어 기능을 테스트하는 경우.
+- **DB 스키마 불가능 시나리오**: AUTO_INCREMENT PK=0, 음수 FK ID 등 DB 제약조건이 이미 방지하는 시나리오.
+- **Static helper payload 테스트**: 내부 `_build_create_payload`, `_build_update_payload` 등의 입출력을 직접 검증하는 경우.
 
 ## 주의사항
 

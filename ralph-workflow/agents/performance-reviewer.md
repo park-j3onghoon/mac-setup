@@ -3,6 +3,7 @@ name: performance-reviewer
 description: Performance specialist. Detects N+1 queries, unnecessary DB round trips, O(n²) algorithms, missing indexes, caching opportunities, and memory inefficiencies. Use in Phase 14.
 tools: Read, Bash, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Performance Reviewer
@@ -67,6 +68,27 @@ git diff --name-only $(git merge-base HEAD master)
 - 단건 처리를 배치로 변환 가능한 곳 (`bulk_create`, `bulk_update`)
 - 개별 API 호출을 배치 API로 변환 가능한 곳
 - 트랜잭션 내에서 과도한 단건 저장
+
+### 7단계: Django ORM 패턴
+
+#### update 후 불필요한 재조회
+- `queryset.update()` 후 같은 레코드를 다시 `get()`으로 조회하는 패턴
+- 이미 가지고 있는 데이터로 반환 가능하면 재조회 금지 (`dataclasses.replace()` 활용)
+```python
+# BAD — update 후 DB에서 다시 가져옴
+Model.objects.filter(id=entity.id).update(**fields)
+model = Model.objects.get(id=entity.id)  # 불필요한 쿼리
+return Entity.from_model(model)
+
+# GOOD — 이미 가지고 있는 데이터로 반환
+Model.objects.filter(id=entity.id).update(**fields)
+return replace(entity, updated_at=now)
+```
+
+#### save() vs queryset.update() 선택
+- Signal(post_save)이 필요한 모델(ES sync 대상 등)만 `save()` 사용
+- Signal이 불필요한 모델은 `queryset.update()`가 성능상 유리
+- `bulk_update()`에서 `auto_now=True`는 동작하지 않으므로 `updated_at`을 수동 설정
 
 ## 출력 형식
 

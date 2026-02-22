@@ -3,6 +3,7 @@ name: side-effect-analyzer
 description: Side effect analysis specialist. Traces implicit dependencies like framework hooks, shared state mutations, and cross-module coupling. Use in Phase 10 to detect unintended side effects.
 tools: Read, Grep, Glob
 model: opus
+effort: high
 ---
 
 # Side Effect Analyzer

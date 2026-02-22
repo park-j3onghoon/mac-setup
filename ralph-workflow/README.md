@@ -3,6 +3,10 @@
 Claude Code + Ralph Loop 기반 Phase 0~19 자동화 파이프라인.
 spec 문서를 입력하면 계획 → 검토 → YAGNI → 구현 → 스펙 검증 → 버그/보안 → 수정 검증 → 구조 개선 → 통합 → 사이드이펙트 → 전체 재검토 → 코드 정리 → 품질 → 성능 → DDD → 사용자 흐름 → 심층 검토 → 배포 판정 → 커밋까지 자동 수행한다.
 
+기본 실행 모델/추론:
+- `rw`: Claude `opus` + `--effort high`
+- `rw --review --assistant codex`: `gpt-5.3-codex` + `model_reasoning_effort=xhigh`
+
 ## 설치
 
 ### 사전 요구사항
@@ -96,7 +100,13 @@ rw -s big-feature docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
 | `-m`, `--module PATH` | 구현 대상 모듈 경로. lint/mypy/리뷰 범위 지정 | `.` |
 | `-t`, `--test PATH` | 테스트 디렉토리 경로 (자동 감지: `{module}/tests` 존재 시 사용, 없으면 `{module}`) | 자동 |
 | `-n`, `--multiplier N` | 이터레이션 배수 (float 허용, 아래 참조) | `1` |
+| `--model MODEL` | Claude 실행 모델 | `opus` |
+| `--effort LEVEL` | Claude 추론 강도 (`low`, `medium`, `high`) | `high` |
 | `--templates DIR` | 커스텀 템플릿 디렉토리 | - |
+| `--from N` | 시작 phase 번호 (0~19). 지정 phase부터 재실행 | `0` |
+| `--spec-split FILE` | 큰 spec을 PR 단위로 분할 (`--max-lines N`, `--review-hours H`) | - |
+| `--review` | 세션 리뷰 파일 생성 + 리뷰 세션 시작 (`-s` 필요) | - |
+| `--assistant NAME` | `--review` 실행 도우미 (`codex`, `claude`, `none`) | `codex` |
 | `--dry-run` | 실제 실행 없이 프롬프트만 확인 | - |
 | `--init` | 프로젝트에 에이전트 symlink 설치 | - |
 
@@ -144,6 +154,37 @@ rw -s pr2-impl docs/spec.md -m src/myapp
 
 재개 시 해당 Phase의 이터레이션은 처음부터 다시 돈다. 단, Phase 템플릿의 이어받기 로직(체크리스트 `[x]` 상태, 섹션 `[V]` 상태 등)이 이전에 완료한 작업을 감지하므로 중복 작업은 발생하지 않는다.
 
+`--from N`으로 중간 phase부터 시작할 때 `.claude/rw-*.md`가 없으면, 같은 spec fingerprint의 세션에서 자동 복원한다.
+
+### Spec 분할 (`--spec-split`)
+
+큰 spec을 **PR 리뷰 가능한 단위**로 분할한다.
+
+- 기본 목표: PR당 약 1.5시간 리뷰 (`--review-hours`로 조정, 예: 1~2)
+- 맥락 유지: 각 split 파일 상단에 "다른 PR 참조 맥락" 포함
+- 점진적 흐름: 기반/계약 → 핵심 기능 → 예외/마무리 순서로 분할
+- 산출물: `*.split-N.md` + `*.split-plan.md` (PR 순서 요약)
+
+### 리뷰 모드 (`--review`)
+
+워크플로우 완료 후 세션 디렉토리에 `rw-review.md`를 생성해, 아래를 한 번에 정리한다:
+
+- 리뷰 체크리스트
+- 신규 생성/수정/삭제 파일 목록
+- 파일별 변경 요약(+/- 라인)
+- 추천 리뷰 순서(계약/API → 구현 → 테스트 → 문서/설정)
+- 작업 목표/현재 위치(phase 진행률)
+
+실행 예시:
+
+```bash
+# 리뷰 파일 생성 + Codex로 1번 체크리스트부터 대화형 리뷰 시작
+rw --review -s pr2-impl --assistant codex
+
+# 파일만 만들고 직접 진행
+rw --review -s pr2-impl --assistant none
+```
+
 ### 사용 예시
 
 ```bash
@@ -159,8 +200,14 @@ rw -s test-run docs/spec_detail_2.md -m src/myapp --dry-run
 # 여러 spec을 하나의 단위로 함께 처리
 rw -s big-feature docs/spec_{1..5}.md -m src/myapp -n 1.5
 
+# 모델/추론 강도 명시 (기본값과 동일)
+rw -s best docs/spec.md -m src/myapp --model opus --effort high
+
 # 프로젝트별 커스텀 템플릿 사용
 rw -s custom-run docs/spec.md -m src/myapp --templates ./my-templates/
+
+# 큰 spec을 PR 단위로 분할 (리뷰 목표 1.5시간)
+rw --spec-split docs/large-spec.md --max-lines 500 --review-hours 1.5
 ```
 
 ---
