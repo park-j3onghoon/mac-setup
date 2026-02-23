@@ -12,7 +12,8 @@
 
 기본 실행 모델/추론:
 - 모델: `gpt-5.3-codex`
-- 추론 강도: `xhigh`
+- 추론 강도: `xhigh` (미지정 시 최상)
+- 리뷰 assistant 기본값: `codex` (`--assistant claude`로 Claude 리뷰 가능)
 
 ## 요구사항
 
@@ -70,9 +71,10 @@ cw -s dry docs/spec.md -m src/myapp --dry-run
 - `-n, --multiplier N`: 이터레이션 배수 (float 허용)
 - `--from N`: 시작 phase 번호 (0~19)
 - `--model MODEL`: `codex exec --model`로 전달할 모델 (기본 `gpt-5.3-codex`)
-- `--reasoning-effort LEVEL`: `codex exec -c model_reasoning_effort="..."`로 전달할 추론 강도 (기본 `xhigh`)
+- `--reasoning-effort LEVEL`: `codex exec -c model_reasoning_effort="..."`로 전달할 추론 강도 (기본 `xhigh`, 미지정 시 최상)
 - `--spec-split FILE`: 큰 spec을 PR 단위로 분할 (`--max-lines N`, `--review-hours H`, 기본 1.5h)
 - `--review`: 세션 리뷰 파일 생성 + 리뷰 세션 시작 (`-s` 필요)
+  - 세션이 기본 경로에 없으면, 프로젝트 로컬(`scripts/codex-workflow`, `scripts/ralph-workflow`)과 글로벌 `ralph-workflow/sessions`까지 자동 탐색
 - `--assistant NAME`: `--review` 실행 도우미 (`codex`, `claude`, `none`, 기본 `codex`)
 - `--templates DIR`: 커스텀 Phase 템플릿 디렉토리
 - `--dry-run`: 실행 없이 각 Phase 프롬프트만 점검
@@ -106,6 +108,12 @@ Base 합계는 `53`이다.
 - 이터레이션 로그: `cw-phase-{phase}-iter-{iter}.log`
 - 0-토큰 재시도 로그: `cw-phase-{phase}-iter-{iter}-zt-{retry}.log`
 - 프롬프트 스냅샷: `cw-phase-{phase}-iter-{iter}-prompt.md`
+
+`cw --review -s <name>`는 위 기본 경로가 없으면 아래 순서로 세션 디렉토리를 자동 탐색한다.
+1. `{프로젝트 루트}/scripts/codex-workflow/sessions/{name}`
+2. `{프로젝트 루트}/scripts/ralph-workflow/sessions/{name}`
+3. `~/git/mac-setup/codex-workflow/sessions/{name}`
+4. `~/git/mac-setup/ralph-workflow/sessions/{name}`
 
 ## 종료 조건 (Phase 단위)
 
