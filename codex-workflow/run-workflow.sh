@@ -19,7 +19,7 @@
 #   --review             세션 리뷰 파일 생성 + 리뷰 세션 시작 (spec 없이 사용 가능)
 #   --assistant NAME     --review에서 실행할 도우미 (codex|claude|none, 기본 codex)
 #   --model MODEL        codex 실행 모델 (기본: gpt-5.3-codex)
-#   --reasoning-effort L codex 추론 강도 (기본: xhigh)
+#   --reasoning-effort L codex 추론 강도 (기본: xhigh, 미지정 시 최상)
 #   --templates DIR      커스텀 템플릿 디렉토리
 #   --dry-run            실제 실행 없이 프롬프트 확인
 #   --init               프로젝트 AGENTS.md에 cw 가이드 블록 설치/업데이트
@@ -209,6 +209,45 @@ find_incomplete_session() {
     fi
   done
   return 1
+}
+
+list_review_session_candidates() {
+  local session_name=$1
+  local global_parent="${GLOBAL_TEMPLATE_DIR:h}"
+  local -a candidates=(
+    "$PROJECT_ROOT/scripts/codex-workflow/sessions/$session_name"
+    "$PROJECT_ROOT/scripts/ralph-workflow/sessions/$session_name"
+    "$SESSIONS_BASE_DIR/$session_name"
+    "$global_parent/ralph-workflow/sessions/$session_name"
+  )
+  typeset -A seen=()
+  local path
+  for path in "${candidates[@]}"; do
+    [[ -z "$path" ]] && continue
+    [[ -n "${seen[$path]:-}" ]] && continue
+    seen[$path]=1
+    printf '%s\n' "$path"
+  done
+}
+
+resolve_review_session_dir() {
+  local session_name=$1
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -d "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(list_review_session_candidates "$session_name")
+  return 1
+}
+
+print_review_session_candidates() {
+  local session_name=$1
+  echo "${YELLOW}검색한 세션 경로:${NC}" >&2
+  local candidate
+  while IFS= read -r candidate; do
+    echo "  - $candidate" >&2
+  done < <(list_review_session_candidates "$session_name")
 }
 
 compute_spec_lines() {
@@ -985,10 +1024,14 @@ if $REVIEW_MODE; then
     echo "${RED}에러: 세션 이름은 영문, 숫자, 하이픈(-), 밑줄(_)만 허용됩니다: $SESSION_NAME${NC}" >&2
     exit 1
   fi
-  SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
-  if [[ ! -d "$SESSION_DIR" ]]; then
-    echo "${RED}에러: 세션 디렉토리를 찾을 수 없습니다: $SESSION_DIR${NC}" >&2
+  SESSION_DIR=$(resolve_review_session_dir "$SESSION_NAME" || true)
+  if [[ -z "$SESSION_DIR" ]]; then
+    echo "${RED}에러: 세션 디렉토리를 찾을 수 없습니다: $SESSIONS_BASE_DIR/$SESSION_NAME${NC}" >&2
+    print_review_session_candidates "$SESSION_NAME"
     exit 1
+  fi
+  if [[ "$SESSION_DIR" != "$SESSIONS_BASE_DIR/$SESSION_NAME" ]]; then
+    echo "${CYAN}리뷰 세션 경로 자동 탐색: $SESSION_DIR${NC}"
   fi
   EVENT_LOG_FILE="$SESSION_DIR/cw-events.log"
   review_file=$(generate_review_file)
