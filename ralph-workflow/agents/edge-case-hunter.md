@@ -2,7 +2,6 @@
 name: edge-case-hunter
 description: Edge case and boundary condition specialist. Discovers scenarios with None/empty/boundary values, concurrent access, and external failures. Adds tests for each discovered case. Use in Phase 17 to harden code with edge case tests.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

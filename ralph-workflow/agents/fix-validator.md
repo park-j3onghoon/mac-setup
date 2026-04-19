@@ -2,7 +2,6 @@
 name: fix-validator
 description: Fix validation specialist. Verifies that bug/security fixes are correct, don't break spec compliance, and don't introduce regressions. Use in Phase 7.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

@@ -2,7 +2,6 @@
 name: logic-error-detector
 description: Business logic error detector. Finds conditional logic flaws, branch omissions, off-by-one errors, state transition errors, and business rule violations. Focused on logic correctness, not runtime safety. Use in Phase 6.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

@@ -2,7 +2,6 @@
 name: adversarial-reviewer
 description: Adversarial code reviewer who actively tries to reject the implementation. Focuses on business rule verification, test assert validity, and error handling completeness. Does NOT check naming (Phase 13), architecture (Phase 11), or DDD (Phase 15). Use in Phase 17 as final quality gate.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

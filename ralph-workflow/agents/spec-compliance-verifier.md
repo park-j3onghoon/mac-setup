@@ -2,7 +2,6 @@
 name: spec-compliance-verifier
 description: Spec compliance verifier. Line-by-line verification of implementation against spec using checklist references. Focused exclusively on spec conformance, not code quality. Use in Phase 5.
 tools: Read, Grep, Glob
-model: opus
 effort: high
 ---
 

@@ -2,7 +2,6 @@
 name: runtime-safety-checker
 description: Runtime safety and defensive programming checker. Finds None/null safety issues, type mismatches, error handling gaps, data integrity risks, performance anti-patterns, and idempotency issues. Focused on runtime crashes and operational safety, not logic errors. Use in Phase 6.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 
