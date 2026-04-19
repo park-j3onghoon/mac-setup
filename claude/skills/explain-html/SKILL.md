@@ -1,0 +1,174 @@
+---
+name: explain-html
+version: 1.0.0
+description: 주제를 상세한 HTML 문서로 설명한다. 프론트엔드 코드 기반 시각화(SVG, CSS, Canvas)를 포함하여 깔끔하고 명료하게 전달한다. "html로 설명해줘", "HTML 설명", "시각화해서 설명" 등으로 트리거.
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Grep
+  - Glob
+  - Agent
+  - WebSearch
+  - WebFetch
+---
+
+# /explain-html — 상세 HTML 설명 문서 생성
+
+주제를 깊이 있게 조사한 뒤, 프론트엔드 코드 기반 시각화가 포함된 단일 HTML 파일로 설명한다.
+
+## 핵심 원칙
+
+1. **내용의 자세함이 최우선**. 빠뜨리는 것보다 많은 게 낫다.
+2. **시각화는 Markdown/Mermaid가 아닌 프론트엔드 코드**(SVG, CSS, Canvas, 순수 JS)로 구현한다.
+3. **깔끔명료한 디자인**. 화려함이 아닌 가독성과 이해도에 집중한다.
+
+## Step 1: 주제 파악 및 조사
+
+설명 대상이 코드베이스인 경우:
+- 관련 파일을 Read/Grep/Glob으로 철저히 탐색한다.
+- 함수 호출 체인, 데이터 흐름, 의존관계를 추적한다.
+- 설정, 상수, 에러 처리 경로까지 포함한다.
+
+설명 대상이 개념/아키텍처인 경우:
+- 필요하면 WebSearch로 배경 지식을 보충한다.
+- 관련 코드가 있으면 함께 조사한다.
+
+**자세함 기준**: "이 HTML 하나로 해당 주제를 처음 보는 사람이 완전히 이해할 수 있는가?"를 자문한다. 답이 No면 더 조사한다.
+
+## Step 2: HTML 문서 구조 설계
+
+아래 섹션을 기본으로 하되, 주제에 맞게 조정한다:
+
+```
+1. 헤더 (제목 + 한줄 요약 + 목차)
+2. 개요 (배경, 목적, 왜 이게 필요한지)
+3. 핵심 개념 (용어 정의, 기본 원리)
+4. 상세 설명 (각 구성요소별 깊이 있는 설명)
+   - 각 섹션마다 시각화 1개 이상 포함
+5. 흐름/프로세스 (데이터 흐름, 실행 순서, 상태 전이 등)
+6. 코드 예시 (관련 코드 스니펫 + 라인별 주석)
+7. 엣지 케이스 / 주의사항
+8. 요약 / 핵심 포인트
+```
+
+## Step 3: 시각화 구현
+
+**반드시 프론트엔드 코드로 구현한다. Mermaid, Markdown 테이블 금지.**
+
+### 시각화 유형 (주제에 맞게 선택)
+
+| 유형 | 구현 방식 | 적합한 대상 |
+|---|---|---|
+| 아키텍처 다이어그램 | SVG + CSS | 시스템 구조, 레이어, 컴포넌트 관계 |
+| 플로우차트 | SVG + CSS (화살표는 `<line>`, `<marker>`) | 실행 흐름, 분기 로직, 데이터 파이프라인 |
+| 시퀀스 다이어그램 | SVG (세로 라이프라인 + 가로 화살표) | 서비스 간 호출, API 요청/응답 |
+| 상태 전이도 | SVG 원/화살표 | 상태 머신, 라이프사이클 |
+| 테이블/매트릭스 | HTML `<table>` + CSS 스타일링 | 비교, 매핑, 설정값 |
+| 트리 구조 | CSS `ul/li` + 커넥터 라인 또는 SVG | 의존성 트리, 호출 트리, DOM 구조 |
+| 타임라인 | CSS flexbox/grid + 수직 라인 | 시간순 프로세스, 배포 순서 |
+| 코드 하이라이트 | `<pre><code>` + CSS syntax 스타일링 | 코드 스니펫, 설정 파일 |
+| 인터랙티브 토글 | `<details><summary>` 또는 JS click | 깊은 설명, 선택적 상세 정보 |
+| 비교 레이아웃 | CSS grid 2컬럼 (AS-IS / TO-BE) | 변경 전후 비교 |
+
+### 시각화 스타일 가이드
+
+```css
+/* 기본 색상 팔레트 */
+--bg-primary: #ffffff;
+--bg-secondary: #f8f9fa;
+--bg-code: #1e1e1e;
+--text-primary: #1a1a2e;
+--text-secondary: #6c757d;
+--accent-blue: #3b82f6;
+--accent-green: #10b981;
+--accent-orange: #f59e0b;
+--accent-red: #ef4444;
+--accent-purple: #8b5cf6;
+--border: #e2e8f0;
+
+/* SVG 다이어그램 노드 */
+--node-bg: #ffffff;
+--node-border: #3b82f6;
+--node-text: #1a1a2e;
+--arrow-color: #64748b;
+
+/* 의미별 색상 */
+--color-success: #dcfce7;   /* 정상/완료 */
+--color-warning: #fef3c7;   /* 주의/경고 */
+--color-error: #fecaca;     /* 에러/실패 */
+--color-info: #dbeafe;      /* 정보/중립 */
+--color-highlight: #fef9c3; /* 핵심 강조 */
+```
+
+규칙:
+- 폰트: 본문 `system-ui, -apple-system, sans-serif`, 코드 `'SF Mono', 'Fira Code', monospace`
+- SVG 다이어그램 너비: `max-width: 100%`, `viewBox` 사용하여 반응형
+- 노드 간 간격 충분히 (최소 40px)
+- 화살표에 `<marker>` 사용, 라벨은 `<text>` 또는 `<foreignObject>`
+- 색상으로 의미 구분하되 색맹 고려 (패턴/아이콘 병용)
+- 그림자/그라데이션 최소화. `box-shadow` 쓸 경우 `0 1px 3px rgba(0,0,0,0.1)` 수준
+
+## Step 4: HTML 파일 생성
+
+**단일 HTML 파일**로 생성한다. 외부 CDN/라이브러리 의존 없이 순수 HTML+CSS+JS로 구현.
+
+### 필수 포함 요소
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{주제} — 상세 설명</title>
+  <style>
+    /* 전체 스타일 여기에 */
+  </style>
+</head>
+<body>
+  <header><!-- 제목 + 한줄 요약 --></header>
+  <nav><!-- 목차 (앵커 링크) --></nav>
+  <main>
+    <!-- 각 섹션 -->
+    <!-- 시각화는 인라인 SVG 또는 CSS로 -->
+  </main>
+  <script>
+    /* 인터랙션 (토글, 스크롤 등) 최소한만 */
+  </script>
+</body>
+</html>
+```
+
+### 코드 스니펫 스타일링
+
+코드 블록은 다크 테마 배경에 간단한 syntax 하이라이팅을 CSS로 적용한다:
+- 키워드: `color: #569cd6`
+- 문자열: `color: #ce9178`
+- 주석: `color: #6a9955`
+- 함수명: `color: #dcdcaa`
+- 라인 번호: `color: #858585`, 왼쪽 고정
+
+## Step 5: 저장 및 열기
+
+```bash
+# 저장 경로
+# 코드베이스 설명: docs/{주제}/explain.html
+# 일반 주제: /tmp/explain-{주제}.html
+
+# 브라우저에서 열기
+open {파일경로}
+```
+
+저장 전 사용자에게 경로를 확인한다.
+
+## 자세함 체크리스트
+
+HTML 생성 전 아래를 모두 충족하는지 확인:
+
+- [ ] 각 개념/구성요소에 대해 "왜 존재하는지"를 설명했는가
+- [ ] 데이터가 어디서 시작해서 어디서 끝나는지 전체 흐름을 보여줬는가
+- [ ] 코드 예시에 라인별 설명이 있는가
+- [ ] 시각화가 텍스트만으로 이해하기 어려운 부분을 보완하는가
+- [ ] 엣지 케이스나 주의사항을 다뤘는가
+- [ ] 처음 보는 사람이 이 문서만으로 이해할 수 있는가

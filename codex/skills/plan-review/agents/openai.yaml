@@ -1,0 +1,2 @@
+allow_implicit_invocation: true
+default_prompt: "Use $plan-review to inspect my implementation plan before coding."
