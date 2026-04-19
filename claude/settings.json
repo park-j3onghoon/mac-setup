@@ -1,0 +1,124 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Task(*)",
+      "NotebookEdit(*)",
+      "mcp__Atlassian__getConfluencePage",
+      "mcp__Atlassian__getConfluencePageDescendants",
+      "mcp__Atlassian__getConfluencePageFooterComments",
+      "mcp__Atlassian__getConfluencePageInlineComments",
+      "mcp__Atlassian__getConfluenceCommentChildren",
+      "mcp__Atlassian__getConfluenceSpaces",
+      "mcp__Atlassian__getPagesInConfluenceSpace",
+      "mcp__Atlassian__searchConfluenceUsingCql",
+      "mcp__Atlassian__search",
+      "mcp__Atlassian__fetch",
+      "mcp__Atlassian__getAccessibleAtlassianResources",
+      "mcp__Atlassian__getJiraIssue",
+      "mcp__Atlassian__getJiraIssueRemoteIssueLinks",
+      "mcp__Atlassian__getJiraIssueTypeMetaWithFields",
+      "mcp__Atlassian__getJiraProjectIssueTypesMetadata",
+      "mcp__Atlassian__getTransitionsForJiraIssue",
+      "mcp__Atlassian__getVisibleJiraProjects",
+      "mcp__Atlassian__searchJiraIssuesUsingJql",
+      "mcp__Atlassian__jiraRead",
+      "mcp__Atlassian__atlassianUserInfo",
+      "mcp__Atlassian__lookupJiraAccountId",
+      "mcp__plugin_slack_slack__slack_read_canvas",
+      "mcp__plugin_slack_slack__slack_read_channel",
+      "mcp__plugin_slack_slack__slack_read_thread",
+      "mcp__plugin_slack_slack__slack_read_user_profile",
+      "mcp__plugin_slack_slack__slack_search_channels",
+      "mcp__plugin_slack_slack__slack_search_public",
+      "mcp__plugin_slack_slack__slack_search_public_and_private",
+      "mcp__plugin_slack_slack__slack_search_users",
+      "mcp__linear-server__*",
+      "mcp__Linear__get_attachment",
+      "mcp__Linear__get_document",
+      "mcp__Linear__get_initiative",
+      "mcp__Linear__get_issue",
+      "mcp__Linear__get_issue_status",
+      "mcp__Linear__get_milestone",
+      "mcp__Linear__get_project",
+      "mcp__Linear__get_status_updates",
+      "mcp__Linear__get_team",
+      "mcp__Linear__get_user",
+      "mcp__Linear__list_comments",
+      "mcp__Linear__list_cycles",
+      "mcp__Linear__list_documents",
+      "mcp__Linear__list_initiatives",
+      "mcp__Linear__list_issue_labels",
+      "mcp__Linear__list_issue_statuses",
+      "mcp__Linear__list_issues",
+      "mcp__Linear__list_milestones",
+      "mcp__Linear__list_project_labels",
+      "mcp__Linear__list_projects",
+      "mcp__Linear__list_teams",
+      "mcp__Linear__list_users",
+      "mcp__Linear__search_documentation",
+      "mcp__Linear__extract_images",
+      "mcp__plugin_sentry_sentry__analyze_issue_with_seer",
+      "mcp__plugin_sentry_sentry__find_organizations",
+      "mcp__plugin_sentry_sentry__find_projects",
+      "mcp__plugin_sentry_sentry__find_releases",
+      "mcp__plugin_sentry_sentry__find_teams",
+      "mcp__plugin_sentry_sentry__get_doc",
+      "mcp__plugin_sentry_sentry__get_event_attachment",
+      "mcp__plugin_sentry_sentry__get_issue_details",
+      "mcp__plugin_sentry_sentry__get_issue_tag_values",
+      "mcp__plugin_sentry_sentry__get_trace_details",
+      "mcp__plugin_sentry_sentry__search_docs",
+      "mcp__plugin_sentry_sentry__search_events",
+      "mcp__plugin_sentry_sentry__search_issue_events",
+      "mcp__plugin_sentry_sentry__search_issues",
+      "mcp__plugin_sentry_sentry__whoami",
+      "mcp__Datadog__check_datadog_mcp_setup"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE 'git push|gh pr create' && echo '{\"decision\":\"ask\",\"message\":\"git push/gh pr create 실행 전에 /review + /pr-size-check를 완료했나요?\"}' || echo '{\"decision\":\"allow\"}'",
+            "timeout": 5,
+            "statusMessage": "push/PR 사전 체크"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash /Users/teddy.park/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "ralph-loop@claude-plugins-official": true,
+    "everything-claude-code@everything-claude-code": true,
+    "slack@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "codex@openai-codex": true
+  },
+  "extraKnownMarketplaces": {
+    "openai-codex": {
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc"
+      }
+    }
+  },
+  "effortLevel": "high",
+  "skipDangerousModePermissionPrompt": true
+}
