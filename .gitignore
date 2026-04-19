@@ -1,15 +1,20 @@
-# rw (Ralph Workflow) 세션 파일
-ralph-workflow/sessions/
-tmp/ralph-workflow/
-
-# cw (Codex Workflow) 세션 파일
-codex-workflow/sessions/
-
-# codex workflow runtime artifacts
-.codex/cw-*.md
-
 # macOS
 .DS_Store
 
 # IDE
 .idea/
+.vscode/
+
+# 임시 작업 디렉토리
+tmp/
+*.backup
+
+# 시크릿 (실수 방지)
+# 이 레포에는 원칙적으로 시크릿 파일을 두지 않지만, 실수로 들어와도 차단.
+*.env
+*.pem
+*.key
+linear_api_key
+redash_config.json
+auth.json
+installation_id

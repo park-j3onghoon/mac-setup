@@ -1,0 +1,15 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "jq -r '.tool_input.command' | grep -qE 'git push|gh pr create' && echo '{\"decision\":\"ask\",\"message\":\"git push/gh pr create 실행 전에 review + pr-size-check를 완료했나요?\"}' || echo '{\"decision\":\"allow\"}'",
+          "timeout": 5,
+          "statusMessage": "push/PR 사전 체크"
+        }
+      ]
+    }
+  ]
+}
