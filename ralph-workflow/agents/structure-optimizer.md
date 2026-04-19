@@ -2,7 +2,6 @@
 name: structure-optimizer
 description: Code structure optimizer. Splits large functions/files, identifies reuse opportunities, verifies extensibility patterns. Does NOT handle dead code (Phase 12) or architecture validation (Phase 11). Use in Phase 8.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

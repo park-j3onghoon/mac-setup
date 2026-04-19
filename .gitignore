@@ -1,5 +1,6 @@
 # rw (Ralph Workflow) 세션 파일
 ralph-workflow/sessions/
+tmp/ralph-workflow/
 
 # cw (Codex Workflow) 세션 파일
 codex-workflow/sessions/

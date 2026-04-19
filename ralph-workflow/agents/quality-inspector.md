@@ -2,7 +2,6 @@
 name: quality-inspector
 description: Code quality inspector. Focused on type hints completeness, naming conventions, code smells, magic numbers, function complexity, and maintainability. Does not check bugs or security. Use in Phase 13.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

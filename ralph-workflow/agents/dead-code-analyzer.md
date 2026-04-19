@@ -2,7 +2,6 @@
 name: dead-code-analyzer
 description: Dead code detection specialist. Identifies unused imports, unreachable branches, uncalled private methods, unused variables, and debug/temp code. Focused exclusively on dead code removal. Use in Phase 12.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

@@ -2,7 +2,6 @@
 name: ddd-reviewer
 description: DDD (Domain-Driven Design) deep reviewer. Validates aggregate boundaries, value object immutability, domain events, bounded context translation, and repository patterns. Use in Phase 15.
 tools: Read, Grep, Glob
-model: opus
 effort: high
 ---
 

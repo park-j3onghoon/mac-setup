@@ -2,7 +2,6 @@
 name: performance-reviewer
 description: Performance specialist. Detects N+1 queries, unnecessary DB round trips, O(n²) algorithms, missing indexes, caching opportunities, and memory inefficiencies. Use in Phase 14.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

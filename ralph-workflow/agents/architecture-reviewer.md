@@ -2,7 +2,6 @@
 name: architecture-reviewer
 description: Architecture compliance reviewer. Validates DDD layer dependencies, design pattern usage, SOLID principles (SRP, OCP, LSP, ISP, DIP), CQS (Command-Query Separation), and overall architectural integrity. Use in Phase 11.
 tools: Read, Grep, Glob
-model: opus
 effort: high
 ---
 
