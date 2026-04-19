@@ -2,7 +2,6 @@
 name: test-quality-reviewer
 description: Test quality and effectiveness reviewer. Validates mock accuracy, test isolation, negative test coverage, test data realism, and assert completeness. Ensures tests actually catch bugs. Use in Phase 17.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 

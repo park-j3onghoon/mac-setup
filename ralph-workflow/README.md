@@ -4,8 +4,12 @@ Claude Code + Ralph Loop 기반 Phase 0~19 자동화 파이프라인.
 spec 문서를 입력하면 계획 → 검토 → YAGNI → 구현 → 스펙 검증 → 버그/보안 → 수정 검증 → 구조 개선 → 통합 → 사이드이펙트 → 전체 재검토 → 코드 정리 → 품질 → 성능 → DDD → 사용자 흐름 → 심층 검토 → 배포 판정 → 커밋까지 자동 수행한다.
 
 기본 실행 모델/추론:
-- `rw`: Claude `opus` + `--effort high`
-- `rw --review --assistant codex`: `gpt-5.3-codex` + `model_reasoning_effort=xhigh`
+- `rw`: Claude `opus` + `--effort high` (미지정 시 최상)
+- `rw --review` (기본 assistant=`claude`): Claude `opus` + `--effort high` (미지정 시 최상)
+- `rw --review --assistant codex`: `gpt-5.3-codex` + `model_reasoning_effort=xhigh` (미지정 시 최상)
+
+참고:
+- Phase 템플릿에서 호출되는 subagent도 별도 모델 고정이 없으면 현재 `rw --model` 값을 상속한다.
 
 ## 설치
 
@@ -100,13 +104,14 @@ rw -s big-feature docs/spec_1.md docs/spec_2.md docs/spec_3.md -m src/myapp
 | `-m`, `--module PATH` | 구현 대상 모듈 경로. lint/mypy/리뷰 범위 지정 | `.` |
 | `-t`, `--test PATH` | 테스트 디렉토리 경로 (자동 감지: `{module}/tests` 존재 시 사용, 없으면 `{module}`) | 자동 |
 | `-n`, `--multiplier N` | 이터레이션 배수 (float 허용, 아래 참조) | `1` |
-| `--model MODEL` | Claude 실행 모델 | `opus` |
-| `--effort LEVEL` | Claude 추론 강도 (`low`, `medium`, `high`) | `high` |
+| `--model MODEL` | Claude 실행 모델 (메인+subagent 공통, 예: `sonnet`, `opus`, `claude-sonnet-4-6`) | `opus` |
+| `--effort LEVEL` | Claude 추론 강도 (`low`, `medium`, `high`) | `high` (미지정 시 최상) |
 | `--templates DIR` | 커스텀 템플릿 디렉토리 | - |
 | `--from N` | 시작 phase 번호 (0~19). 지정 phase부터 재실행 | `0` |
 | `--spec-split FILE` | 큰 spec을 PR 단위로 분할 (`--max-lines N`, `--review-hours H`) | - |
+| `--clean` | 세션 디렉토리 정리 (기본 경로 + 레거시 경로) | - |
 | `--review` | 세션 리뷰 파일 생성 + 리뷰 세션 시작 (`-s` 필요) | - |
-| `--assistant NAME` | `--review` 실행 도우미 (`codex`, `claude`, `none`) | `codex` |
+| `--assistant NAME` | `--review` 실행 도우미 (`claude`, `codex`, `none`) | `claude` |
 | `--dry-run` | 실제 실행 없이 프롬프트만 확인 | - |
 | `--init` | 프로젝트에 에이전트 symlink 설치 | - |
 
@@ -143,8 +148,11 @@ iterations = ceil((base + floor(spec_lines / 300)) × multiplier)
 
 ### 세션 관리
 
-세션 상태는 `~/git/mac-setup/ralph-workflow/sessions/{session_name}/`에 저장된다.
+세션 상태는 기본적으로 `{프로젝트 루트}/tmp/ralph-workflow/{session_name}/`에 저장된다.
 워크플로우가 중단되면 동일 spec으로 다시 실행할 때 자동으로 이어서 진행할 수 있다.
+
+필요하면 `RW_SESSIONS_BASE_DIR` 환경변수로 세션 경로를 오버라이드할 수 있다.
+`rw --clean`은 현재 세션 기본 경로와 레거시 경로(`~/git/mac-setup/ralph-workflow/sessions`)를 함께 정리한다.
 
 ```bash
 # 중단된 세션이 있으면 자동 감지
@@ -178,12 +186,22 @@ rw -s pr2-impl docs/spec.md -m src/myapp
 실행 예시:
 
 ```bash
-# 리뷰 파일 생성 + Codex로 1번 체크리스트부터 대화형 리뷰 시작
+# 리뷰 파일 생성 + Claude로 1번 체크리스트부터 대화형 리뷰 시작 (기본값)
+rw --review -s pr2-impl
+
+# Codex로 리뷰 시작
 rw --review -s pr2-impl --assistant codex
 
 # 파일만 만들고 직접 진행
 rw --review -s pr2-impl --assistant none
 ```
+
+세션 디렉토리는 아래 순서로 자동 탐색한다.
+1. `{프로젝트 루트}/tmp/ralph-workflow/{name}` (또는 `RW_SESSIONS_BASE_DIR/{name}`)
+2. `{프로젝트 루트}/scripts/ralph-workflow/sessions/{name}`
+3. `{프로젝트 루트}/scripts/codex-workflow/sessions/{name}`
+4. `~/git/mac-setup/ralph-workflow/sessions/{name}` (레거시)
+5. `~/git/mac-setup/codex-workflow/sessions/{name}` (레거시)
 
 ### 사용 예시
 
@@ -309,16 +327,6 @@ Phase 템플릿(phase0-plan.md 등)은 다음 순서로 탐색된다:
 ├── phase17-deep-review.md          ← 심층 검토
 ├── phase18-deploy-judge.md         ← 배포 판정
 ├── phase19-commit.md               ← 커밋
-├── sessions/                       ← 세션 상태 (gitignore 권장)
-│   └── {session-name}/
-│       ├── state.env
-│       ├── rw-phase-0-prompt.md
-│       ├── rw-phase-0.log
-│       ├── rw-checklist.md          ← 완료 시 보관
-│       ├── rw-spec-digest.md        ← 완료 시 보관 (스펙 요약 인덱스)
-│       ├── rw-plan.md               ← 완료 시 보관
-│       ├── rw-notes.md              ← 완료 시 보관
-│       └── ...
 └── agents/                         ← 에이전트 템플릿 (22개)
     ├── adversarial-reviewer.md
     ├── architecture-reviewer.md
@@ -344,6 +352,17 @@ Phase 템플릿(phase0-plan.md 등)은 다음 순서로 탐색된다:
     └── yagni-reviewer.md
 
 ~/.local/bin/rw                     ← 심볼릭 링크 → run-workflow.sh
+
+{프로젝트 루트}/tmp/ralph-workflow/ ← 세션 상태 (gitignore 권장)
+└── {session-name}/
+    ├── state.env
+    ├── rw-phase-0-prompt.md
+    ├── rw-phase-0.log
+    ├── rw-checklist.md             ← 완료 시 보관
+    ├── rw-spec-digest.md           ← 완료 시 보관 (스펙 요약 인덱스)
+    ├── rw-plan.md                  ← 완료 시 보관
+    ├── rw-notes.md                 ← 완료 시 보관
+    └── ...
 ```
 
 ---

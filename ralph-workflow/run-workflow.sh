@@ -15,13 +15,16 @@
 #   -n, --multiplier N   이터레이션 배수 (기본 1, float 허용. 예: -n 2, -n 0.5)
 #   -m, --module PATH    구현 대상 모듈 경로
 #   -t, --test PATH      테스트 디렉토리 경로
-#   --model MODEL        Claude 실행 모델 (기본: opus)
-#   --effort LEVEL       Claude 추론 강도 (기본: high)
+#   --model MODEL        Claude 실행 모델 (메인+subagent 공통, 기본: opus. 예: sonnet, claude-sonnet-4-6)
+#   --effort LEVEL       Claude 추론 강도 (기본: high, 미지정 시 최상)
 #   --templates DIR      커스텀 템플릿 디렉토리
 #   --from N             시작 Phase 번호 (기본 0). 특정 phase부터 재실행할 때 사용
 #   --spec-split FILE    큰 스펙을 PR 단위로 분할 (--max-lines N, --review-hours H)
+#   --clean              세션 디렉토리 정리 (기본 경로 + 레거시 경로)
 #   --review             세션 리뷰 파일 생성 + 리뷰 세션 시작 (spec 없이 사용 가능)
-#   --assistant NAME     --review에서 실행할 도우미 (codex|claude|none, 기본 codex)
+#   --improve            improve_review.md 기반 워크플로우 개선 세션 시작
+#   --improve-file FILE  개선 입력 파일 경로 (기본: 세션의 improve_review.md)
+#   --assistant NAME     --review/--improve에서 실행할 도우미 (claude|codex|none, 기본 claude)
 #   --init               프로젝트에 rw 에이전트 symlink 설치
 #
 # 실행 전 체크리스트 (복붙 한번에 실행, 재실행 안전):
@@ -108,8 +111,12 @@ GLOBAL_TEMPLATE_DIR="${0:A:h}"  # 심볼릭 링크 resolve 후 실제 디렉토�
 PROJECT_ROOT="$(pwd)"
 RALPH_STATE_FILE="$PROJECT_ROOT/.claude/ralph-loop.local.md"
 
-# 세션 파일 기본 디렉토리 (mac-setup 내, 세션 이름은 파싱 후 설정)
-SESSIONS_BASE_DIR="$GLOBAL_TEMPLATE_DIR/sessions"
+# 세션 파일 기본 디렉토리
+# 기본: 프로젝트 로컬 tmp/ralph-workflow (프로젝트별 병렬 실행/관리 용이)
+# 필요 시 RW_SESSIONS_BASE_DIR로 오버라이드 가능
+DEFAULT_SESSIONS_BASE_DIR="$PROJECT_ROOT/tmp/ralph-workflow"
+LEGACY_SESSIONS_BASE_DIR="$GLOBAL_TEMPLATE_DIR/sessions"
+SESSIONS_BASE_DIR="${RW_SESSIONS_BASE_DIR:-$DEFAULT_SESSIONS_BASE_DIR}"
 
 # 프로젝트 로컬 템플릿 (있으면 우선)
 LOCAL_TEMPLATE_DIR="$PROJECT_ROOT/scripts/ralph-workflow"
@@ -161,22 +168,33 @@ format_tokens() {
 extract_tokens_from_log() {
   local log_file=$1
   local total=0
+  local prev=-1
   # ANSI escape + \r 제거 후 ↓ Xk tokens 패턴 매칭
   local matches
   matches=$(sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' "$log_file" 2>/dev/null \
     | grep -oE '↓ [0-9.]+[kKmM]? tokens' 2>/dev/null || true)
   [[ -z "$matches" ]] && printf '%s\n' 0 && return
-  local num_with_suffix num suffix
+  local num_with_suffix num suffix value
   while IFS= read -r line; do
     # "↓ " 와 " tokens" 사이의 숫자+접미사만 추출 (tokens의 k 오매칭 방지)
     num_with_suffix=$(printf '%s\n' "$line" | grep -oE '[0-9.]+[kKmM]?' | head -1)
     num=$(printf '%s\n' "$num_with_suffix" | grep -oE '[0-9.]+')
-    suffix=$(printf '%s\n' "$num_with_suffix" | grep -oE '[kKmM]$')
+    suffix=$(printf '%s\n' "$num_with_suffix" | grep -oE '[kKmM]$' || true)
     case "$suffix" in
-      k|K) total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n * 1000}') ;;
-      m|M) total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n * 1000000}') ;;
-      *)   total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n}') ;;
+      k|K) value=$(awk -v n="$num" 'BEGIN{printf "%d", n * 1000}') ;;
+      m|M) value=$(awk -v n="$num" 'BEGIN{printf "%d", n * 1000000}') ;;
+      *)   value=$(awk -v n="$num" 'BEGIN{printf "%d", n}') ;;
     esac
+
+    # 토큰 카운터는 렌더링 중복 출력/리셋이 발생할 수 있어 증가분만 합산한다.
+    if (( prev < 0 )); then
+      total=$((total + value))
+    elif (( value >= prev )); then
+      total=$((total + value - prev))
+    else
+      total=$((total + value))
+    fi
+    prev=$value
   done <<< "$matches"
   printf '%s\n' "$total"
 }
@@ -300,20 +318,69 @@ save_session_state() {
 }
 
 find_incomplete_session() {
-  local dirs=($SESSIONS_BASE_DIR/*(N/))
-  [[ ${#dirs[@]} -eq 0 ]] && return 1
-  for dir in "${dirs[@]}"; do
-    [[ -f "$dir/state.env" ]] || continue
-    local fp st ph
-    fp=$(grep '^SPEC_FINGERPRINT=' "$dir/state.env" | cut -d= -f2-)
-    st=$(grep '^STATUS=' "$dir/state.env" | cut -d= -f2-)
-    ph=$(grep '^CURRENT_PHASE=' "$dir/state.env" | cut -d= -f2-)
-    if [[ "$fp" == "$SPEC_FINGERPRINT" ]] && [[ "$st" == "in_progress" ]]; then
-      printf '%s\n' "$(basename "$dir")|$ph"
-      return 0
-    fi
+  local -a roots=("$SESSIONS_BASE_DIR")
+  if [[ "$LEGACY_SESSIONS_BASE_DIR" != "$SESSIONS_BASE_DIR" ]]; then
+    roots+=("$LEGACY_SESSIONS_BASE_DIR")
+  fi
+
+  local root
+  for root in "${roots[@]}"; do
+    local dirs=($root/*(N/))
+    [[ ${#dirs[@]} -eq 0 ]] && continue
+    local dir
+    for dir in "${dirs[@]}"; do
+      [[ -f "$dir/state.env" ]] || continue
+      local fp st ph
+      fp=$(grep '^SPEC_FINGERPRINT=' "$dir/state.env" | cut -d= -f2-)
+      st=$(grep '^STATUS=' "$dir/state.env" | cut -d= -f2-)
+      ph=$(grep '^CURRENT_PHASE=' "$dir/state.env" | cut -d= -f2-)
+      if [[ "$fp" == "$SPEC_FINGERPRINT" ]] && [[ "$st" == "in_progress" ]]; then
+        printf '%s|%s|%s\n' "$(basename "$dir")" "$ph" "$dir"
+        return 0
+      fi
+    done
   done
   return 1
+}
+
+list_review_session_candidates() {
+  local session_name=$1
+  local global_parent="${GLOBAL_TEMPLATE_DIR:h}"
+  local -a candidates=(
+    "$SESSIONS_BASE_DIR/$session_name"
+    "$PROJECT_ROOT/scripts/ralph-workflow/sessions/$session_name"
+    "$PROJECT_ROOT/scripts/codex-workflow/sessions/$session_name"
+    "$LEGACY_SESSIONS_BASE_DIR/$session_name"
+    "$global_parent/codex-workflow/sessions/$session_name"
+  )
+  typeset -A seen=()
+  local path
+  for path in "${candidates[@]}"; do
+    [[ -z "$path" ]] && continue
+    [[ -n "${seen[$path]:-}" ]] && continue
+    seen[$path]=1
+    printf '%s\n' "$path"
+  done
+}
+
+resolve_review_session_dir() {
+  local session_name=$1
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -d "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(list_review_session_candidates "$session_name")
+  return 1
+}
+
+print_review_session_candidates() {
+  local session_name=$1
+  echo "${YELLOW}검색한 세션 경로:${NC}" >&2
+  local candidate
+  while IFS= read -r candidate; do
+    echo "  - $candidate" >&2
+  done < <(list_review_session_candidates "$session_name")
 }
 
 # 시작 phase가 0이 아닐 때, .claude의 컨텍스트 파일(rw-*.md)이 비어있으면
@@ -327,19 +394,28 @@ find_context_source_file() {
     return 0
   fi
 
-  # 2) 같은 spec fingerprint를 가진 다른 세션 폴백
-  local dirs=($SESSIONS_BASE_DIR/*(N/))
-  [[ ${#dirs[@]} -eq 0 ]] && return 1
-  for dir in "${dirs[@]}"; do
-    [[ "$dir" == "$SESSION_DIR" ]] && continue
-    [[ -f "$dir/$file_name" ]] || continue
-    [[ -f "$dir/state.env" ]] || continue
-    local fp=""
-    fp=$(grep '^SPEC_FINGERPRINT=' "$dir/state.env" | cut -d= -f2- || true)
-    if [[ "$fp" == "$SPEC_FINGERPRINT" ]]; then
-      printf '%s\n' "$dir/$file_name"
-      return 0
-    fi
+  # 2) 같은 spec fingerprint를 가진 다른 세션 폴백 (신규/레거시 경로 모두 검색)
+  local -a roots=("$SESSIONS_BASE_DIR")
+  if [[ "$LEGACY_SESSIONS_BASE_DIR" != "$SESSIONS_BASE_DIR" ]]; then
+    roots+=("$LEGACY_SESSIONS_BASE_DIR")
+  fi
+
+  local root
+  for root in "${roots[@]}"; do
+    local dirs=($root/*(N/))
+    [[ ${#dirs[@]} -eq 0 ]] && continue
+    local dir
+    for dir in "${dirs[@]}"; do
+      [[ "$dir" == "$SESSION_DIR" ]] && continue
+      [[ -f "$dir/$file_name" ]] || continue
+      [[ -f "$dir/state.env" ]] || continue
+      local fp=""
+      fp=$(grep '^SPEC_FINGERPRINT=' "$dir/state.env" | cut -d= -f2- || true)
+      if [[ "$fp" == "$SPEC_FINGERPRINT" ]]; then
+        printf '%s\n' "$dir/$file_name"
+        return 0
+      fi
+    done
   done
   return 1
 }
@@ -559,98 +635,475 @@ check_promise_in_log() {
     | grep -v 'completion.*promise' | grep -v '<promise>' | grep -qF "$promise_nospace" 2>/dev/null
 }
 
-# review 모드에서 즉시 사용하기 위한 경량 버전.
-# (아래쪽에서 동일 이름 함수가 다시 정의되며, 일반 워크플로우 종료 시에는 최신 정의를 사용)
-generate_review_file() {
-  local review_file="$SESSION_DIR/rw-review.md"
+generate_deep_review_file() {
+  local review_title_prefix=$1
+  local review_filename=$2
+  local review_file="$SESSION_DIR/$review_filename"
   local state_file="$SESSION_DIR/state.env"
-  local session_status="unknown" current_phase="0" spec_fingerprint=""
-  [[ -f "$state_file" ]] && spec_fingerprint=$(grep '^SPEC_FINGERPRINT=' "$state_file" | cut -d= -f2-)
-  [[ -f "$state_file" ]] && session_status=$(grep '^STATUS=' "$state_file" | cut -d= -f2-)
-  [[ -f "$state_file" ]] && current_phase=$(grep '^CURRENT_PHASE=' "$state_file" | cut -d= -f2-)
-  printf '%s' "$current_phase" | grep -qE '^[0-9]+$' || current_phase="0"
+  local session_status="unknown"
+  local current_phase=0
+  local spec_fingerprint=""
+
+  if [[ -f "$state_file" ]]; then
+    spec_fingerprint=$(grep '^SPEC_FINGERPRINT=' "$state_file" | cut -d= -f2-)
+    session_status=$(grep '^STATUS=' "$state_file" | cut -d= -f2-)
+    current_phase=$(grep '^CURRENT_PHASE=' "$state_file" | cut -d= -f2-)
+  fi
+  if ! printf '%s' "$current_phase" | grep -qE '^[0-9]+$'; then
+    current_phase=0
+  fi
+
+  local progress_pct
+  if [[ "$session_status" == "completed" ]]; then
+    progress_pct=100
+  else
+    progress_pct=$(((current_phase + 1) * 100 / 20))
+    (( progress_pct > 99 )) && progress_pct=99
+    (( progress_pct < 0 )) && progress_pct=0
+  fi
+  local current_phase_name="${PHASE_NAMES[$current_phase]:-알 수 없음}"
+
+  local -a spec_entries=()
+  if [[ ${#SPEC_PATHS[@]} -gt 0 ]]; then
+    spec_entries=("${SPEC_PATHS[@]}")
+  elif [[ -n "$spec_fingerprint" ]]; then
+    spec_entries=(${(s:|:)spec_fingerprint})
+  fi
 
   local main_branch
   main_branch=$(detect_main_branch)
   local base_ref
   base_ref=$(git merge-base HEAD "$main_branch" 2>/dev/null || printf '%s\n' "HEAD~1")
 
-  local status_file numstat_file
-  status_file=$(mktemp)
-  numstat_file=$(mktemp)
-  git diff --name-status --no-renames "$base_ref" > "$status_file" 2>/dev/null || true
-  git diff --numstat --no-renames "$base_ref" > "$numstat_file" 2>/dev/null || true
+  local diff_status_file diff_numstat_file
+  diff_status_file=$(mktemp)
+  diff_numstat_file=$(mktemp)
+  git diff --name-status --no-renames "$base_ref" > "$diff_status_file" 2>/dev/null || true
+  git diff --numstat --no-renames "$base_ref" > "$diff_numstat_file" 2>/dev/null || true
 
-  typeset -A add_map del_map
-  local add del file_path file_stat
-  while IFS=$'\t' read -r add del file_path; do
+  typeset -A file_status file_added file_deleted file_bundle file_focus file_hunks file_hunk_count
+  local file_stat file_path
+  while IFS=$'\t' read -r file_stat file_path; do
     [[ -z "$file_path" ]] && continue
+    case "$file_stat" in
+      A) file_status[$file_path]="created" ;;
+      M) file_status[$file_path]="modified" ;;
+      D) file_status[$file_path]="deleted" ;;
+      *) file_status[$file_path]="$file_stat" ;;
+    esac
+  done < "$diff_status_file"
+
+  local add del num_file_path
+  while IFS=$'\t' read -r add del num_file_path; do
+    [[ -z "$num_file_path" ]] && continue
     [[ "$add" == "-" ]] && add=0
     [[ "$del" == "-" ]] && del=0
-    add_map[$file_path]="${add:-0}"
-    del_map[$file_path]="${del:-0}"
-  done < "$numstat_file"
+    file_added[$num_file_path]="${add:-0}"
+    file_deleted[$num_file_path]="${del:-0}"
+  done < "$diff_numstat_file"
 
-  local progress_pct=$(((current_phase + 1) * 100 / 20))
-  [[ "$session_status" == "completed" ]] && progress_pct=100
-  (( progress_pct > 100 )) && progress_pct=100
-  (( progress_pct < 0 )) && progress_pct=0
+  local -a changed_paths=(${(k)file_status})
+  changed_paths=(${(on)changed_paths})
+  local changed_count=${#changed_paths[@]}
+
+  local created_count=0 modified_count=0 deleted_count=0
+  local -a contract_files=() core_files=() test_files=() ops_files=()
+  for file_path in "${changed_paths[@]}"; do
+    case "${file_status[$file_path]}" in
+      created) created_count=$((created_count + 1)) ;;
+      modified) modified_count=$((modified_count + 1)) ;;
+      deleted) deleted_count=$((deleted_count + 1)) ;;
+    esac
+
+    local bundle_key="(root)"
+    if [[ "$file_path" == */*/* ]]; then
+      local first_dir="${file_path%%/*}"
+      local rest_path="${file_path#*/}"
+      local second_dir="${rest_path%%/*}"
+      bundle_key="${first_dir}/${second_dir}"
+    elif [[ "$file_path" == */* ]]; then
+      bundle_key="${file_path%%/*}"
+    fi
+    file_bundle[$file_path]="$bundle_key"
+
+    case "$file_path" in
+      *"/migrations/"*|*.sql|*schema*|*openapi*|*.proto|*/dto.py|*/models/*|*/domain/*constants*.py|*/domain/*repositories.py)
+        contract_files+=("$file_path")
+        file_focus[$file_path]="스키마/계약 변경과 하위 호환성 검증"
+        ;;
+      */tests/*|tests/*|*_test.py|test_*)
+        test_files+=("$file_path")
+        file_focus[$file_path]="요구사항 커버리지와 회귀 방지 수준 검증"
+        ;;
+      docs/*|*.md|*/management/commands/*|*/scripts/*|*.sh|*.yml|*.yaml|*.toml|*.json|*.ini)
+        ops_files+=("$file_path")
+        file_focus[$file_path]="운영 절차/문서/설정 값 정합성과 실행 안정성 검증"
+        ;;
+      *)
+        core_files+=("$file_path")
+        file_focus[$file_path]="도메인 로직, 예외 처리, 부작용 검증"
+        ;;
+    esac
+  done
+
+  local diff_content hunk_lines hunk_count
+  for file_path in "${changed_paths[@]}"; do
+    diff_content=$(git diff --unified=0 --no-color "$base_ref" -- "$file_path" 2>/dev/null || true)
+    hunk_lines=$(printf '%s\n' "$diff_content" | grep '^@@' || true)
+    hunk_lines=$(printf '%s\n' "$hunk_lines" | sed '/^$/d' || true)
+    if [[ -n "$hunk_lines" ]]; then
+      hunk_count=$(printf '%s\n' "$hunk_lines" | wc -l | tr -d ' ')
+    else
+      hunk_count=0
+    fi
+    file_hunks[$file_path]="$hunk_lines"
+    file_hunk_count[$file_path]="$hunk_count"
+  done
+
+  local -a evidence_candidates=(
+    "$SESSION_DIR/rw-spec-digest.md"
+    "$SESSION_DIR/rw-checklist.md"
+    "$SESSION_DIR/rw-notes.md"
+    "$SESSION_DIR/rw-review.md"
+    "$SESSION_DIR/cw-spec-digest.md"
+    "$SESSION_DIR/cw-checklist.md"
+    "$SESSION_DIR/cw-notes.md"
+    "$SESSION_DIR/cw-review.md"
+    "$SESSION_DIR/rw-plan.md"
+    "$SESSION_DIR/cw-plan.md"
+  )
+  local -a evidence_files=()
+  local evidence_path
+  for evidence_path in "${evidence_candidates[@]}"; do
+    [[ -f "$evidence_path" ]] && evidence_files+=("$evidence_path")
+  done
+
+  emit_group_file_checklist() {
+    local group_title=$1
+    local group_purpose=$2
+    shift 2
+    local -a group_files=("$@")
+
+    echo "## ${group_title}"
+    echo "### 목적"
+    echo "- ${group_purpose}"
+    echo "### 파일 수"
+    echo "- ${#group_files[@]}개"
+    if (( ${#group_files[@]} == 0 )); then
+      echo "- 변경 파일 없음"
+      echo ""
+      return 0
+    fi
+
+    typeset -A bundle_counts
+    local group_file bundle_name
+    for group_file in "${group_files[@]}"; do
+      bundle_name="${file_bundle[$group_file]:-(root)}"
+      bundle_counts[$bundle_name]=$(( ${bundle_counts[$bundle_name]:-0} + 1 ))
+    done
+
+    local -a bundle_names=(${(k)bundle_counts})
+    bundle_names=(${(on)bundle_names})
+
+    echo "### 묶음(폴더) 요약"
+    for bundle_name in "${bundle_names[@]}"; do
+      echo "- \`${bundle_name}\`: ${bundle_counts[$bundle_name]}개"
+    done
+    echo ""
+
+    local bundle_file file_status_text add_count del_count hunk_line hunk_item_count change_index change_context
+    for bundle_name in "${bundle_names[@]}"; do
+      echo "### Bundle: \`${bundle_name}\`"
+      local -a bundle_files=()
+      for group_file in "${group_files[@]}"; do
+        [[ "${file_bundle[$group_file]:-(root)}" == "$bundle_name" ]] && bundle_files+=("$group_file")
+      done
+      bundle_files=(${(on)bundle_files})
+
+      for bundle_file in "${bundle_files[@]}"; do
+        file_status_text="${file_status[$bundle_file]:-unknown}"
+        add_count="${file_added[$bundle_file]:-0}"
+        del_count="${file_deleted[$bundle_file]:-0}"
+        hunk_item_count="${file_hunk_count[$bundle_file]:-0}"
+
+        echo "#### File: \`${bundle_file}\`"
+        echo "- 상태: ${file_status_text} | 라인: +${add_count}/-${del_count}"
+        echo "- 리뷰 포커스: ${file_focus[$bundle_file]:-요구사항 반영/부작용 검증}"
+        echo "- 파일 체크리스트"
+        echo "- [ ] WHAT: 무엇이 바뀌었는지(입력/출력/상태/오류)를 기록했다."
+        echo "- [ ] HOW: 어떻게 바뀌었는지(흐름/의존성/레이어)를 기록했다."
+        echo "- [ ] WHY: 왜 바뀌었는지(스펙 절/REQ)를 연결했다."
+        echo "- [ ] VERIFY: 검증 근거(테스트/로그/수동 절차)를 기록했다."
+        echo "- [ ] SIDE EFFECT: 인접 모듈/기존 호출자 영향 여부를 확인했다."
+        echo "- 변경 체크포인트: ${hunk_item_count}개"
+
+        if (( hunk_item_count == 0 )); then
+          echo "- [ ] HUNK 정보 없음: 파일 전체 diff 기준으로 WHAT/HOW/WHY를 작성했다."
+        else
+          change_index=1
+          while IFS= read -r hunk_line; do
+            [[ -z "$hunk_line" ]] && continue
+            change_context=$(printf '%s\n' "$hunk_line" | sed -E 's/^@@[^@]*@@[[:space:]]*//')
+            if [[ -z "$change_context" ]] || [[ "$change_context" == "$hunk_line" ]]; then
+              change_context="(컨텍스트 없음)"
+            fi
+            echo ""
+            echo "##### Change ${change_index}"
+            echo "- 범위: \`${hunk_line}\`"
+            echo "- 컨텍스트: ${change_context}"
+            echo "- [ ] WHAT:"
+            echo "- [ ] HOW:"
+            echo "- [ ] WHY:"
+            echo "- [ ] VERIFY:"
+            change_index=$((change_index + 1))
+          done <<< "${file_hunks[$bundle_file]}"
+        fi
+
+        echo "- 파일 판정"
+        echo "- [ ] PASS"
+        echo "- [ ] PASS WITH COMMENT"
+        echo "- [ ] FAIL"
+        echo ""
+      done
+    done
+  }
 
   {
-    echo "# RW Review Guide - ${SESSION_NAME}"
+    echo "# ${review_title_prefix} Review Guide - ${SESSION_NAME} (File-Centric Checklist)"
     echo ""
-    echo "## 이번 작업 목표"
-    echo "- spec 요구사항 구현/검증 결과를 리뷰한다."
-    if [[ -n "$spec_fingerprint" ]]; then
-      echo "- 대상 spec:"
-      local spec_path
-      for spec_path in ${(s:|:)spec_fingerprint}; do
-        echo "  - \`${spec_path}\`"
-      done
-    fi
+    echo "## 문서 목적"
+    echo "- 변경 파일을 파일 단위로 리뷰하면서, 각 변경 묶음(hunk)마다 WHAT/HOW/WHY를 체크하기 위한 문서."
+    echo "- 폴더 묶음(Bundle)으로 순서를 잡고, 파일 판정과 최종 판정을 분리해 누락을 줄인다."
     echo ""
     echo "## 전체 작업 중 현재 위치"
     echo "- 상태: \`${session_status}\`"
-    echo "- 현재/마지막 phase: \`${current_phase}\` (${PHASE_NAMES[$current_phase]:-알 수 없음})"
-    echo "- 진행률: ${progress_pct}%"
+    echo "- 현재/마지막 Phase: \`${current_phase}\` (${current_phase_name})"
+    echo "- 진행률(0~19 기준): ${progress_pct}%"
+    echo "- 비교 기준: \`${base_ref}\`..HEAD"
+    echo "- 변경 파일: ${changed_count}개 (created ${created_count}, modified ${modified_count}, deleted ${deleted_count})"
+    echo "- 그룹 요약: 계약 ${#contract_files[@]}개 / 핵심 ${#core_files[@]}개 / 테스트 ${#test_files[@]}개 / 운영 ${#ops_files[@]}개"
+    echo "- 문서 생성 시각: $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
-    echo "## 리뷰 체크리스트"
-    echo "- [ ] 1. 목표/범위 확인"
-    echo "- [ ] 2. 신규 파일 확인"
-    echo "- [ ] 3. 핵심 구현 변경 확인"
-    echo "- [ ] 4. 테스트 변경 확인"
-    echo "- [ ] 5. 문서/설정 확인"
-    echo "- [ ] 6. 최종 판정"
+    echo "## 자동 수집 근거"
+    echo "### 스펙 경로"
+    if (( ${#spec_entries[@]} == 0 )); then
+      echo "- state.env에 spec 정보가 없어 수동 확인 필요"
+    else
+      local spec_path
+      for spec_path in "${spec_entries[@]}"; do
+        echo "- \`${spec_path}\`"
+      done
+    fi
     echo ""
-    echo "## 파일별 변경 요약"
-    echo "- 기준: \`${base_ref}\`..HEAD"
-    while IFS=$'\t' read -r file_stat file_path; do
-      [[ -z "$file_path" ]] && continue
-      local kind="modified"
-      [[ "$file_stat" == "A" ]] && kind="created"
-      [[ "$file_stat" == "D" ]] && kind="deleted"
-      echo "- \`${file_path}\` | ${kind} | +${add_map[$file_path]:-0}/-${del_map[$file_path]:-0}"
-    done < "$status_file"
+    echo "### 세션 근거 파일"
+    if (( ${#evidence_files[@]} == 0 )); then
+      echo "- 자동 탐지된 세션 근거 파일 없음"
+    else
+      for evidence_path in "${evidence_files[@]}"; do
+        echo "- \`${evidence_path}\`"
+      done
+    fi
     echo ""
-    echo "## 추천 리뷰 순서"
-    echo "1. 계약/스키마/API 영향 파일"
-    echo "2. 핵심 구현 파일"
-    echo "3. 테스트 파일"
-    echo "4. 문서/설정 파일"
+    echo "## 리뷰 진행 규칙"
+    echo "1. Group 0/1을 먼저 끝낸 뒤 Group 2~5를 파일 단위로 리뷰한다."
+    echo "2. 각 파일에서 WHAT/HOW/WHY/VERIFY/SIDE EFFECT를 모두 체크한다."
+    echo "3. 파일 내 Change 체크포인트를 채우기 전에는 파일 판정을 PASS로 두지 않는다."
+    echo "4. FAIL 파일이 1개라도 있으면 Group 6 최종 판정을 \`REQUEST CHANGES\`로 둔다."
     echo ""
-    echo "## 함께 리뷰 진행"
-    echo "- 1번 체크리스트부터 시작하고, 사용자 확인 후 다음으로 이동한다."
-    echo "- 각 단계마다 피드백을 액션 아이템으로 기록한다."
+    echo "## Group 0. 범위/베이스라인 확인"
+    echo "### 체크리스트"
+    echo "- [ ] 리뷰 기준 커밋(\`${base_ref}\`..HEAD)을 확정했다."
+    echo "- [ ] 리뷰 대상 파일 목록 ${changed_count}개를 확정했다."
+    echo "- [ ] 파일 누락 방지를 위해 Bundle 순서를 확정했다."
+    echo "### 판정"
+    echo "- [ ] PASS"
+    echo "- [ ] PASS WITH COMMENT"
+    echo "- [ ] FAIL"
+    echo ""
+    echo "## Group 1. 세션/스펙 정합성"
+    echo "### 목적"
+    echo "- 세션 산출물의 요구사항 목록과 실제 스펙 문서가 일치하는지 확인한다."
+    echo "### 변화 요약"
+    echo "- 세션 근거 파일: ${#evidence_files[@]}개"
+    if (( ${#evidence_files[@]} == 0 )); then
+      echo "- 근거 파일 없음(수동 확인 필요)"
+    else
+      for evidence_path in "${evidence_files[@]}"; do
+        echo "- \`${evidence_path}\`"
+      done
+    fi
+    echo "### 체크리스트"
+    echo "- [ ] 세션 체크리스트/노트의 REQ 목록을 확보했다."
+    echo "- [ ] 파일 리뷰 시 사용할 spec 절/REQ 링크 형식을 정했다."
+    echo "- [ ] 스펙의 금지/제약 조건을 체크 항목에 포함했다."
+    echo "### 판정"
+    echo "- [ ] PASS"
+    echo "- [ ] PASS WITH COMMENT"
+    echo "- [ ] FAIL"
+    echo ""
+    emit_group_file_checklist "Group 2. 계약/스키마/API (파일 단위)" "외부 계약/스키마 변경 파일을 파일 단위로 검증한다." "${contract_files[@]}"
+    emit_group_file_checklist "Group 3. 핵심 구현 로직 (파일 단위)" "핵심 도메인/애플리케이션 로직 파일을 파일 단위로 검증한다." "${core_files[@]}"
+    emit_group_file_checklist "Group 4. 테스트/회귀 보호 (파일 단위)" "테스트 파일을 파일 단위로 검증하고 요구사항 커버리지를 확인한다." "${test_files[@]}"
+    emit_group_file_checklist "Group 5. 문서/설정/운영 경로 (파일 단위)" "운영/문서/설정 파일을 파일 단위로 검증한다." "${ops_files[@]}"
+    echo "## Group 6. 잔여 리스크 및 최종 판정"
+    echo "### 파일 단위 종합 체크리스트"
+    echo "- [ ] FAIL 파일 목록을 정리했다."
+    echo "- [ ] 각 FAIL 파일의 수정 액션을 정의했다."
+    echo "- [ ] 재검증 필요 파일 목록을 분리했다."
+    echo "### 최종 판정"
+    echo "- [ ] APPROVE"
+    echo "- [ ] REQUEST CHANGES"
+    echo "- [ ] COMMENT ONLY"
+    echo "- 한 줄 요약: "
+    echo "- 블로킹 이슈(파일 경로 포함): "
+    echo "- 후속 액션(담당/기한): "
+    echo ""
+    echo "## Group 7. 워크플로우 환류(프로젝트 독립)"
+    echo "### 기록 파일"
+    echo "- \`${SESSION_DIR}/improve_review.md\`"
+    echo "### 체크리스트"
+    echo "- [ ] 프로젝트 독립적으로 재사용 가능한 개선 항목을 최소 1개 이상 추출했다."
+    echo "- [ ] 각 항목의 개선 포인트(문제/개선/효과)를 명시했다."
+    echo "- [ ] 각 항목에 WHY(효과)/리스크/검증 방법을 작성했다."
+    echo "- [ ] 추출 항목을 improve_review.md 세션 블록에 반영했다."
   } > "$review_file"
 
-  rm -f "$status_file" "$numstat_file"
+  rm -f "$diff_status_file" "$diff_numstat_file"
   printf '%s\n' "$review_file"
 }
 
+ensure_improve_review_file() {
+  local improve_file="$SESSION_DIR/improve_review.md"
+  if [[ ! -f "$improve_file" ]]; then
+    cat > "$improve_file" <<'EOF'
+# Improve Review
+
+코드 리뷰에서 도출한 "프로젝트 독립적" 개선 항목을 누적하는 파일.
+이 파일은 워크플로우/리뷰 프로세스 자체를 개선하기 위한 용도다.
+
+기록 규칙:
+1. 프로젝트 전용 정책/도메인 규칙은 제외한다.
+2. 항목마다 문제, 개선안, 기대효과, 검증방법을 남긴다.
+3. 상태는 proposed/applied/rejected 중 하나로 관리한다.
+EOF
+  fi
+  printf '%s\n' "$improve_file"
+}
+
+append_improve_review_session_template() {
+  local improve_file=$1
+  local review_kind=$2
+  local review_file=$3
+  local marker="<!-- session:${SESSION_NAME}|kind:${review_kind} -->"
+
+  if grep -qF "$marker" "$improve_file" 2>/dev/null; then
+    printf '%s\n' "$improve_file"
+    return 0
+  fi
+
+  {
+    echo ""
+    echo "## ${SESSION_NAME} | ${review_kind} | $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "$marker"
+    echo "- Source review file: \`${review_file}\`"
+    echo "- Source session dir: \`${SESSION_DIR}\`"
+    echo ""
+    echo "### Candidate 1"
+    echo "- Problem:"
+    echo "- Improvement:"
+    echo "- Expected impact:"
+    echo "- Validation plan:"
+    echo "- Status: proposed"
+    echo ""
+    echo "### Candidate 2"
+    echo "- Problem:"
+    echo "- Improvement:"
+    echo "- Expected impact:"
+    echo "- Validation plan:"
+    echo "- Status: proposed"
+  } >> "$improve_file"
+
+  printf '%s\n' "$improve_file"
+}
+
+generate_improve_instructions_file() {
+  local workflow_label=$1
+  local improve_source_file=$2
+  local instructions_file="$SESSION_DIR/${workflow_label:l}-improve-instructions.md"
+  local result_file="$SESSION_DIR/${workflow_label:l}-improve-result.md"
+  local workflow_script="$GLOBAL_TEMPLATE_DIR/run-workflow.sh"
+  local workflow_root="$GLOBAL_TEMPLATE_DIR"
+
+  cat > "$instructions_file" <<EOF
+# ${workflow_label} Improve Instructions
+
+## Inputs
+- Improve source: \`${improve_source_file}\`
+- Workflow script: \`${workflow_script}\`
+- Workflow root: \`${workflow_root}\`
+
+## Goal
+- improve_review.md의 항목을 반영해 ${workflow_label} 워크플로우를 개선한다.
+- 기존 기능/동작/옵션은 절대 제거하지 않고 100% 유지한다.
+- 개선은 확장 방식으로만 반영한다.
+
+## Mandatory Rules
+1. 기존 phase/agent/옵션/검증 로직은 보존한다.
+2. 변경 범위가 커지면 phase를 분리하고, 분리된 phase별 agent를 새로 만든다.
+3. 단일 대규모 수정 대신 작은 단위로 분할해 점진적으로 반영한다.
+4. backward compatibility를 깨는 변경은 금지한다.
+5. 수정 후 최소 \`zsh -n ${workflow_script}\` 문법 검증을 수행한다.
+
+## Work Steps
+1. improve_review.md 항목을 actionable task로 정리한다.
+2. task를 phase/agent/스크립트 개선 항목으로 매핑한다.
+3. 필요한 파일을 생성/수정하되 기존 기능은 유지한다.
+4. 변경 결과와 검증 결과를 문서화한다.
+
+## Output
+- 결과 요약 파일: \`${result_file}\`
+- 요약에는 아래를 반드시 포함한다.
+  - 적용한 개선 항목
+  - 보존한 기존 기능 체크
+  - 분리된 phase/agent 목록(있다면)
+  - 남은 TODO
+EOF
+
+  printf '%s\n' "$instructions_file"
+}
+
+launch_improve_assistant() {
+  local assistant=${1:-claude}
+  local instructions_file=$2
+  local prompt="Read ${instructions_file} and execute all steps end-to-end. Preserve all existing behavior and apply improvements only by extension."
+  case "$assistant" in
+    codex)
+      command -v codex >/dev/null 2>&1 || { echo "${YELLOW}경고: codex 미설치${NC}" >&2; return 0; }
+      codex -C "$PROJECT_ROOT" --model "$DEFAULT_CODEX_MODEL_NAME" \
+        -c "model_reasoning_effort=\"$DEFAULT_CODEX_REASONING_EFFORT\"" "$prompt"
+      ;;
+    claude)
+      command -v claude >/dev/null 2>&1 || { echo "${YELLOW}경고: claude 미설치${NC}" >&2; return 0; }
+      claude --model "$MODEL_NAME" --effort "$REASONING_EFFORT" "$prompt"
+      ;;
+    none) return 0 ;;
+    *)
+      echo "${RED}에러: 지원하지 않는 assistant입니다: $assistant (codex|claude|none)${NC}" >&2
+      return 1
+      ;;
+  esac
+}
+
+# review 모드에서 즉시 사용하기 위한 버전.
+# (아래쪽에서 동일 이름 함수가 다시 정의되며, 두 정의 모두 공통 생성기를 호출한다)
+generate_review_file() {
+  generate_deep_review_file "RW" "rw-review.md"
+}
+
 launch_review_assistant() {
-  local assistant=${1:-codex}
+  local assistant=${1:-claude}
   local review_file=$2
-  local prompt="Read ${review_file} first. Start from checklist item 1 only. Ask the user for review feedback and WAIT."
+  local prompt="Read ${review_file} first. Follow Group 0 to Group 7 order. In Group 2 to Group 5, review exactly one file at a time and WAIT for user confirmation before moving to the next file. For each file, fill WHAT/HOW/WHY/VERIFY/SIDE EFFECT checks. At the end (Group 7), extract project-independent improvements and write them to ${SESSION_DIR}/improve_review.md in this session block."
   case "$assistant" in
     codex)
       command -v codex >/dev/null 2>&1 || { echo "${YELLOW}경고: codex 미설치${NC}" >&2; return 0; }
@@ -682,7 +1135,9 @@ CUSTOM_TEMPLATE_DIR=""
 MODEL_NAME="$DEFAULT_MODEL_NAME"
 REASONING_EFFORT="$DEFAULT_REASONING_EFFORT"
 REVIEW_MODE=false
-REVIEW_ASSISTANT="codex"
+IMPROVE_MODE=false
+IMPROVE_FILE=""
+REVIEW_ASSISTANT="claude"
 # MAX_PHASE_RETRIES는 Phase별 iterations × 3으로 동적 계산 (compute_max_retries 함수 참조)
 
 while [[ $# -gt 0 ]]; do
@@ -741,16 +1196,24 @@ while [[ $# -gt 0 ]]; do
       REVIEW_MODE=true
       shift
       ;;
+    --improve)
+      IMPROVE_MODE=true
+      shift
+      ;;
+    --improve-file)
+      IMPROVE_FILE="$2"
+      shift 2
+      ;;
     --assistant)
       REVIEW_ASSISTANT="$2"
       shift 2
       ;;
     --spec-split)
-      local spec_file="${2:-}"
+      spec_file="${2:-}"
       [[ -z "$spec_file" || "$spec_file" == -* ]] && echo "${RED}에러: spec 파일 경로 필요${NC}" >&2 && exit 1
       shift 2
-      local max_lines=500
-      local review_hours="1.5"
+      max_lines=500
+      review_hours="1.5"
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --max-lines)
@@ -778,21 +1241,20 @@ while [[ $# -gt 0 ]]; do
       done
       [[ ! -f "$spec_file" ]] && echo "${RED}에러: $spec_file 없음${NC}" >&2 && exit 1
 
-      local target_review_minutes
       target_review_minutes=$(awk -v h="$review_hours" 'BEGIN{v=h*60; printf "%d", (v == int(v)) ? v : int(v) + 1}')
-      local review_min=$((target_review_minutes - 30))
-      local review_max=$((target_review_minutes + 30))
+      review_min=$((target_review_minutes - 30))
+      review_max=$((target_review_minutes + 30))
       (( review_min < 45 )) && review_min=45
       (( review_max > 240 )) && review_max=240
 
-      local total=$(wc -l < "$spec_file" | tr -d ' ')
+      total=$(wc -l < "$spec_file" | tr -d ' ')
       if (( total <= max_lines )); then
         echo "${GREEN}분할 불필요: ${total}줄 (제한: ${max_lines}줄, 리뷰 목표: ${review_min}~${review_max}분)${NC}"
         exit 0
       fi
 
       # ── Step 1: ## 헤더 기준 섹션 추출 ──
-      local -a h2_positions
+      typeset -a h2_positions
       h2_positions=(${(f)"$(grep -n '^## [^#]' "$spec_file" | cut -d: -f1)"})
 
       if [[ ${#h2_positions[@]} -eq 0 ]]; then
@@ -801,18 +1263,17 @@ while [[ $# -gt 0 ]]; do
       fi
 
       # 프리앰블 (첫 ## 이전)
-      local preamble_end=$((h2_positions[1] - 1))
+      preamble_end=$((h2_positions[1] - 1))
       (( h2_positions[1] <= 1 )) && preamble_end=0
-      local preamble_lines=$preamble_end
-      local body_max=$((max_lines - preamble_lines))
+      preamble_lines=$preamble_end
+      body_max=$((max_lines - preamble_lines))
       if (( body_max <= 0 )); then
         echo "${RED}에러: --max-lines(${max_lines})가 프리앰블(${preamble_lines})보다 작거나 같습니다.${NC}" >&2
         exit 1
       fi
 
       # 섹션별 정보
-      local -a sec_starts sec_ends sec_names sec_lines
-      local i
+      typeset -a sec_starts sec_ends sec_names sec_lines
       for (( i=1; i<=${#h2_positions[@]}; i++ )); do
         sec_starts+=("${h2_positions[$i]}")
         if (( i < ${#h2_positions[@]} )); then
@@ -820,21 +1281,21 @@ while [[ $# -gt 0 ]]; do
         else
           sec_ends+=("$total")
         fi
-        local sec_name=''
+        sec_name=''
         sec_name="$(sed -n "${h2_positions[$i]}p" "$spec_file" | sed 's/^## //')"
         sec_names+=("$sec_name")
         sec_lines+=("$((sec_ends[$i] - sec_starts[$i] + 1))")
       done
 
-      local sec_count=${#sec_names[@]}
+      sec_count=${#sec_names[@]}
 
       # ── Step 2: LLM에게 PR 단위 그룹핑 + 맥락 요약 요청 ──
-      local section_list=""
+      section_list=""
       for (( i=1; i<=sec_count; i++ )); do
         section_list+="  ${i}. ${sec_names[$i]} (${sec_lines[$i]}줄)"$'\n'
       done
 
-      local ai_prompt="다음 스펙 문서를 사람이 리뷰하기 좋은 PR 단위로 분할하라.
+      ai_prompt="다음 스펙 문서를 사람이 리뷰하기 좋은 PR 단위로 분할하라.
 
 규칙:
 - 프리앰블(${preamble_lines}줄)은 모든 그룹에 자동 포함됨 (줄 수 계산에서 제외)
@@ -860,11 +1321,11 @@ ${section_list}
 $(cat "$spec_file")"
 
       echo "${CYAN}AI로 섹션 관련성 분석 중...${NC}" >&2
-      local ai_prompt_file ai_result
+      typeset ai_prompt_file ai_result
       ai_prompt_file="$(mktemp)"
       printf '%s' "$ai_prompt" > "$ai_prompt_file"
       ai_result="$(claude -p --model "$MODEL_NAME" --effort "$REASONING_EFFORT" < "$ai_prompt_file" 2>/dev/null)"
-      local ai_exit=$?
+      ai_exit=$?
       rm -f "$ai_prompt_file"
 
       if [[ $ai_exit -ne 0 ]] || [[ -z "$ai_result" ]]; then
@@ -873,7 +1334,7 @@ $(cat "$spec_file")"
       fi
 
       # ── Step 3: AI 응답 파싱 ──
-      local -a group_nums_list group_context_list group_pr_titles group_review_mins
+      typeset -a group_nums_list group_context_list group_pr_titles group_review_mins
 
       while IFS= read -r line; do
         line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -904,12 +1365,12 @@ $(cat "$spec_file")"
       fi
 
       # 검증: 모든 섹션 번호가 정확히 1번씩
-      local all_nums=""
+      all_nums=""
       for g in "${group_nums_list[@]}"; do
         all_nums+="$(printf '%s\n' "$g" | tr ',' '\n')"$'\n'
       done
-      local sorted_nums=$(printf '%s' "$all_nums" | grep -E '^[0-9]+$' | sort -n)
-      local expected_nums=$(seq 1 $sec_count)
+      sorted_nums=$(printf '%s' "$all_nums" | grep -E '^[0-9]+$' | sort -n)
+      expected_nums=$(seq 1 $sec_count)
       if [[ "$sorted_nums" != "$expected_nums" ]]; then
         echo "${RED}에러: AI 그룹핑 검증 실패 (섹션 누락/중복)${NC}" >&2
         echo "  기대: $(seq 1 $sec_count | tr '\n' ',')" >&2
@@ -925,13 +1386,13 @@ $(cat "$spec_file")"
       done
 
       # ── Step 4: split 파일 생성 (PR 메타 + 맥락 + 원본 섹션) ──
-      local base="${spec_file%.md}"
-      local split_num=${#group_nums_list[@]}
-      local -a split_line_counts split_sec_labels
-      local plan_file="${base}.split-plan.md"
+      base="${spec_file%.md}"
+      split_num=${#group_nums_list[@]}
+      typeset -a split_line_counts split_sec_labels
+      plan_file="${base}.split-plan.md"
 
       for (( i=1; i<=split_num; i++ )); do
-        local out_file="${base}.split-${i}.md"
+        out_file="${base}.split-${i}.md"
         : > "$out_file"
 
         # 1) 프리앰블 원본
@@ -949,9 +1410,9 @@ $(cat "$spec_file")"
         printf '\n---\n\n' >> "$out_file"
 
         # 3) 해당 섹션들 원본 (sed 추출)
-        local -a nums
+        typeset -a nums
         nums=(${(s:,:)group_nums_list[$i]})
-        local sec_label_parts=()
+        sec_label_parts=()
         for n in "${nums[@]}"; do
           sed -n "${sec_starts[$n]},${sec_ends[$n]}p" "$spec_file" >> "$out_file"
           printf '\n' >> "$out_file"
@@ -959,7 +1420,7 @@ $(cat "$spec_file")"
         done
         split_sec_labels+=("${(j:, :)sec_label_parts}")
 
-        local file_lines=$(wc -l < "$out_file" | tr -d ' ')
+        file_lines=$(wc -l < "$out_file" | tr -d ' ')
         split_line_counts+=("$file_lines")
       done
 
@@ -995,7 +1456,7 @@ $(cat "$spec_file")"
       echo "  plan: $(basename "$plan_file")"
       echo ""
       echo "실행 예시:"
-      local session_base=$(basename "${base}")
+      session_base=$(basename "${base}")
       for (( i=1; i<=split_num; i++ )); do
         echo "  rw -s ${session_base}-${i} ${base}.split-${i}.md -m src/module"
       done
@@ -1003,24 +1464,44 @@ $(cat "$spec_file")"
       exit 0
       ;;
     --clean)
-      local sessions=($SESSIONS_BASE_DIR/*(N/))
-      if [[ ${#sessions[@]} -eq 0 ]]; then
+      typeset -a clean_roots=("$SESSIONS_BASE_DIR")
+      if [[ "$LEGACY_SESSIONS_BASE_DIR" != "$SESSIONS_BASE_DIR" ]]; then
+        clean_roots+=("$LEGACY_SESSIONS_BASE_DIR")
+      fi
+
+      typeset -A clean_seen=()
+      typeset -a clean_sessions=()
+      for clean_root in "${clean_roots[@]}"; do
+        for clean_dir in "$clean_root"/*(N/); do
+          [[ -n "${clean_seen[$clean_dir]:-}" ]] && continue
+          clean_seen[$clean_dir]=1
+          clean_sessions+=("$clean_dir")
+        done
+      done
+
+      if [[ ${#clean_sessions[@]} -eq 0 ]]; then
         echo "${YELLOW}삭제할 세션이 없습니다.${NC}"
         exit 0
       fi
-      echo "${CYAN}세션 목록:${NC}"
-      for dir in "${sessions[@]}"; do
-        local name=$(basename "$dir")
-        local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
-        local files=$(ls "$dir" 2>/dev/null | wc -l | tr -d ' ')
-        echo "  ${name} (${size}, ${files}개 파일)"
+      echo "${CYAN}세션 목록 (정리 대상 경로):${NC}"
+      for clean_root in "${clean_roots[@]}"; do
+        echo "  - $clean_root"
       done
       echo ""
-      echo -n "${YELLOW}모든 세션을 삭제합니다. 계속? (y/n): ${NC}"
+      for clean_dir in "${clean_sessions[@]}"; do
+        clean_name=$(basename "$clean_dir")
+        clean_size=$(du -sh "$clean_dir" 2>/dev/null | cut -f1)
+        clean_files=$(ls "$clean_dir" 2>/dev/null | wc -l | tr -d ' ')
+        echo "  ${clean_name} (${clean_size}, ${clean_files}개 파일) — $clean_dir"
+      done
+      echo ""
+      echo -n "${YELLOW}위 세션을 모두 삭제합니다. 계속? (y/n): ${NC}"
       read -r confirm
       if [[ "$confirm" == "y" ]]; then
-        rm -rf "$SESSIONS_BASE_DIR"/*(N/)
-        echo "${GREEN}${#sessions[@]}개 세션 삭제 완료.${NC}"
+        for clean_root in "${clean_roots[@]}"; do
+          rm -rf "$clean_root"/*(N/)
+        done
+        echo "${GREEN}${#clean_sessions[@]}개 세션 삭제 완료.${NC}"
       else
         echo "취소됨."
       fi
@@ -1058,32 +1539,96 @@ $(cat "$spec_file")"
   esac
 done
 
+if $REVIEW_MODE && $IMPROVE_MODE; then
+  echo "${RED}에러: --review와 --improve는 동시에 사용할 수 없습니다.${NC}" >&2
+  exit 1
+fi
+
 if $REVIEW_MODE; then
   if [[ -z "$SESSION_NAME" ]]; then
     echo "${RED}에러: --review 사용 시 --session (-s) 옵션은 필수입니다.${NC}" >&2
-    echo "예시: rw --review -s pr2-impl --assistant codex" >&2
+    echo "예시: rw --review -s pr2-impl --assistant claude" >&2
     exit 1
   fi
   if [[ -n "${SESSION_NAME//[a-zA-Z0-9_-]/}" ]]; then
     echo "${RED}에러: 세션 이름은 영문, 숫자, 하이픈(-), 밑줄(_)만 허용됩니다: $SESSION_NAME${NC}" >&2
     exit 1
   fi
-  SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
-  if [[ ! -d "$SESSION_DIR" ]]; then
-    echo "${RED}에러: 세션 디렉토리를 찾을 수 없습니다: $SESSION_DIR${NC}" >&2
+  SESSION_DIR=$(resolve_review_session_dir "$SESSION_NAME" || true)
+  if [[ -z "$SESSION_DIR" ]]; then
+    echo "${RED}에러: 세션 디렉토리를 찾을 수 없습니다: $SESSIONS_BASE_DIR/$SESSION_NAME${NC}" >&2
+    print_review_session_candidates "$SESSION_NAME"
     exit 1
+  fi
+  if [[ "$SESSION_DIR" != "$SESSIONS_BASE_DIR/$SESSION_NAME" ]]; then
+    echo "${CYAN}리뷰 세션 경로 자동 탐색: $SESSION_DIR${NC}"
   fi
   EVENT_LOG_FILE="$SESSION_DIR/rw-events.log"
   review_file=$(generate_review_file)
+  improve_review_file=$(ensure_improve_review_file)
+  append_improve_review_session_template "$improve_review_file" "RW" "$review_file" >/dev/null
   echo "${GREEN}리뷰 파일 생성 완료: $review_file${NC}"
+  echo "${CYAN}개선 기록 파일: $improve_review_file${NC}"
   echo "${CYAN}리뷰 시작: 체크리스트 1번부터 사용자 확인을 받고 진행합니다.${NC}"
   launch_review_assistant "$REVIEW_ASSISTANT" "$review_file"
   exit $?
 fi
 
+if $IMPROVE_MODE; then
+  if [[ -z "$SESSION_NAME" ]]; then
+    echo "${RED}에러: --improve 사용 시 --session (-s) 옵션은 필수입니다.${NC}" >&2
+    echo "예시: rw --improve -s pr2-impl --assistant claude" >&2
+    exit 1
+  fi
+  if [[ -n "${SESSION_NAME//[a-zA-Z0-9_-]/}" ]]; then
+    echo "${RED}에러: 세션 이름은 영문, 숫자, 하이픈(-), 밑줄(_)만 허용됩니다: $SESSION_NAME${NC}" >&2
+    exit 1
+  fi
+
+  SESSION_DIR=$(resolve_review_session_dir "$SESSION_NAME" || true)
+  if [[ -z "$SESSION_DIR" ]]; then
+    echo "${RED}에러: 세션 디렉토리를 찾을 수 없습니다: $SESSIONS_BASE_DIR/$SESSION_NAME${NC}" >&2
+    print_review_session_candidates "$SESSION_NAME"
+    exit 1
+  fi
+  if [[ "$SESSION_DIR" != "$SESSIONS_BASE_DIR/$SESSION_NAME" ]]; then
+    echo "${CYAN}개선 세션 경로 자동 탐색: $SESSION_DIR${NC}"
+  fi
+
+  if [[ -z "$IMPROVE_FILE" ]]; then
+    if [[ -f "$SESSION_DIR/improve_review.md" ]]; then
+      IMPROVE_FILE="$SESSION_DIR/improve_review.md"
+    elif [[ -f "$SESSION_DIR/improve-review.md" ]]; then
+      IMPROVE_FILE="$SESSION_DIR/improve-review.md"
+    else
+      IMPROVE_FILE=$(ensure_improve_review_file)
+    fi
+  fi
+
+  if [[ ! -f "$IMPROVE_FILE" ]]; then
+    echo "${RED}에러: 개선 입력 파일이 존재하지 않습니다: $IMPROVE_FILE${NC}" >&2
+    exit 1
+  fi
+  IMPROVE_FILE="${IMPROVE_FILE:A}"
+
+  improve_instructions_file=$(generate_improve_instructions_file "RW" "$IMPROVE_FILE")
+  echo "${GREEN}개선 입력 파일: $IMPROVE_FILE${NC}"
+  echo "${GREEN}개선 지시 파일: $improve_instructions_file${NC}"
+  echo "${CYAN}개선 세션 시작: 기존 기능 보존 + 확장 방식 개선만 허용${NC}"
+  if launch_improve_assistant "$REVIEW_ASSISTANT" "$improve_instructions_file"; then
+    if zsh -n "$GLOBAL_TEMPLATE_DIR/run-workflow.sh"; then
+      echo "${GREEN}개선 후 문법 검증 통과: $GLOBAL_TEMPLATE_DIR/run-workflow.sh${NC}"
+      exit 0
+    fi
+    echo "${RED}개선 후 문법 검증 실패: $GLOBAL_TEMPLATE_DIR/run-workflow.sh${NC}" >&2
+    exit 1
+  fi
+  exit $?
+fi
+
 if [[ ${#SPEC_PATHS[@]} -eq 0 ]]; then
   echo "${RED}에러: spec 파일 경로를 1개 이상 지정하세요.${NC}" >&2
-  echo "사용법: rw <spec_paths...> [options]" >&2
+  echo "사용법: rw -s <session_name> <spec_paths...> [options]" >&2
   echo "도움말: rw --help" >&2
   exit 1
 fi
@@ -1117,15 +1662,16 @@ SPEC_FINGERPRINT=$(compute_spec_fingerprint "${SPEC_PATHS[@]}")
 # 기존 미완료 세션 검사 (dry-run 및 --from 명시 시 제외)
 if ! $DRY_RUN && ! $FROM_SPECIFIED; then
   if incomplete_info=$(find_incomplete_session); then
-    IFS='|' read -r OLD_SESSION OLD_PHASE <<< "$incomplete_info"
+    IFS='|' read -r OLD_SESSION OLD_PHASE OLD_DIR <<< "$incomplete_info"
+    [[ -z "${OLD_DIR:-}" ]] && OLD_DIR="$SESSIONS_BASE_DIR/$OLD_SESSION"
     echo -n "미완료 세션 발견 (${OLD_SESSION}, Phase ${OLD_PHASE}). 이어서? (yes/no): "
     read -r resume_choice
     if [[ "$resume_choice" == "yes" ]]; then
       SESSION_NAME="$OLD_SESSION"
-      SESSION_DIR="$SESSIONS_BASE_DIR/$SESSION_NAME"
+      SESSION_DIR="$OLD_DIR"
       START_PHASE="$OLD_PHASE"
     elif [[ "$resume_choice" == "no" ]]; then
-      [[ -n "$OLD_SESSION" ]] && rm -rf "$SESSIONS_BASE_DIR/$OLD_SESSION"
+      [[ -n "${OLD_DIR:-}" ]] && rm -rf "$OLD_DIR"
     else
       echo "${RED}취소됨. 'yes' 또는 'no'만 입력 가능합니다.${NC}" >&2
       exit 1
@@ -1208,10 +1754,13 @@ SPEC_LIST="${SPEC_LIST%$'\n'}"  # 마지막 줄바꿈 제거
 # ─── Phase별 통계 추적 ───
 typeset -A PHASE_DURATIONS   # phase_num → seconds (누적)
 typeset -A PHASE_TOKENS      # phase_num → token count (누적)
+typeset -A PHASE_DURATIONS_ALL  # phase_num → 모든 시도 seconds (누적)
+typeset -A PHASE_TOKENS_ALL     # phase_num → 모든 시도 token count (누적)
 typeset -A PHASE_RETRIES     # phase_num → retry count
 COMPLETED_PHASES=()
 EXTENDED_PHASES=()           # promise 미감지로 강제 진행된 phase 목록
 LAST_PHASE_TOKENS=0          # run_phase에서 설정, 메인 루프에서 0-토큰 감지용
+LAST_PHASE_DURATION=0        # run_phase에서 설정, 성공 경로 통계 반영용
 CONSECUTIVE_ZERO_TOKENS=0    # 연속 0-토큰 횟수 (별도 카운터, max_retries와 독립)
 MAX_ZERO_TOKEN_RETRIES=60    # 0-토큰 최대 재시도 (10분 × 60 = 10시간)
 ZERO_TOKEN_WAIT=600          # 0-토큰 재시도 대기 시간 (10분 = 600초)
@@ -1490,10 +2039,11 @@ run_phase() {
   fi
   local tokens_fmt=$(format_tokens "$tokens")
   LAST_PHASE_TOKENS=$tokens
+  LAST_PHASE_DURATION=$phase_elapsed
 
-  # 통계 누적 (재시도 시 기존 값에 더함)
-  PHASE_DURATIONS[$phase_num]=$((${PHASE_DURATIONS[$phase_num]:-0} + phase_elapsed))
-  PHASE_TOKENS[$phase_num]=$((${PHASE_TOKENS[$phase_num]:-0} + tokens))
+  # 모든 시도 통계 누적 (성공/실패/재시도 포함)
+  PHASE_DURATIONS_ALL[$phase_num]=$((${PHASE_DURATIONS_ALL[$phase_num]:-0} + phase_elapsed))
+  PHASE_TOKENS_ALL[$phase_num]=$((${PHASE_TOKENS_ALL[$phase_num]:-0} + tokens))
   # 이터레이션 라벨
   local iter_label=""
   if [[ -n "${last_iter:-}" ]] && [[ "${last_iter:-0}" != "0" ]]; then
@@ -1523,6 +2073,22 @@ compute_total_tokens() {
   local total=0
   for phase in "${COMPLETED_PHASES[@]}"; do
     total=$((total + ${PHASE_TOKENS[$phase]:-0}))
+  done
+  printf '%s\n' "$total"
+}
+
+compute_total_tokens_all_attempts() {
+  local total=0
+  for phase in {0..19}; do
+    total=$((total + ${PHASE_TOKENS_ALL[$phase]:-0}))
+  done
+  printf '%s\n' "$total"
+}
+
+compute_total_success_seconds() {
+  local total=0
+  for phase in "${COMPLETED_PHASES[@]}"; do
+    total=$((total + ${PHASE_DURATIONS[$phase]:-0}))
   done
   printf '%s\n' "$total"
 }
@@ -1569,180 +2135,13 @@ review_focus_for_path() {
 }
 
 generate_review_file() {
-  local review_file="$SESSION_DIR/rw-review.md"
-  local state_file="$SESSION_DIR/state.env"
-  local session_status="unknown"
-  local current_phase=0
-  local spec_fingerprint=""
-
-  if [[ -f "$state_file" ]]; then
-    spec_fingerprint=$(grep '^SPEC_FINGERPRINT=' "$state_file" | cut -d= -f2-)
-    session_status=$(grep '^STATUS=' "$state_file" | cut -d= -f2-)
-    current_phase=$(grep '^CURRENT_PHASE=' "$state_file" | cut -d= -f2-)
-  fi
-  if ! printf '%s' "$current_phase" | grep -qE '^[0-9]+$'; then
-    current_phase=0
-  fi
-
-  local progress_pct=0
-  if [[ "$session_status" == "completed" ]]; then
-    progress_pct=100
-  else
-    progress_pct=$(((current_phase + 1) * 100 / 20))
-    (( progress_pct > 99 )) && progress_pct=99
-  fi
-  local current_phase_name="${PHASE_NAMES[$current_phase]:-알 수 없음}"
-
-  local -a spec_entries=()
-  if [[ ${#SPEC_PATHS[@]} -gt 0 ]]; then
-    spec_entries=("${SPEC_PATHS[@]}")
-  elif [[ -n "$spec_fingerprint" ]]; then
-    spec_entries=(${(s:|:)spec_fingerprint})
-  fi
-
-  local main_branch
-  main_branch=$(detect_main_branch)
-  local base_ref
-  base_ref=$(git merge-base HEAD "$main_branch" 2>/dev/null || printf '%s\n' "HEAD~1")
-
-  local diff_status_file diff_numstat_file
-  diff_status_file=$(mktemp)
-  diff_numstat_file=$(mktemp)
-  git diff --name-status --no-renames "$base_ref" > "$diff_status_file" 2>/dev/null || true
-  git diff --numstat --no-renames "$base_ref" > "$diff_numstat_file" 2>/dev/null || true
-
-  typeset -A file_status file_added file_deleted file_bucket file_bucket_label
-  local file_stat file_path
-  while IFS=$'\t' read -r file_stat file_path; do
-    [[ -z "$file_path" ]] && continue
-    case "$file_stat" in
-      A) file_status[$file_path]="created" ;;
-      M) file_status[$file_path]="modified" ;;
-      D) file_status[$file_path]="deleted" ;;
-      *) file_status[$file_path]="$file_stat" ;;
-    esac
-    local bucket_info bucket_no bucket_label
-    bucket_info=$(categorize_review_path "$file_path")
-    bucket_no="${bucket_info%%|*}"
-    bucket_label="${bucket_info#*|}"
-    file_bucket[$file_path]="$bucket_no"
-    file_bucket_label[$file_path]="$bucket_label"
-  done < "$diff_status_file"
-
-  local add del num_file_path
-  while IFS=$'\t' read -r add del num_file_path; do
-    [[ -z "$num_file_path" ]] && continue
-    [[ "$add" == "-" ]] && add=0
-    [[ "$del" == "-" ]] && del=0
-    file_added[$num_file_path]="${add:-0}"
-    file_deleted[$num_file_path]="${del:-0}"
-  done < "$diff_numstat_file"
-
-  local -a changed_paths=(${(k)file_status})
-  changed_paths=(${(on)changed_paths})
-  local changed_count=${#changed_paths[@]}
-
-  local created_count=0 modified_count=0 deleted_count=0
-  local -a bucket1_files=() bucket2_files=() bucket3_files=() bucket4_files=() bucket5_files=()
-  local file_path
-  for file_path in "${changed_paths[@]}"; do
-    case "${file_status[$file_path]}" in
-      created) created_count=$((created_count + 1)) ;;
-      modified) modified_count=$((modified_count + 1)) ;;
-      deleted) deleted_count=$((deleted_count + 1)) ;;
-    esac
-    case "${file_bucket[$file_path]:-2}" in
-      1) bucket1_files+=("$file_path") ;;
-      2) bucket2_files+=("$file_path") ;;
-      3) bucket3_files+=("$file_path") ;;
-      4) bucket4_files+=("$file_path") ;;
-      5) bucket5_files+=("$file_path") ;;
-    esac
-  done
-
-  {
-    echo "# RW Review Guide - ${SESSION_NAME}"
-    echo ""
-    echo "## 이번 작업 목표"
-    if [[ ${#spec_entries[@]} -gt 0 ]]; then
-      echo "- Spec 요구사항 구현/검증 완료 (Phase 0~19)"
-      echo "- 대상 spec:"
-      local spec
-      for spec in "${spec_entries[@]}"; do
-        echo "  - \`${spec}\`"
-      done
-    else
-      echo "- 세션 상태 기준으로 워크플로우 결과 검토"
-    fi
-    echo "- 리뷰 목적: 변경 사항을 누락 없이 빠르게 검증하고 배포/머지 리스크를 줄인다."
-    echo ""
-    echo "## 전체 작업 중 현재 위치"
-    echo "- 상태: \`${session_status}\`"
-    echo "- 현재/마지막 Phase: \`${current_phase}\` (${current_phase_name})"
-    echo "- Phase 진행률(0~19 기준): ${progress_pct}%"
-    echo "- 세션: \`${SESSION_NAME}\`"
-    echo "- 리뷰 문서 생성 시각: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo ""
-    echo "## 리뷰 체크리스트"
-    echo "- [ ] 1. 목표/범위 확인 (Spec/요구사항과 현재 변경의 일치 여부)"
-    echo "- [ ] 2. 신규 생성 파일 검토 (누락/과도한 설계 여부)"
-    echo "- [ ] 3. 핵심 구현 변경 검토 (비즈니스 규칙/예외 처리/부작용)"
-    echo "- [ ] 4. 테스트 변경 검토 (커버리지/assert 품질/회귀 방지)"
-    echo "- [ ] 5. 문서/설정 변경 검토 (운영 영향/설정 누락)"
-    echo "- [ ] 6. 최종 판정 (머지 가능/추가 수정 필요)"
-    echo ""
-    echo "## 변경 파일 요약"
-    echo "- 비교 기준: \`${base_ref}\`..HEAD"
-    echo "- 총 변경 파일: ${changed_count}개 (created ${created_count}, modified ${modified_count}, deleted ${deleted_count})"
-    echo ""
-    echo "### 신규 생성 파일"
-    if (( created_count == 0 )); then
-      echo "- 없음"
-    else
-      for file_path in "${changed_paths[@]}"; do
-        [[ "${file_status[$file_path]}" == "created" ]] && echo "- \`${file_path}\`"
-      done
-    fi
-    echo ""
-    echo "### 파일별 변경 상세"
-    if (( changed_count == 0 )); then
-      echo "- 변경 파일 없음"
-    else
-      for file_path in "${changed_paths[@]}"; do
-        local add_v="${file_added[$file_path]:-0}"
-        local del_v="${file_deleted[$file_path]:-0}"
-        local focus
-        focus=$(review_focus_for_path "$file_path")
-        echo "- \`${file_path}\` | ${file_status[$file_path]} | +${add_v}/-${del_v} | ${focus}"
-      done
-    fi
-    echo ""
-    echo "## 추천 리뷰 순서 (1~2시간 리뷰 기준)"
-    echo "1. 계약/스키마/API 영향 파일"
-    if (( ${#bucket1_files[@]} == 0 )); then echo "   - 없음"; else for file_path in "${bucket1_files[@]}"; do echo "   - \`${file_path}\`"; done; fi
-    echo "2. 핵심 구현 파일"
-    if (( ${#bucket2_files[@]} == 0 )); then echo "   - 없음"; else for file_path in "${bucket2_files[@]}"; do echo "   - \`${file_path}\`"; done; fi
-    echo "3. 테스트 파일"
-    if (( ${#bucket3_files[@]} == 0 )); then echo "   - 없음"; else for file_path in "${bucket3_files[@]}"; do echo "   - \`${file_path}\`"; done; fi
-    echo "4. 문서/운영 파일"
-    if (( ${#bucket4_files[@]} == 0 )); then echo "   - 없음"; else for file_path in "${bucket4_files[@]}"; do echo "   - \`${file_path}\`"; done; fi
-    echo "5. 설정/기타 파일"
-    if (( ${#bucket5_files[@]} == 0 )); then echo "   - 없음"; else for file_path in "${bucket5_files[@]}"; do echo "   - \`${file_path}\`"; done; fi
-    echo ""
-    echo "## 함께 리뷰 진행 방법"
-    echo "- 리뷰 도우미를 실행하면 반드시 1번 항목부터 시작한다."
-    echo "- 각 항목에서 사용자 확인을 받은 뒤 다음 번호로 이동한다."
-    echo "- 사용자 피드백은 바로 액션 아이템으로 기록한다."
-  } > "$review_file"
-
-  rm -f "$diff_status_file" "$diff_numstat_file"
-  printf '%s\n' "$review_file"
+  generate_deep_review_file "RW" "rw-review.md"
 }
 
 launch_review_assistant() {
-  local assistant=${1:-codex}
+  local assistant=${1:-claude}
   local review_file=$2
-  local prompt="Read ${review_file} first. Start collaborative review from checklist item 1 only. Ask for the user's review and WAIT. Never move to item 2+ until the user explicitly confirms."
+  local prompt="Read ${review_file} first. Follow Group 0 to Group 7 order. In Group 2 to Group 5, review exactly one file at a time and WAIT for user confirmation before moving to the next file. For each file, fill WHAT/HOW/WHY/VERIFY/SIDE EFFECT checks. At the end (Group 7), extract project-independent improvements and write them to ${SESSION_DIR}/improve_review.md in this session block."
 
   case "$assistant" in
     codex)
@@ -1774,9 +2173,22 @@ launch_review_assistant() {
 print_summary() {
   local total_seconds=$1
   local total_dur=$(format_duration "$total_seconds")
-  local total_tokens
-  total_tokens=$(compute_total_tokens)
-  local total_tokens_fmt=$(format_tokens "$total_tokens")
+  local impl_seconds
+  impl_seconds=$(compute_total_success_seconds)
+  local impl_dur
+  impl_dur=$(format_duration "$impl_seconds")
+  local overhead_seconds=$((total_seconds - impl_seconds))
+  (( overhead_seconds < 0 )) && overhead_seconds=0
+  local overhead_dur
+  overhead_dur=$(format_duration "$overhead_seconds")
+  local impl_tokens
+  impl_tokens=$(compute_total_tokens)
+  local impl_tokens_fmt=$(format_tokens "$impl_tokens")
+  local all_tokens
+  all_tokens=$(compute_total_tokens_all_attempts)
+  local all_tokens_fmt=$(format_tokens "$all_tokens")
+  local overhead_tokens=$((all_tokens - impl_tokens))
+  local overhead_tokens_fmt=$(format_tokens "$overhead_tokens")
 
   echo ""
   echo "═══════════════════════════════════════════════════════════"
@@ -1800,7 +2212,9 @@ print_summary() {
   done
 
   echo "  ─────────────────────────────────────────────────────"
-  printf "  TOTAL    %-14s —  %10s  —  ↓ %6s\n" "" "$total_dur" "$total_tokens_fmt"
+  printf "  TOTAL(success path)        —  %10s  —  ↓ %6s\n" "$impl_dur" "$impl_tokens_fmt"
+  printf "  TOTAL(all attempts)        —  %10s  —  ↓ %6s\n" "$total_dur" "$all_tokens_fmt"
+  printf "  OVERHEAD(retry/fail)       —  %10s  —  ↓ %6s\n" "$overhead_dur" "$overhead_tokens_fmt"
 
   # 코드 통계 (커밋이 있는 경우)
   compute_code_stats
@@ -1953,6 +2367,9 @@ for phase in $(seq "$START_PHASE" "$END_PHASE"); do
   done
 
   if $phase_success; then
+    # 성공 경로 통계 누적 (최종 채택된 실행 1회 기준)
+    PHASE_DURATIONS[$phase]=$((${PHASE_DURATIONS[$phase]:-0} + LAST_PHASE_DURATION))
+    PHASE_TOKENS[$phase]=$((${PHASE_TOKENS[$phase]:-0} + LAST_PHASE_TOKENS))
     COMPLETED_PHASES+=("$phase")
     notify_alert "rw [$SESSION_NAME]" "Phase $phase/$END_PHASE ${PHASE_NAMES[$phase]}: 완료"
     log_event "INFO" "phase_done" "phase=$phase name=${PHASE_NAMES[$phase]} retries=${PHASE_RETRIES[$phase]:-0}"
@@ -1979,11 +2396,15 @@ fi
 if ! $DRY_RUN; then
   REVIEW_FILE_PATH=$(generate_review_file)
   echo "${CYAN}리뷰 파일: $REVIEW_FILE_PATH${NC}"
-  echo "${CYAN}리뷰 시작 명령: rw --review -s ${SESSION_NAME} --assistant codex${NC}"
+  echo "${CYAN}리뷰 시작 명령: rw --review -s ${SESSION_NAME} --assistant claude${NC}"
+  echo "${CYAN}개선 시작 명령: rw --improve -s ${SESSION_NAME} --assistant claude${NC}"
   log_event "INFO" "review_file" "path=$REVIEW_FILE_PATH"
 fi
 
-TOTAL_TOKENS_FMT=$(format_tokens "$(compute_total_tokens)")
+TOTAL_IMPL_TOKENS=$(compute_total_tokens)
+TOTAL_IMPL_TOKENS_FMT=$(format_tokens "$TOTAL_IMPL_TOKENS")
+TOTAL_ALL_TOKENS=$(compute_total_tokens_all_attempts)
+TOTAL_ALL_TOKENS_FMT=$(format_tokens "$TOTAL_ALL_TOKENS")
 
-notify_alert "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION — ↓ $TOTAL_TOKENS_FMT"
-log_event "INFO" "workflow_end" "session=$SESSION_NAME duration=$TOTAL_DURATION tokens=$TOTAL_TOKENS_FMT completed=${#COMPLETED_PHASES[@]} all_done=$ALL_DONE"
+notify_alert "rw [$SESSION_NAME] 완료" "spec ${#SPEC_PATHS[@]}개 — $TOTAL_DURATION — impl ↓ $TOTAL_IMPL_TOKENS_FMT / all ↓ $TOTAL_ALL_TOKENS_FMT"
+log_event "INFO" "workflow_end" "session=$SESSION_NAME duration=$TOTAL_DURATION tokens=$TOTAL_ALL_TOKENS_FMT tokens_impl=$TOTAL_IMPL_TOKENS_FMT tokens_all=$TOTAL_ALL_TOKENS_FMT completed=${#COMPLETED_PHASES[@]} all_done=$ALL_DONE"

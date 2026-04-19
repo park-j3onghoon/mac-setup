@@ -2,7 +2,6 @@
 name: deployment-judge
 description: Deployment readiness judge. Runs final checklist including tests, lint, type check, spec completeness, and security. Returns SHIP or NO-SHIP verdict. Use as the absolute final gate before commit.
 tools: Read, Bash, Grep, Glob
-model: opus
 effort: high
 ---
 
