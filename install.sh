@@ -81,7 +81,7 @@ link_file "$REPO_DIR/mac/zprofile" "$HOME/.zprofile"
 log "~/.claude/ 설정 symlink"
 mkdir -p "$HOME/.claude/skills" "$HOME/.claude/commands"
 
-for f in CLAUDE.md coding-rules.md coding-rules-python.md coding-rules-vue.md coding-rules-frontend.md settings.json statusline-command.sh; do
+for f in CLAUDE.md coding-rules.md coding-rules-python.md coding-rules-frontend.md settings.json statusline-command.sh; do
   link_file "$REPO_DIR/claude/$f" "$HOME/.claude/$f"
 done
 
