@@ -100,6 +100,17 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 - **웹 스토리지는 SafeStorage 패턴 사용**: `localStorage.getItem/setItem` 직접 사용 대신 `SafeStorage` config(`constants/storage.ts`)를 정의하고 `safeStorage.get/set`(`utils/safe-storage.ts`)을 사용. 키 중앙 관리 + Zod 파싱 + 에러 핸들링
 - **내비게이션 가드는 취소 버튼 showConfirm**: `beforeunload` 대신 취소 버튼 클릭 시 `useConfirm`으로 isDirty 체크 (라이브커머스/협력광고 패턴). 추가적인 내비게이션 가드가 필요하면 라이브러리 도입 검토
 
+### TypeScript 타입 안전성
+- **Zod `z.input` vs `z.infer` drift**: form onSubmit은 Values를 주는데 컴포넌트 `defaultValues` prop이 Input을 기대한다면, Values를 직접 넘기는지 확인. 현재 transform이 "nullable → non-null"만이라 구조적 타이핑으로 통과하지만, 향후 `string → Date` 같은 타입 변환이 transform에 추가되면 런타임 에러 위험. 변환 헬퍼(`valuesToInput()`)로 캡슐화 권장.
+- **Discriminated union 사용 여부**: 함수 반환값에 "action별로 같이 다니는 필드"가 있는데 `"create" | "update" | "skip"` 같은 단순 union이면, caller에서 `as number` 단언이 발생하기 쉽다. 반환을 `{ action, campaignId? }` discriminated union으로 바꿔 invariant를 타입 시스템 레벨로 올리는 리팩터 제안.
+- **`as unknown as T` 이중 캐스트**: 일반적으로 회피 권장이나 Zod pre/post-transform 왕복 등 type predicate로 표현 불가한 케이스에서 단일 헬퍼로 국소화되어 있으면 허용.
+
+### URL-driven 페이지 렌더 플로우
+- **딥링크/새로고침 빈 화면 flash**: `?step=X` 같은 URL query 기반 step 전환 페이지에서, state가 비어있는 채로 딥링크 진입 시 `useEffect` router.replace만으로는 한 프레임 빈 화면이 노출된다. 렌더 시점에 즉시 교정되는 effective 값(`const effectiveStep = ...`)을 계산하고 JSX에서 이를 쓰는지 확인. useEffect는 URL 교정 용도로만.
+
+### API payload 정합성
+- **Update payload에서 create-only 필드 명시 제외**: 불변 필드(revenueType 같은)가 `...body` spread에 실려 나가는지 확인. `const { revenueType: _revenueType, ...updateBody } = body` destructure로 명시 제외하는 패턴 권장. 타입 스펙(`Omit<CreateRequest, "revenueType">`)과 payload 구성이 일치해야 함.
+
 ### Import 경로
 - **절대 경로 우선**: 프로젝트에 path alias(`lib/`, `modules/` 등)가 있으면 상대 경로(`./`, `../`) 대신 절대 경로 사용
 - **파일 이동 시 상대 경로 깨짐 주의**: diff에서 파일 이동(`rename`)이 감지되면, 해당 파일 내 상대 경로 import가 전부 유효한지 확인. 이동 후 경로가 바뀌면 즉시 빌드 실패 가능
