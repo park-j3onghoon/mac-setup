@@ -35,6 +35,11 @@
 - 트랜잭션 격리 수준: READ COMMITTED vs REPEATABLE READ 선택 근거
 - Kotlin 코루틴 / Django async: 공유 상태 접근 시 동기화 메커니즘
 
+### 프론트엔드 데이터 캐시 (React Query / TanStack Query)
+- **queryKey는 구조 보존 배열 사용**. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함하면 React Query가 deep equality로 올바르게 구분.
+- **`refetchOnMount: "always"`는 staleTime을 사실상 무력화**. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)가 기본값으로 일관적.
+- **mutation onSuccess invalidation은 "모든 편집 경로"를 커버해야 유효**. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 고려.
+
 ## Examples
 
 ```python

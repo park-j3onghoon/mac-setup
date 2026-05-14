@@ -122,6 +122,11 @@ agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이�
 1. **references/*.md** — 새로운 패턴/위반이 참조 문서에 없으면 추가
 2. **coding-rules.md** (`~/.claude/coding-rules.md`) — 확정된 새 코딩 규칙
 3. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
+4. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 글로벌 또는 Buzzvil 등 페어 위치 중 한쪽을 수정하면 **양쪽 파일을 동시에 같은 내용으로** 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지. 페어 위치:
+   - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
+   - `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
+   - `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
+   업데이트 후 `diff -q` 또는 그 비슷한 명령으로 분기 섹션 외 차이가 없는지 점검한다.
 
 ### 판단 기준
 - 반영: 2회+ 반복 이슈 패턴, 사용자 명시적 교정, 참조 문서에 없는 체크리스트

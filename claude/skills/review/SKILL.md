@@ -145,6 +145,18 @@ ASK 항목을 하나의 AskUserQuestion으로 묶어서 질문.
 diff가 변경한 기능을 설명하는 문서가 있으나 업데이트 안 됐으면:
 `[INFO] 문서가 오래됐을 수 있음: [파일]이 [기능]을 설명하지만 코드가 변경됨.`
 
+### 페어 sync 점검 (CLAUDE.md/AGENTS.md)
+
+PR이 CLAUDE.md 또는 AGENTS.md를 변경했다면 페어 파일이 같이 변경되었는지 확인한다. 페어 위치: `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`, `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`, `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`.
+
+```bash
+diff -q ~/.claude/CLAUDE.md ~/.codex/AGENTS.md
+diff -q ~/buzzvil/CLAUDE.md ~/buzzvil/AGENTS.md
+diff -q ~/buzzvil_analysis/CLAUDE.md ~/buzzvil_analysis/AGENTS.md
+```
+
+도구별 분기 섹션(assignee 등) 외에 차이가 있으면 `[CRITICAL] 페어 sync 누락: {파일}` 이슈로 잡고 다른 쪽도 동일 변경을 적용한다.
+
 ## Step 7: 변경 설명 문서 생성
 
 리뷰 완료 후, **이 PR이 왜 필요하고 어떻게 동작하는지** 설명하는 문서를 생성한다.
@@ -239,6 +251,12 @@ Remaining: V
 
 **② 코딩 규칙** (다음 코드 생성에서 처음부터 잘 쓰기 위해):
 리뷰에서 발견한 이슈를 **"이렇게 써라" 형태의 규칙**으로 변환한다.
+
+**③ CLAUDE.md/AGENTS.md 페어 (CRITICAL)**:
+글로벌 또는 Buzzvil scope에서 한쪽 파일을 수정했다면 페어 파일도 같이 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지.
+- `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
+- `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
+- `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
 
 **분류 게이트 (순서대로 적용)**:
 

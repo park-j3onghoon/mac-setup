@@ -32,6 +32,11 @@
 - 일관성 모델의 의도적 선택 (strong vs eventual)
 - 읽기/쓰기 비율에 따른 설계 (read-heavy → 캐시/복제, write-heavy → 파티셔닝)
 
+### FE 레이어 의존성
+- **`routes.ts`/`lib/api/*` 같은 leaf 모듈이 UI 컴포넌트 파일을 import하면 역방향 의존**. UI 타입이 필요하면 도메인 타입 파일(`lib/api/{domain}/types/`)로 올려서 양쪽이 그 타입을 import하게 한다. "선례가 있으니 따른다"는 패턴 답습은 기술부채 확산.
+- **"action 없는 interactable UI"는 UX 버그**. 스위치/버튼이 활성 상태로 보이는데 onChange가 noop이면 사용자 오조작을 유발. 해결: 전부 `disabled` + tooltip, 또는 컴포넌트 자체 제거. "TODO 주석"은 사용자에게 전달되지 않는다.
+- **BE 필드 존재 미검증 상태로 UI 설계 확정 금지**. 응답에 있다고 가정한 필드가 실제로는 없거나 다른 의미이면 전체 UI 재작업. plan 단계에서 샘플 응답 확인 또는 타입 검증 단계를 명시.
+
 ## Examples
 
 ```python

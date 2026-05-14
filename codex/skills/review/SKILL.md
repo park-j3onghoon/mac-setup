@@ -73,6 +73,18 @@ Python/Go/Java/Kotlin/Frontend 관용구, 타입 안전성, 플랫폼 특화
 
 변경된 기능의 문서가 업데이트 안 됐으면 INFO 이슈.
 
+### 페어 sync 점검 (CLAUDE.md/AGENTS.md)
+
+PR이 CLAUDE.md 또는 AGENTS.md를 변경했다면 페어 파일도 같이 변경되었는지 확인.
+
+```bash
+diff -q ~/.claude/CLAUDE.md ~/.codex/AGENTS.md
+diff -q ~/buzzvil/CLAUDE.md ~/buzzvil/AGENTS.md
+diff -q ~/buzzvil_analysis/CLAUDE.md ~/buzzvil_analysis/AGENTS.md
+```
+
+도구별 분기 섹션 외에 차이가 있으면 `[CRITICAL] 페어 sync 누락` 이슈.
+
 ## Step 7: 주장 검증 규칙
 - "이 패턴은 안전" → 구체적 라인 인용
 - "다른 곳에서 처리됨" → 해당 코드 읽고 인용
@@ -91,4 +103,10 @@ Remaining: V
 
 리뷰에서 발견한 새 패턴이 참조 문서에 없으면 추가.
 coding-rules.md에 "이렇게 써라" 형태로 변환하여 추가.
+
+**CLAUDE.md/AGENTS.md 페어 (CRITICAL)**: 글로벌 또는 Buzzvil scope에서 한쪽 파일이 수정되면 페어 파일도 동일하게 업데이트. 도구별 차이(assignee 등)만 분기 섹션으로.
+- `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
+- `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
+- `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
+
 신규 지식 없으면 스킵.

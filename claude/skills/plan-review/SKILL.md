@@ -137,7 +137,7 @@ Agent 스폰 없이 직접 ref-*.md를 읽고, ACTIVE 차원당 핵심 1개 이�
 
 ## Step 3: 계획 저장
 
-리뷰 반영 최종 계획을 `docs/{작업명}/plan.md`에 저장.
+리뷰 반영 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 저장한다. repo 내부(`docs/`)에 커밋하지 않는다 — plan은 개인 작업 문서이며 PR diff를 부풀리지 않아야 한다. repo이름은 현재 git top-level 디렉토리 이름(`basename $(git rev-parse --show-toplevel)`).
 
 ## Step 3.5: Codex Adversarial 검증 (필수)
 
@@ -147,12 +147,12 @@ Agent 스폰 없이 직접 ref-*.md를 읽고, ACTIVE 차원당 핵심 1개 이�
 
 ```bash
 CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
-
-# plan.md만 staged 상태로 만들어 다른 변경과 섞이지 않게 한다
-git add docs/{작업명}/plan.md
+REPO=$(basename $(git rev-parse --show-toplevel))
+PLAN_PATH=~/plans/$REPO/{작업명}/plan.md
 
 # Adversarial review — Bash tool의 run_in_background: true 로 실행
-node "$CODEX_SCRIPT" adversarial-review --background "docs/{작업명}/plan.md 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라."
+# plan 파일이 repo 바깥에 있으므로 Codex에게 경로를 명시적으로 전달한다.
+node "$CODEX_SCRIPT" adversarial-review --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라."
 ```
 
 - `--background`는 Codex 플러그인 자체 배경 모드이고, Claude Code Bash tool도 `run_in_background: true`로 띄워 두 층으로 비동기 처리한다.
@@ -171,7 +171,7 @@ Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
 
 절대 바로 구현 시작 금지. AskUserQuestion:
 ```
-계획이 docs/{작업명}/plan.md에 저장되었습니다.
+계획이 ~/plans/{repo}/{작업명}/plan.md에 저장되었습니다.
 - A) 구현 시작
 - B) 계획 수정 필요
 - C) 지금은 구현하지 않음
@@ -189,6 +189,11 @@ Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
 2. **coding-rules.md** — 이번 리뷰에서 확정된 새 코딩 규칙이 있으면 추가
 3. **메모리** — 프로젝트 맥락, 사용자 피드백 중 다음 세션에도 유효한 것
 4. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
+5. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 글로벌 또는 Buzzvil 등 페어 위치 중 한쪽을 수정하면 **양쪽 파일을 동시에 같은 내용으로** 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지. 페어 위치:
+   - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
+   - `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
+   - `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
+   업데이트 후 `diff -q` 또는 그 비슷한 명령으로 분기 섹션 외 차이가 없는지 점검한다.
 
 ### 판단 기준
 

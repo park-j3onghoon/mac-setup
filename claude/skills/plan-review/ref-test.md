@@ -44,6 +44,9 @@
 - 스냅샷 테스트 (private dict 복붙 비교)
 - 단순 조합 UseCase (필드 세팅만, 비즈니스 로직 없음) → View 통합테스트로 커버
 
+### Django REST 테스트 함정
+- **APIRequestFactory 는 URL resolve 를 거치지 않는다**: `api_rf.patch('/foo/1/bar', ...)` + `MyView.as_view()(request, ...)` 패턴은 view 함수를 직접 호출하므로 urls.py 의 path 문자열 오타가 404 이전엔 드러나지 않는다. URL 변경이 포함된 PR 에서는 `from django.urls import resolve` + `resolve('/actual/url').func.view_class is MyView` 스모크 1줄로 URL path ↔ view binding 을 잠근다.
+
 ## Examples
 
 ```python

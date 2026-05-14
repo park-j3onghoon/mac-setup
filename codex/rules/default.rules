@@ -128,3 +128,6 @@ prefix_rule(pattern=["npm", "run", "build", "--workspace", "@linkcart/web"], dec
 prefix_rule(pattern=["npm", "run", "lint", "--workspace", "@linkcart/web"], decision="allow")
 prefix_rule(pattern=["npm", "run", "test", "--workspace", "@linkcart/mobile"], decision="allow")
 prefix_rule(pattern=["npx", "tsc", "--noEmit", "-p", "apps/mobile/tsconfig.json"], decision="allow")
+prefix_rule(pattern=["git", "-C", "/Users/teddy.park/git/linkcart", "add", "backend/src/main/kotlin/com/linkcart", "backend/src/test/kotlin/com/linkcart"], decision="allow")
+prefix_rule(pattern=["git", "-C", "/Users/teddy.park/git/linkcart", "push", "origin", "main"], decision="allow")
+prefix_rule(pattern=["git", "-C", "/Users/teddy.park/git/linkcart", "add", "docs/pr-p2/p2-1/plan.md", "docs/pr-p2/p2-3/plan.md", "docs/pr-p2/p2-4/plan.md"], decision="allow")
