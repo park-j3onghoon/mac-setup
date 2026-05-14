@@ -21,10 +21,13 @@ mac-setup/
 │   ├── hooks.json
 │   ├── rules/default.rules
 │   └── skills/           # cso, dev-plan, guard, hygiene, plan-review, review, session-review
+├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
+│   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
+│   └── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
 └── mac/
     ├── zshrc             # oh-my-zsh + 플러그인 + alias + PATH
     ├── zprofile          # brew shellenv
-    ├── Brewfile          # brew bundle dump 결과
+    ├── Brewfile          # brew bundle (앱 + VSCode 확장 포함)
     └── setup-notes.md    # 자동화 안 되는 수동 단계
 ```
 
@@ -54,7 +57,7 @@ codex login
 
 ## 반영 범위
 
-**포함**: 언어·프로젝트와 무관한 **범용 개발 환경** — 코딩 룰, 스킬(리뷰/계획/디버깅/보안), CLI 설정, zsh + Homebrew.
+**포함**: 언어·프로젝트와 무관한 **범용 개발 환경** — 코딩 룰, 스킬(리뷰/계획/디버깅/보안), CLI 설정, zsh + Homebrew, VSCode 글로벌 설정/키바인딩/확장.
 
 **제외**:
 - 시크릿(Linear API key, Redash config, 인증 토큰)

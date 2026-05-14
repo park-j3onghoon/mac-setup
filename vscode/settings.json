@@ -1,0 +1,250 @@
+{
+    // ───────── 외관 / 텔레메트리 ─────────
+    "redhat.telemetry.enabled": true,
+    "window.systemColorTheme": "light",
+    "window.autoDetectColorScheme": true,
+    "editor.minimap.enabled": false,
+
+    // ───────── PyCharm 스타일 Cmd+B (정의 ↔ 사용처 자동 토글) ─────────
+    // "Go to Definition"이 결과를 못 찾으면 (= 이미 정의 위에 있으면) "Find References"로 폴백
+    "editor.gotoLocation.alternativeDefinitionCommand": "editor.action.goToReferences",
+    "editor.gotoLocation.multipleDefinitions": "goto",
+    "editor.gotoLocation.multipleReferences": "goto",
+
+    // ───────── 에디터 탭 / 클릭 동작 ─────────
+    "workbench.editor.enablePreview": false,
+    "workbench.editor.enablePreviewFromQuickOpen": false,
+    "workbench.editor.enablePreviewFromCodeNavigation": false,
+    "workbench.list.openMode": "singleClick",
+    "explorer.autoReveal": true,
+
+    // ───────── multi-command 확장 정의 (Cmd+Esc 키바인딩에서 사용) ─────────
+    "multiCommand.commands": [
+        {
+            "command": "multiCommand.toggleSidebarAndPanel",
+            "interval": 50,
+            "sequence": [
+                "workbench.action.toggleSidebarVisibility",
+                "workbench.action.togglePanel"
+            ]
+        }
+    ],
+
+    // ───────── Java / Kotlin / Gradle ─────────
+    // Brewfile에서 cask "temurin@21" 설치 시 이 경로에 위치
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-21",
+            "path": "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+            "default": true
+        }
+    ],
+    "java.jdt.ls.java.home": "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+    "java.import.gradle.java.home": "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+    "java.import.gradle.enabled": true,
+    "java.import.gradle.wrapper.enabled": true,
+    "java.compile.nullAnalysis.mode": "automatic",
+
+    "kotlin.languageServer.enabled": true,
+    "kotlin.compiler.jvm.target": "21",
+
+    // ───────── TypeScript / JavaScript ─────────
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "javascript.updateImportsOnFileMove.enabled": "always",
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "eslint.workingDirectories": [{ "mode": "auto" }],
+    "eslint.useFlatConfig": true,
+
+    // ───────── 언어별 포매터 ─────────
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": { "source.fixAll.eslint": "explicit" }
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": { "source.fixAll.eslint": "explicit" }
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+    "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+    "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+    "python.analysis.typeCheckingMode": "basic",
+
+    "[kotlin]": {
+        "editor.formatOnSave": false,
+        "editor.tabSize": 4
+    },
+    "[java]": {
+        "editor.formatOnSave": false,
+        "editor.tabSize": 4
+    },
+
+    // ───────── 탐색기 / 검색 / 파일 와처 제외 ─────────
+    "files.exclude": {
+        "**/.gradle": true,
+        "**/build": true,
+        "**/.turbo": true,
+        "**/.next": true,
+        "**/dist": true,
+        "**/.expo": true,
+        "**/node_modules": true
+    },
+    "search.exclude": {
+        "**/.gradle": true,
+        "**/build": true,
+        "**/.turbo": true,
+        "**/.next": true,
+        "**/dist": true,
+        "**/.expo": true,
+        "**/node_modules": true,
+        "**/package-lock.json": true,
+        "**/*.tsbuildinfo": true
+    },
+    "files.watcherExclude": {
+        "**/.gradle/**": true,
+        "**/build/**": true,
+        "**/.turbo/**": true,
+        "**/.next/**": true,
+        "**/node_modules/**": true
+    },
+
+    // ───────── 파일 중첩 ─────────
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+        "package.json": "package-lock.json, .npmrc, .nvmrc, tsconfig*.json, turbo.json",
+        "next.config.*": "next-env.d.ts, postcss.config.*, tailwind.config.*",
+        "*.ts": "${capture}.test.ts, ${capture}.spec.ts",
+        "*.tsx": "${capture}.test.tsx, ${capture}.spec.tsx",
+        "*.kt": "${capture}Test.kt"
+    },
+
+    // ───────── 에디터 공통 ─────────
+    "editor.rulers": [100],
+    "editor.tabSize": 2,
+    "editor.fontSize": 18,
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+
+    // ───────── 코드 가독성 / 하이라이팅 (Java/Kotlin 등 모든 언어) ─────────
+    // 의미론 컬러링: 변수/함수/클래스/파라미터 등을 역할별로 색 구분 (LSP 기반)
+    "editor.semanticHighlighting.enabled": true,
+    "java.semanticHighlighting.enabled": true,
+
+    // 괄호 짝 색상화: ( ) { } [ ] 중첩을 색으로 구분
+    "editor.bracketPairColorization.enabled": true,
+    "editor.bracketPairColorization.independentColorPoolPerBracketType": true,
+    "editor.guides.bracketPairs": "active",
+    "editor.guides.bracketPairsHorizontal": "active",
+    "editor.matchBrackets": "always",
+
+    // 들여쓰기 가이드 강조
+    "editor.guides.indentation": true,
+    "editor.guides.highlightActiveIndentation": "always",
+
+    // 커서 주변 같은 식별자 자동 강조
+    "editor.occurrencesHighlight": "singleFile",
+
+    // 같은 단어 선택 시 모두 표시
+    "editor.selectionHighlight": true,
+
+    // 공백 문자 표시 (단어 경계만 — 너무 시끄럽지 않게)
+    "editor.renderWhitespace": "boundary",
+
+    // 현재 라인 강조 (배경 + 거터)
+    "editor.renderLineHighlight": "all",
+
+    // 미사용 import / 변수 흐리게 표시
+    "editor.showUnused": true,
+
+    // 자동 import 추가
+    "java.completion.importOrder": ["java", "javax", "org", "com", ""],
+
+    // ───────── 테마 (시스템 라이트/다크에 따라 자동 전환) ─────────
+    // window.autoDetectColorScheme: true → 시스템 모드 따라 preferred*ColorTheme 적용
+    // workbench.colorTheme도 명시 (auto-detect 미작동 시 fallback)
+    "workbench.colorTheme": "GitHub Light Default",
+    "workbench.preferredLightColorTheme": "GitHub Light Default",
+    "workbench.preferredDarkColorTheme": "One Dark Pro",
+
+    // ───────── PyCharm 스타일 함수/멤버 시각적 구분 ─────────
+    // 의미론 토큰: 함수/메서드/파라미터/클래스를 명시적 색 + 스타일로 강제
+    // (GitHub Light Default나 One Dark Pro의 기본 색이 약하면 이게 덮어씀)
+    "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+            "function": { "foreground": "#6F42C1", "fontStyle": "bold" },
+            "method": { "foreground": "#6F42C1", "fontStyle": "bold" },
+            "function.defaultLibrary": { "foreground": "#6F42C1", "fontStyle": "bold" },
+            "parameter": { "foreground": "#E36209", "fontStyle": "italic" },
+            "property": { "foreground": "#005CC5" },
+            "class": { "foreground": "#22863A", "fontStyle": "bold" },
+            "interface": { "foreground": "#22863A" },
+            "enum": { "foreground": "#22863A" },
+            "*.static": { "fontStyle": "italic" },
+            "*.declaration": { "fontStyle": "bold" }
+        },
+        // 다크 테마 (One Dark Pro)에선 색을 다크 친화적으로 오버라이드
+        "[One Dark Pro]": {
+            "enabled": true,
+            "rules": {
+                "function": { "foreground": "#61AFEF", "fontStyle": "bold" },
+                "method": { "foreground": "#61AFEF", "fontStyle": "bold" },
+                "function.defaultLibrary": { "foreground": "#61AFEF", "fontStyle": "bold" },
+                "parameter": { "foreground": "#D19A66", "fontStyle": "italic" },
+                "property": { "foreground": "#E06C75" },
+                "class": { "foreground": "#E5C07B", "fontStyle": "bold" },
+                "interface": { "foreground": "#E5C07B" },
+                "enum": { "foreground": "#E5C07B" },
+                "*.static": { "fontStyle": "italic" },
+                "*.declaration": { "fontStyle": "bold" }
+            }
+        }
+    },
+
+    // TextMate 스코프 fallback (LSP 의미 토큰이 없는 부분 대비)
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "entity.name.function",
+                    "entity.name.function.kotlin",
+                    "entity.name.function.java",
+                    "support.function",
+                    "meta.function-call entity.name.function"
+                ],
+                "settings": { "fontStyle": "bold" }
+            },
+            {
+                "scope": [
+                    "variable.parameter",
+                    "variable.parameter.function",
+                    "variable.parameter.kotlin"
+                ],
+                "settings": { "fontStyle": "italic" }
+            },
+            {
+                "scope": [
+                    "entity.name.type.class",
+                    "entity.name.type.interface",
+                    "entity.name.type.enum"
+                ],
+                "settings": { "fontStyle": "bold" }
+            }
+        ]
+    }
+}

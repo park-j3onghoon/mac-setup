@@ -110,7 +110,20 @@ for skill_dir in "$REPO_DIR/codex/skills"/*/; do
   link_file "$REPO_DIR/codex/skills/$skill_name" "$HOME/.codex/skills/$skill_name"
 done
 
-# ---- 6. 마무리 안내 ----
+# ---- 6. VSCode 설정 ----
+log "VSCode 설정 symlink"
+VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
+if [ -d "/Applications/Visual Studio Code.app" ] || command -v code >/dev/null 2>&1; then
+  mkdir -p "$VSCODE_USER_DIR"
+  link_file "$REPO_DIR/vscode/settings.json"    "$VSCODE_USER_DIR/settings.json"
+  link_file "$REPO_DIR/vscode/keybindings.json" "$VSCODE_USER_DIR/keybindings.json"
+  ok "VSCode settings.json / keybindings.json symlink 완료"
+  ok "확장은 Brewfile의 'vscode \"...\"' 라인으로 자동 설치됨"
+else
+  warn "VSCode가 아직 설치되지 않았습니다. Brewfile 설치 후 다시 실행하세요"
+fi
+
+# ---- 7. 마무리 안내 ----
 cat <<'EOF'
 
 ========================================================
