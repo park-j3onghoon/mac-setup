@@ -34,11 +34,16 @@
 
 ## PR 생성 규칙 (CRITICAL)
 
-- PR 생성 시 **assignee는 사용자로 지정**한다.
-  - Claude Code 사용 시: `teddy.park`
-  - Codex 사용 시: `park-j3onghoon`
+- PR 생성 시 **assignee 는 GitHub username `park-j3onghoon`** 으로 지정한다 (Claude Code / Codex 공통).
+  - 주의: displayName 은 `teddy.park` 이지만 GitHub username (gh CLI `--assignee`) 은 `park-j3onghoon`. `teddy.park` 시도 시 "user not found" 에러 발생.
 - **reviewer는 추가하지 않는다.** 사용자가 직접 수동으로 지정한다.
 - 커밋 메시지, PR 제목/본문은 한글로 작성한다.
+- **PR 제목은 Conventional Commits prefix** 로 시작한다 (`feat:`, `refactor:`, `fix:`, `docs:`, `chore:`, `test:`, `perf:`, `build:`, `ci:`, `style:`). 괄호 scope 는 붙이지 않는다.
+- **PR 본문 구조**: 상단에 As-Is / To-Be 간단 요약 → 하단에 추가 설명.
+  - `## As-Is`: 변경 전 상태 (1~3 줄, 핵심만)
+  - `## To-Be`: 변경 후 상태 (1~3 줄, 핵심만)
+  - 그 아래에 Background (Linear/RFC/PRD 링크), 디자인 결정, 호환성, 후속 작업, Test plan 등 상세 작성
+  - 이유: 리뷰어가 변경 본질을 한눈에 파악 가능. 상세는 필요한 사람만 읽음.
 
 ## Hook 존중 (CRITICAL)
 
@@ -93,8 +98,25 @@
 - `__init__.py`에 불필요한 모듈 설명 주석(docstring)을 넣지 않는다. 빈 파일로 둔다.
 - `**kwargs` spread와 명시적 파라미터를 함께 쓸 때, 명시적 파라미터를 `**` 뒤에 배치하여 override를 보장한다.
 - 인라인 가능하면 인라인을 선호한다. 단, 100~110자를 초과하면 변수로 분리한다.
-- 코드로 의미가 드러나면 주석을 넣지 않는다.
 - 함수 내부 import 금지, 파일 최상단에 배치한다.
+
+## 주석 규칙
+
+- 기본은 주석 없음. 식별자·시그니처로 파악되는 것은 적지 않는다. "무엇"이 아니라 "왜"만 적는다.
+- 남길 맥락:
+  - 외부 표준 참조 (AIP-XXX, RFC NNNN, 회사 RFC 링크)
+  - 보안 근거 (enumeration 방지, capability 토큰, XSS 벡터 차단 등)
+  - 아키텍처 결정 근거·검토 후 채택하지 않은 대안
+  - 비명시적 알고리즘 트릭 (limit+1 hasNext, microsecond precision cursor, base64url 형식 등)
+  - 혼동되는 코드/타입 간 disambiguation (vs 비교)
+  - 숨어 있는 제약·invariant (DB 컬럼 타입 정합, 외부 API 응답 nullability 가정 등)
+- 지워야 할 주석:
+  - 시그니처로 자명한 함수/클래스 동작 설명
+  - 데이터 클래스의 "X용 VO/DTO" 라벨
+  - 변경 이력·과거 구현 ("이전에는 Map이었으나...") — git log·PR 본문이 담당
+  - 호출자 정보 ("X 화면이 이걸 쓴다") — 코드 변경에 따라 거짓이 된다
+  - 한 줄 식별자를 풀어 쓴 설명 (`"X 토큰을 생성한다"` / `fun generate(): String`)
+- 지웠을 때 미래 독자가 헷갈리면 남기고, 그렇지 않으면 지운다.
 
 ## 테스트 규칙
 
