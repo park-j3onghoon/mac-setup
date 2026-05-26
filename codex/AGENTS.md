@@ -99,6 +99,12 @@
 - `**kwargs` spread와 명시적 파라미터를 함께 쓸 때, 명시적 파라미터를 `**` 뒤에 배치하여 override를 보장한다.
 - 인라인 가능하면 인라인을 선호한다. 단, 100~110자를 초과하면 변수로 분리한다.
 - 함수 내부 import 금지, 파일 최상단에 배치한다.
+- **모듈 상수는 파일 최상단**에 배치한다 (imports + logger 정의 다음, 첫 함수 정의 전). 함수들 사이에 끼우면 가독성 떨어지고 "어디서 정의됐지" 추적 부담.
+
+## 함수 분할 / 설계 패턴
+
+- **helper 의 책임 단일화 — 진입 가드는 호출자**: helper 함수가 첫머리에서 `if 진입조건: return` 을 쌓고 있다면 그 가드는 helper 가 아니라 호출자 (loop `continue` 또는 early return) 의 책임이다. helper 는 함수 이름이 약속한 로직만 수행한다 — 그래야 이름과 동작이 일치하고 호출 흐름이 외부에서 읽힌다. 예: `_verify_value(field, value, registry)` 내부에 `if field not in mask: return` / `if not value: return` 을 두지 말고, 호출자 loop 에서 `continue` 로 처리.
+- **동일 패턴 N 호출은 list + loop 로**: 같은 helper 를 인자만 바꿔 2회 이상 명시 호출한다면 `(인자조합)` list 를 모듈 상수로 빼고 for-loop 로 묶는다. 4 호출 + 비슷한 매핑 검증 2 호출 같이 누적되면 가독성 큰 차이.
 
 ## 주석 규칙
 
