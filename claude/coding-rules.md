@@ -39,6 +39,19 @@
 - **인라인 가능하면 인라인을 선호**. 단, 100~110자를 초과하면 변수로 분리.
 - **인터페이스/클래스의 메서드 순서는 일관되게**. Repository/Port 인터페이스는 **CRUD 순서**로 통일: `save` → `findBy*` / `findAll*` → `countBy*` → `existsBy*` → `deleteBy*`(또는 `update/revoke` 등 변경 동작). 파일마다 순서가 다르면 리뷰어가 "어느 게 메인 엔트리포인트인지" 파악하기 어렵고, 비슷한 포트끼리 비교가 힘들어진다. 한 프로젝트 안에서 동일 패턴 유지.
 
+## 함수 분할 / 설계 패턴
+
+- **함수 길이는 Clean Code / Google guide 기준** (30~40줄 soft limit). 초과 시 책임 단위로 private helper 분할 (Composed Method 패턴, Bob Martin). "한 번만 쓰는 코드에 과도한 추상화 금지" 룰은 *cross-module utility* 자제 의미 — 같은 모듈 안 step helper 분할은 OK.
+- **Composed Method + Stepdown Rule**: 분할 후 파일 내 순서는 **public main 위 → helper 아래** (위→아래로 추상화 한 단계씩 내려감). Python 은 late binding (runtime lookup) 이라 helper 가 main 아래에 있어도 호출 시점에 module 정의 완료 후라 동작 OK.
+- **SRP + CQS 적용**: helper 도 단일 책임 (reason to change 가 하나). **Query** (값 반환 + side-effect 없음) 와 **Command** (state 변경 + void) 분리. 한 함수가 둘 다 하면 분할.
+- **CQS 의 도메인 예외 수용**: entity 메서드 (`Entity.change()` 등) 가 in-memory mutate + 결과 반환 — DDD / cosmicpython 도메인 객체 패턴이라 엄격 CQS 와 충돌하지만 도메인 차원 수용.
+- **immutable copy 패턴**: helper 가 dict/list mutate 가 자연스러워도 CQS 정합 위해 `dict(input) + 수정 + 새 객체 반환` 권장.
+- **`private → private` 호출 OK** (2026-05-19 reversal): 같은 추상화 수준의 step helper 가 서로 호출해도 됨. 단 **cross-usecase 호출은 여전히 금지** (atomic validator 만 공유).
+- **dataclass vs dict (kwargs 표현)**: entity API 가 sentinel 스타일 (None=변경 안 함, unset_xxx=명시 unset) 이면 dict 가 자연스럽게 fit (명시 set vs default 구분 가능). dataclass 도입은 entity API 의 sentinel 리팩토링 (`UNSET` sentinel / 별도 메서드) 과 함께 진행 — 그 전엔 dict 유지.
+- **helper 의 책임 단일화 — 진입 가드는 호출자**: helper 함수가 첫머리에서 `if 진입조건: return` 을 쌓고 있다면 그 가드는 helper 가 아니라 호출자 (loop `continue` 또는 early return) 의 책임이다. helper 는 함수 이름이 약속한 로직만 수행한다 — 그래야 이름과 동작이 일치하고 호출 흐름이 외부에서 읽힌다. 예: `_verify_value(field, value, registry)` 내부에 `if field not in mask: return` / `if not value: return` 을 두지 말고, 호출자 loop 에서 `continue` 로 처리.
+- **동일 패턴 N 호출은 list + loop 로**: 같은 helper 를 인자만 바꿔 2회 이상 명시 호출한다면 `(인자조합)` list 를 모듈 상수로 빼고 for-loop 로 묶는다. 4 호출 + 비슷한 매핑 검증 2 호출 같이 누적되면 가독성 큰 차이.
+- **모듈 상수는 파일 최상단**: 모듈 상수 (`_STRATEGY_REGISTRIES` 등) 는 imports + logger 정의 다음, 첫 함수 정의 전 위치. 함수들 사이에 끼면 가독성 떨어지고 "어디서 정의됐지" 추적 부담.
+
 ## 에러 처리
 
 - **update/delete에서 대상 미존재 시 도메인 예외** (`NotFound` 등). null/None 반환 금지.
