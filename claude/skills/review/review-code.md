@@ -23,6 +23,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **Django ORM annotate ↔ dataclass 필드 동기화**: ORM의 `.annotate()`에 새 필드를 추가했는지 확인. annotate에 없으면 결과 dict에 키 누락 → `Dataclass(**val)` TypeError.
 - **하위 호환성**: 기존 동작이 깨지지 않는지. proto 필드 번호, 직렬화 형식.
 - **FE-BE 데이터 정합성**: 응답 필드명/타입이 프론트 기대와 일치하는지.
+- **proto ↔ wire DTO (cmd) 필드 매핑**: `MessageToDict(request) → Cmd(**dict)` spread 패턴 사용 시, proto 메시지의 필드 구조와 cmd DTO 의 필드명/타입이 정확히 일치해야 함. proto 가 nested object (`payment_group: PaymentGroupDetail`) 인데 cmd 가 lookup key (`payment_group_name: str`) 면 pydantic `extra='ignore'` 기본값 때문에 silent drop. 특히 proto + cmd 가 별도 PR/publish 일 때 publish 순서 의존성을 PR description 에 머지 차단 조건으로 명시.
 
 ## 3-1. 반환 타입 정확성 (Return Type Safety)
 

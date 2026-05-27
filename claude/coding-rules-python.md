@@ -20,6 +20,8 @@
 ## 테스팅 (pytest)
 
 - **테스트 메서드명은 영어, docstring만 한글**.
+- **Given-When-Then 패턴으로 작성**. 명시적 주석(`# given:`, `# when:`, `# then:`) 또는 빈 줄로 단계 구분. 리뷰어가 "무엇을 검증하는지" 빨리 파악 가능.
+- **테스트 fixture 의 랜덤 초기값에 의존 금지**. 변경 전/후 값 비교 테스트는 given 단계에서 변경 전 값을 명시 set 한다. conftest 의 `Faker` 등 랜덤 초기값이 우연히 expected 와 일치하면 변경 검증이 무의미해짐 (예: `currency='KRW'` 로 변경하는 테스트가 fixture 가 우연히 KRW 일 때 변경 없이도 통과). given 에 `uc.copy(update={'currency': 'USD', ...})` 같은 명시 set 후 update.
 - **Pydantic `Field(gt=0)`, Enum 값 검증 등은 테스트하지 않는다**. 프레임워크가 보장.
 - **Fake repo까지 만들어서 "필드가 올바르게 세팅되는가" 검증하는 건 프레임워크 테스트에 가깝다**. 단순 조합 UseCase는 View 통합테스트(APIClient)에서 커버.
 - **헬퍼는 `conftest.py`에 집중**. 테스트 파일마다 같은 fixture/factory를 중복하지 않는다.
