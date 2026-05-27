@@ -126,6 +126,7 @@
 - 데이터 객체 단독 테스트 불필요, 스냅샷 테스트 금지, 무효 케이스 전수 검증 불필요.
 - update/delete 미존재 시 None 대신 도메인 예외, find는 None OK.
 - 중복 테스트 통합, 헬퍼는 conftest에 집중.
+- **개인 프로젝트(linkcart 등 회사 외부 repo)는 MC/DC 커버리지(Modified Condition/Decision Coverage)를 만족시킨다.** 복합 조건 `A && (B || C)` 같은 식에서 각 sub-condition이 다른 condition을 고정한 채로 단독으로 decision을 뒤집은 적이 있어야 한다. branch coverage 100%로 만족하지 못한다. n+1개 케이스로 보통 충분 (n=condition 수). JaCoCo 등은 native 지원이 없으므로 테스트 작성 시 입력 조합표를 직접 설계해서 만족 여부를 확인한다. 회사 프로젝트(buzzvil 등)에는 적용하지 않는다.
 
 ## 코드 변경 원칙
 

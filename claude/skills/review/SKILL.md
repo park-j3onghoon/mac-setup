@@ -1,7 +1,7 @@
 ---
 name: review
 version: 4.1.0
-description: PR 랜딩 전 코드 리뷰. 3개 서브에이전트를 병렬 실행하고 선택적으로 Codex CLI(이종 LLM)를 추가 투입해 빠짐없이 검증한다. "리뷰해줘", "PR 리뷰", "코드 리뷰" 등으로 트리거.
+description: PR 랜딩 전 풀 워크플로우 코드 리뷰 — 3개 서브에이전트 병렬 + Codex(선택) + AUTO-FIX + 변경 설명 문서 + pr-size-check + push 안내까지. "리뷰해줘", "코드 리뷰", "풀 리뷰" 등으로 트리거. PR 단어가 들어간 "PR 리뷰"는 /pr-review-report(보고만)를 사용.
 allowed-tools:
   - Bash
   - Read
