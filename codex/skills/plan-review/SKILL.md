@@ -105,7 +105,7 @@ agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이�
 
 ## Step 3: 계획 저장
 
-`docs/{작업명}/plan.md`에 리뷰 반영 최종 계획 저장.
+리뷰 반영 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 저장한다. repo 내부(`docs/`)에 커밋하지 않는다 — plan은 개인 작업 문서이며 PR diff를 부풀리지 않아야 한다. repo이름은 현재 git top-level 디렉토리 이름(`basename $(git rev-parse --show-toplevel)`).
 
 ## Step 4: 구현 시작 확인
 
@@ -122,11 +122,7 @@ agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이�
 1. **references/*.md** — 새로운 패턴/위반이 참조 문서에 없으면 추가
 2. **coding-rules.md** (`~/.claude/coding-rules.md`) — 확정된 새 코딩 규칙
 3. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
-4. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 글로벌 또는 Buzzvil 등 페어 위치 중 한쪽을 수정하면 **양쪽 파일을 동시에 같은 내용으로** 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지. 페어 위치:
-   - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
-   - `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
-   - `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
-   업데이트 후 `diff -q` 또는 그 비슷한 명령으로 분기 섹션 외 차이가 없는지 점검한다.
+4. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 페어 한쪽을 수정하면 **양쪽을 동시에 같은 내용으로** 업데이트하고 `diff -q`로 분기 섹션(assignee 등) 외 차이가 없는지 점검한다. 페어 위치·규칙은 AGENTS.md "CLAUDE.md/AGENTS.md 페어 업데이트" 참조.
 
 ### 판단 기준
 - 반영: 2회+ 반복 이슈 패턴, 사용자 명시적 교정, 참조 문서에 없는 체크리스트

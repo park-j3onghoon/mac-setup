@@ -196,11 +196,7 @@ Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
 2. **coding-rules.md** — 이번 리뷰에서 확정된 새 코딩 규칙이 있으면 추가
 3. **메모리** — 프로젝트 맥락, 사용자 피드백 중 다음 세션에도 유효한 것
 4. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
-5. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 글로벌 또는 Buzzvil 등 페어 위치 중 한쪽을 수정하면 **양쪽 파일을 동시에 같은 내용으로** 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지. 페어 위치:
-   - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
-   - `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
-   - `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
-   업데이트 후 `diff -q` 또는 그 비슷한 명령으로 분기 섹션 외 차이가 없는지 점검한다.
+5. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 페어 한쪽을 수정하면 **양쪽을 동시에 같은 내용으로** 업데이트하고 `diff -q`로 분기 섹션(assignee 등) 외 차이가 없는지 점검한다. 페어 위치·규칙은 CLAUDE.md "CLAUDE.md/AGENTS.md 페어 업데이트" 참조.
 
 ### 판단 기준
 

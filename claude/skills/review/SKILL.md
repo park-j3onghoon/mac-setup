@@ -74,7 +74,7 @@ diff 전문을 각 서브에이전트에 전달한다. **반드시 3개를 동�
 
 ### 서브에이전트 3: 팀 리뷰어 시뮬레이션
 기준 파일: `~/.claude/skills/review/review-team.md`
-역할: 팀 리뷰어(Frank, Zune, Wynn, BK, Lucas, Edan, David, Scott, Brice, Thomas, isac322, Miles)별 관점 + 언어별 리뷰어(Bale-do, dc7303, jzakka, glenn4105, KangBK0120)
+역할: review-team.md의 리뷰어 카탈로그(R1~R24 매핑표)별 관점. diff 도메인에 해당하는 리뷰어 위주로 점검(매핑표 도메인 컬럼 활용).
 
 ## Step 3.5: Codex 추가 리뷰 (선택)
 
@@ -105,9 +105,7 @@ node "$CODEX_SCRIPT" review --background
 node "$CODEX_SCRIPT" adversarial-review --background
 ```
 
-`--background`는 Codex 플러그인의 자체 배경 모드이며, Claude Code Bash tool도 `run_in_background: true`로 띄워 두 층으로 비동기 처리한다. BashOutput으로 stdout을 수신하면서 완료 상태가 될 때까지 대기한다.
-
-Codex stdout은 **원본 그대로 보존**하여 Step 4 결과 통합에 합친다. 요약하거나 paraphrase 하지 않는다.
+`--background`(Codex 자체 배경 모드)와 Bash tool `run_in_background: true`로 두 층 비동기 처리하고, BashOutput으로 stdout을 polling하며 완료까지 대기한다. Codex stdout은 **원본 그대로 보존**하여 Step 4 결과 통합에 합친다. 요약·paraphrase 금지.
 
 ## Step 4: 결과 통합
 
@@ -135,10 +133,10 @@ Codex stdout은 **원본 그대로 보존**하여 Step 4 결과 통합에 합친
 ### 5c: AUTO-FIX 적용
 각 수정마다 1줄 요약: `[AUTO-FIXED] [file:line] 문제 → 조치`
 
-### 5c: ASK 항목 일괄 질문
+### 5d: ASK 항목 일괄 질문
 ASK 항목을 하나의 AskUserQuestion으로 묶어서 질문.
 
-### 5d: 승인된 수정 적용
+### 5e: 승인된 수정 적용
 
 ## Step 6: 문서 확인
 
@@ -159,38 +157,7 @@ diff -q ~/buzzvil_analysis/CLAUDE.md ~/buzzvil_analysis/AGENTS.md
 
 ## Step 7: 변경 설명 문서 생성
 
-리뷰 완료 후, **이 PR이 왜 필요하고 어떻게 동작하는지** 설명하는 문서를 생성한다.
-
-### 7a: 엔드유저 시나리오 → 함수 호출 체인
-
-엔드유저(또는 외부 시스템)가 이 코드를 트리거하는 시점부터 최종 결과까지, **함수 호출을 하나하나 빠짐없이** 보여준다. 수정된 함수는 `← 수정` 표시.
-
-```
-예시:
-1. 캠페인 매니저가 Dash 리포트 페이지를 연다
-2. GET /api/ba/ads/{id}/reports
-3. ServiceLineitemReportDetail.get()
-   → get_full_lineitem_report()
-     → get_lineitem_report()
-       → StatsProvider.list_unit_creative()
-         → statssvc gRPC ListUnitCreatives
-           → views.list_unit_creative()  ← 수정
-             → DjangoJobRepository.list_unit_creative()
-               → _list_unit_creative_query_new2()  ← 수정: Sum(alternative_conversion) 추가
-```
-
-### 7b: 파일별 수정 이유
-
-diff의 각 파일에 대해:
-1. **상대 경로** (레포 루트 기준, 전체 표기)
-2. **이 파일의 역할** 1줄
-3. **왜 수정했는가**: 이 변경이 없으면 어떤 문제가 생기는지
-4. **구체적 변경 내용**: 어떤 라인에서 무엇을 추가/변경했는지
-5. **설계 결정**: 비자명한 결정이 있으면 설명 (default 값, nullable 등)
-
-### 7c: 문서 저장
-
-생성한 문서를 사용자에게 보여주고, 저장 여부를 묻는다.
+이 PR이 왜 필요하고 어떻게 동작하는지 설명하는 문서를 생성한다. 시작 전 `~/.claude/skills/review/references/change-doc.md`를 Read한다 — 호출 체인(수정 함수 `← 수정` 표시) + 파일별 5항목(경로/역할/왜/변경/설계결정) 양식이 거기 있다. 생성 후 사용자에게 보여주고 저장 여부를 묻는다.
 
 ## 주장 검증 규칙
 - "이 패턴은 안전" → 안전을 증명하는 구체적 라인 인용
@@ -215,10 +182,7 @@ Remaining: V
 
 ## Step 8: /pr-size-check + push 안내
 
-모든 리뷰와 수정이 완료된 후:
-
-1. `/pr-size-check` 스킬을 실행한다.
-2. size check 통과 후, **push 명령어를 절대 경로 포함하여 출력**한다:
+`/pr-size-check` 스킬을 실행하고, 통과 후 **push 명령어를 절대 경로 포함하여 출력**한다:
 
 ```
 /review + /pr-size-check 완료. 아래 명령어로 push해주세요:
@@ -230,78 +194,4 @@ Remaining: V
 
 ## Step 9: 스킬 자가 개선
 
-리뷰 완료 후, 이번 리뷰에서 내린 결정/발견한 패턴 중 스킬 파일에 없는 내용을 반영한다.
-
-### 9a: 신규 지식 추출
-이번 리뷰에서 아래 중 새로운 것을 식별한다:
-- ASK 항목에 대한 사용자의 결정
-- 반복 발견된 코드 패턴/안티패턴
-- 새로 적용된 리뷰 기준
-
-### 9b: 양방향 반영 — 리뷰 스킬 + 코딩 규칙
-
-발견한 신규 지식을 **두 곳에** 반영한다:
-
-**① 리뷰 체크리스트** (다음 리뷰에서 더 잘 잡기 위해):
-`review-code.md`, `review-language.md`, `review-team.md`를 읽어 이미 포함된 내용인지 확인.
-없는 내용만 적절한 파일에 추가:
-- 코드 공통 규칙 → `review-code.md`
-- 언어 특화 규칙 → `review-language.md`
-- 팀 리뷰어 관점 → `review-team.md`
-
-**② 코딩 규칙** (다음 코드 생성에서 처음부터 잘 쓰기 위해):
-리뷰에서 발견한 이슈를 **"이렇게 써라" 형태의 규칙**으로 변환한다.
-
-**③ CLAUDE.md/AGENTS.md 페어 (CRITICAL)**:
-글로벌 또는 Buzzvil scope에서 한쪽 파일을 수정했다면 페어 파일도 같이 업데이트한다. 도구별 차이(assignee 등)만 분기 섹션으로 유지.
-- `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
-- `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
-- `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
-
-**분류 게이트 (순서대로 적용)**:
-
-1. **범용성 체크** — 2개 이상 언어/프로젝트에서 재발 가능한가?
-   - YES → `~/.claude/coding-rules.md` 코어
-   - NO → 2번으로
-2. **언어/도메인 특화**:
-   - Python/Django/Pydantic → `~/.claude/coding-rules-python.md`
-   - Vue + Buzzvil 메인 프로젝트(ads-center, dash 등) → `~/.claude/coding-rules-vue.md`
-   - React/Vue 공통 프론트 → `~/.claude/coding-rules-frontend.md`
-   - 해당 서브 파일이 없으면 신규 생성 가능
-3. **니치 도구/프로젝트 전용** (Playwright/BootstrapVue/Testcontainers 등 특정 도구에 국한된 노하우, 또는 특정 프로젝트 구조/컨벤션에만 해당되는 것):
-   - 단일 프로젝트에서만 반복 → `project_{name}.md` 메모리
-   - 여러 프로젝트에서 그 도구를 공유 → `reference_tool_{tool}.md` 메모리
-   - 둘 다 해당 → 둘 다 저장
-   - **코어(coding-rules.md)나 언어 서브 파일에 넣지 않는다** — 모든 세션에 로드되어 노이즈가 된다
-
-**예시 언어 중립화**: 원칙이 범용이면 코어의 서술을 언어 중립적으로 다듬는다. 구체 예시(`list[str] | None`, `npm run build` 등)는 해당 서브 파일에 둔다.
-
-**반영 전 확인**: 대상 파일을 먼저 읽어 이미 포함된 내용인지 확인. 중복 금지.
-
-**예시**:
-- "함수 내부 import 발견" → `coding-rules.md` 코어 ("import는 파일 최상단에 배치")
-- "Pydantic Field validator 테스트 발견" → `coding-rules-python.md` ("프레임워크 빌트인 검증 테스트 금지"의 Python 예시)
-- "Playwright strict mode 위반" → `reference_tool_playwright.md` (도구 전용)
-
-각 반영: `[SKILL-UPDATE] {파일}: {추가 내용 1줄 요약}`
-신규 지식 없으면 "스킬 업데이트 없음" 출력 후 건너뛴다.
-
-### 9c: coding-rules.md 분할 관리
-
-반영 후 `~/.claude/coding-rules.md`의 줄 수를 `wc -l`로 확인한다.
-
-**200줄 이상**: 가장 큰 섹션을 서브 파일로 분리한다. **내용은 하나도 삭제하지 않는다.**
-
-1. 가장 줄 수가 많은 섹션(예: `## 테스팅`)을 식별
-2. 해당 섹션 내용을 `~/.claude/coding-rules-{섹션명}.md`로 이동
-3. coding-rules.md에는 1줄 참조로 교체:
-   ```
-   ## 테스팅 → `~/.claude/coding-rules-testing.md` 참조
-   ```
-4. 보고: `[SPLIT] 테스팅 섹션({N}줄) → coding-rules-testing.md로 분리`
-
-**코드 작성 시 로드 규칙** (CLAUDE.md에 이미 명시):
-- `coding-rules.md` (코어)는 항상 읽는다
-- 서브 파일은 현재 작업 언어/도메인에 해당하는 것만 읽는다
-
-review-*.md는 전용 서브에이전트에 로드되므로 줄 수 제한을 적용하지 않는다.
+리뷰에서 내린 결정/발견한 패턴 중 스킬 파일에 없는 내용을 반영한다. 시작 전 `~/.claude/skills/review/references/self-improve.md`를 Read한다 — 신규 지식 추출(9a) + 양방향 반영(9b: 리뷰 체크리스트/coding-rules/CLAUDE↔AGENTS 페어, 분류 게이트) + coding-rules 분할 관리(9c)가 거기 있다. 신규 지식 없으면 "스킬 업데이트 없음" 출력 후 건너뛴다.
