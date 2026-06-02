@@ -8,6 +8,7 @@
 - `coding-rules-python.md` — Python / Django / Pydantic
 - `coding-rules-vue.md` — Vue + Buzzvil 메인 프로젝트 (ads-center 등)
 - `coding-rules-frontend.md` — React / Vue 프론트 공통
+- `coding-rules-db.md` — DB 스키마/마이그레이션 (MySQL)
 
 도구별 노하우는 메모리에 있다:
 
