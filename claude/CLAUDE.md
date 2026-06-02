@@ -26,7 +26,13 @@
 - Plan Mode의 `/Users/teddy.park/.claude/plans/*.md`는 스킬 기본 경로이므로 그대로 사용. `~/plans/{repo}/{task}/plan.md`는 저장(저장용 사본)·공유용 위치.
 - `docs/` 아래에 이미 plan을 만들어 커밋한 경우: 파일을 `~/plans/{repo}/{task}/`로 옮기고, 해당 커밋은 soft reset 후 재작성하여 diff에서 제외한다 (push 전에만 가능; push 후에는 force push 필요하므로 사용자에게 안내).
 
-## 브랜치 명명 규칙 (CRITICAL)
+## 개인 repo vs 회사 repo 워크플로우 (CRITICAL)
+
+- **개인 repo**(mac-setup, linkcart 등 본인 GitHub 계정 repo): PR 없이 main에 직접 commit·push. 위 `/review`·아래 `teddy/` 브랜치 prefix·PR 생성 규칙 면제. 큰 변경은 백업 브랜치/커밋으로 안전장치만 둔다.
+- **회사 repo**(buzzvil 등 팀/조직 repo): `/review` → `/pr-size-check`, `teddy/` 브랜치, PR 생성 규칙(assignee 등) 전부 유지.
+- 판단 기준: push 대상이 본인 개인 계정 repo면 개인, 팀/조직 repo면 회사.
+
+## 브랜치 명명 규칙 (CRITICAL, 회사 repo)
 
 - 새 브랜치 생성 시 **반드시 `teddy/` prefix로 시작**한다.
   - 예: `teddy/plb-530-recalculate-payout`, `teddy/fix-billing-cron`
