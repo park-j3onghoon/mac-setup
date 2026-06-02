@@ -27,6 +27,7 @@
 - **헬퍼는 `conftest.py`에 집중**. 테스트 파일마다 같은 fixture/factory를 중복하지 않는다.
 - **`@transaction.atomic` 적용 함수를 MagicMock 기반으로 테스트하면 `@pytest.mark.django_db` 필요**. atomic 데코레이터가 DB 연결을 요구해서 mark 없으면 `RuntimeError: Database access not allowed`. MagicMock이 실제 DB를 건드리지 않아도 decorator 자체가 DB를 요구.
 - **Fixture factory는 시각 일관성을 호출자가 주입 가능하게**. 여러 factory(예: `build_request_entity`, `build_campaign_entity`)가 각자 `datetime.now(tz=timezone.utc)`를 호출하면 같은 테스트에서 같이 쓸 때 `start_at/created_at` 등이 마이크로초 단위로 어긋나 `result.start_at == old_entity.start_at` 같은 equality assertion이 실패한다. factory에 시간 파라미터(`start_at`, `end_at` 등)를 노출해 호출자가 동일 값을 주입한다.
+- **싱글턴/전역 객체 모킹은 context manager로, bare 변조 금지**. `Foo.get_instance().method = Mock(...)`처럼 싱글턴 인스턴스의 메서드를 직접 덮어쓰면 복구되지 않아 같은 프로세스의 후속 테스트로 mock이 누수된다(순서 의존 flaky). 헬퍼가 `mock.patch.object(Foo, 'get_instance', return_value=mock.Mock(spec=Foo))`를 **반환**하게 하고 `with helper():`로 호출해 블록 종료 시 자동 복구되게 한다. `spec=`을 주면 존재하지 않는 메서드 호출도 `AttributeError`로 잡혀 계약 안전성이 올라간다. (프로덕션이 매 호출 `get_instance()`로 새로 resolve할 때만 `get_instance` 패치가 적중 — 모듈 레벨 캐싱 경로면 그 변수를 패치.)
 
 ## Django 스타일
 
