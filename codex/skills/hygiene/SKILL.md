@@ -61,7 +61,16 @@ ref-*.md 내부 구조 확인:
 - User Preferences: coding-rules.md 중복이면 참조로 교체
 - Examples: 3개 초과 시 대표적인 것만 유지
 
-## Step 5: 적용
+## Step 5: 크로스 레퍼런스 정리
+
+파일 간 참조 관계를 정리한다. **같은 규칙의 canonical 위치는 1곳만, 나머지는 참조.**
+- coding-rules.md의 규칙이 references/*.md에도 있으면 → ref에서 "coding-rules.md 참조"로 교체
+- references/*.md 간에 같은 항목이 있으면 → 더 적절한 차원에 유지, 다른 쪽은 제거
+- SKILL.md에 인라인으로 적힌 규칙이 ref에 있으면 → SKILL에서 "참조"로 교체
+
+(canonical 우선순위는 Step 2 참조.)
+
+## Step 6: 적용
 
 ```
 HYGIENE REPORT
@@ -75,7 +84,17 @@ BEFORE: XXX줄  →  AFTER: YYY줄 (Delta: -ZZ줄)
 
 사용자 확인 후 승인된 항목만 적용.
 
-## 절대 하지 않는 것
+## 판단 기준
+
+### 합쳐야 하는 것
+- 같은 의미를 다른 문장으로 적은 것 / 같은 안티패턴의 다른 사례 / 같은 파일 다른 섹션의 동일 규칙
+
+### 합치면 안 되는 것
+- 비슷해 보이지만 적용 맥락이 다른 것 ("None 반환 금지" vs "None 반환 허용" — find vs update 맥락)
+- 같은 원칙이지만 언어별로 다른 표현 (Python vs Kotlin)
+- 다른 차원에서 다른 관점으로 보는 것 (security 입력 검증 vs coding-standards 타입 안전성)
+
+### 절대 하지 않는 것
 - 규칙 삭제 (사용 빈도 낮다고 제거하지 않음)
 - 의미 변경 (일반화 시 원래 의미 보존 필수)
 - 사용자 확인 없이 적용
