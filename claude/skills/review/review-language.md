@@ -80,6 +80,16 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 
 ---
 
+## Kotlin / Spring Boot
+
+### null safety
+- `!!` 사용 금지, `?.let` / `?:` / `requireNotNull` 활용
+- data class 불변성, copy() 활용
+- `@field:NotBlank` 등 어노테이션 정확한 target 지정
+- sealed class/interface로 타입 안전 분기
+
+---
+
 ## Frontend (JavaScript/TypeScript/Vue/React)
 
 ### React
@@ -93,6 +103,7 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 
 ### 컨벤션
 - 한 파일만 변경하면 UI 일관성이 깨지는 경우 별도 이슈 제안
+- 새 Vue 컴포넌트는 Composition API (script setup)
 - **Zod 문자열 스키마**: `z.string().min().max().refine()` 수동 체이닝 대신 `stringSchema()`/`urlSchema()`/`emailSchema()` (`@/schemas/common`) 사용 여부 확인
 - **form 훅 경량화**: `useFooForm` 훅이 `return useAppForm(...)` 단일 반환인지 확인. mutation/업로드/에러 처리가 훅 내부에 있으면 지적
 - **form hook Options 패턴**: Options 타입은 `{ defaultValues?: Partial<Input>; onSubmit: (values: Values) => Promise<void> | void }` 형태 사용. 개별 필드를 각각 optional param으로 나열하지 않음 (`create-catalog.form.ts`, `cpas-ad-set.form.ts` 등 기존 패턴 참조)

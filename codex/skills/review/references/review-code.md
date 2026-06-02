@@ -23,6 +23,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **Django ORM annotate ↔ dataclass 필드 동기화**: ORM의 `.annotate()`에 새 필드를 추가했는지 확인. annotate에 없으면 결과 dict에 키 누락 → `Dataclass(**val)` TypeError.
 - **하위 호환성**: 기존 동작이 깨지지 않는지. proto 필드 번호, 직렬화 형식.
 - **FE-BE 데이터 정합성**: 응답 필드명/타입이 프론트 기대와 일치하는지.
+- **proto ↔ wire DTO (cmd) 필드 매핑**: `MessageToDict(request) → Cmd(**dict)` spread 패턴 사용 시, proto 메시지의 필드 구조와 cmd DTO 의 필드명/타입이 정확히 일치해야 함. proto 가 nested object (`payment_group: PaymentGroupDetail`) 인데 cmd 가 lookup key (`payment_group_name: str`) 면 pydantic `extra='ignore'` 기본값 때문에 silent drop. 특히 proto + cmd 가 별도 PR/publish 일 때 publish 순서 의존성을 PR description 에 머지 차단 조건으로 명시.
 
 ## 3-1. 반환 타입 정확성 (Return Type Safety)
 
@@ -36,6 +37,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **네이밍 명확성**: 변수/함수명이 동작을 정확히 설명하는지. 모델 필드명과 DB 컬럼명 일치.
 - **매직 넘버**: 하드코딩된 값. 상수로 추출 필요 여부.
 - **중복 로직**: 유사 패턴 반복 시 함수 추출 제안 (DRY).
+- **인터페이스 메서드 순서 일관성**: Repository/Port 인터페이스는 **CRUD 순서**(`save` → `findBy*`/`findAll*` → `countBy*` → `existsBy*` → `deleteBy*`/변경 동작)로 통일되어 있는지 확인. 같은 프로젝트 내 다른 Repository 파일과 비교해 순서가 다르면 지적. 특히 `save`가 어떤 파일은 맨 위, 다른 파일은 중간/아래에 있으면 일관성 위반.
 
 ## 5. YAGNI / 명시성 (Do Less, Be Explicit)
 
@@ -50,6 +52,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 
 - **에러 처리 계층**: infra vs usecase 레이어 분리. 에러 반환 vs 값 기반 분기.
 - **설계 의도 일치**: secondary write가 primary 성공과 무관하게 실행되어야 하는지 등.
+- **usecase 단계 순서 (validation → write → response)**: update/create usecase에서 stats 집계, display_* 응답 필드, 추가 조회 등 **response payload 조립은 repository가 반환한 updated/created 엔티티 기반**으로 수행. 입력 merged 엔티티로 응답을 만들면 DB trim/default/timestamp/validation 결과가 반영 안 되어 응답 신뢰도가 떨어진다. 순서: (1) validation (2) update/create (3) response 집계.
 - **API 설계**: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 - **패키지 구조**: 순환참조, 코드 위치 적절성.
 - **레이어 배치 판단**: 코드가 올바른 레이어에 있는지. 판단 기준:
@@ -66,6 +69,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **조건부 부작용**: if 안에서 외부 API 호출, DB 쓰기.
 - **except 블록 직접 return**: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`. 새 except 추가 시 변수 할당 누락으로 `UnboundLocalError` 발생 방지.
 - **내부 에러 메시지 노출 금지**: `except Exception`에서 `str(e)`를 클라이언트 응답에 포함하지 않는다. DB 에러, 스택 정보 등 내부 구현이 노출된다. `'Internal Server Error'` 같은 고정 문자열 사용.
+- **Unreachable 분기 처리 방식 맥락 분리**: 순수 함수(pure function)의 도달 불가 분기는 "안전한 fallback + '정상 경로 도달 불가' 주석"이 자연스러움. async handler/이벤트 핸들러/mutation 콜백의 invariant 위반은 `throw new Error('unreachable: ...')`로 즉시 노출해 관측 파이프라인으로 잡히게 할 것. silent return은 사용자 피드백 없이 사일런트 실패하므로 지적.
 
 ## 8. 관측성 (Observability)
 
@@ -92,6 +96,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **배포 순서**: 스키마 변경 → 코드 배포 순서. 하위 호환 배포.
 - **장애 전파**: 일괄 적용 로직이 추후 문제 가능성.
 - **레플리카/마스터 분리**: DB 쿼리가 올바른 DB 사용.
+- **Merge 충돌 해결 후 코드 유실 확인**: `--theirs`/`--ours`로 충돌 해결 시, 해결된 파일에서 상대 브랜치의 의도된 변경이 누락되지 않았는지 확인. 특히 stacked PR에서 중간 PR merge 시 하위 PR의 코드가 사라질 수 있다.
 
 ## 출력 형식
 

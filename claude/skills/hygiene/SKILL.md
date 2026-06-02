@@ -36,24 +36,17 @@ allowed-tools:
 
 기본은 Tier 1만. 사용자가 "전체" 또는 "스킬도" 라고 하면 Tier 2 포함.
 
+`review/references/*.md`(self-improve.md/change-doc.md 등 스킬 본문 분리분)는 누적 규칙이 아니라 SKILL 절차 외부화본이므로 위생 대상이 아니다.
+
 ## Step 1: 전수 읽기
 
-대상 파일을 모두 Read한다. 각 파일의 줄 수를 기록:
+대상 파일(위 Tier 1, 요청 시 Tier 2)을 모두 Read하고 각 파일의 줄 수를 `FILE SIZES` 블록에 파일명별로 기록 + `Total` 합계:
 ```
 FILE SIZES
 ══════════
-coding-rules.md:           66줄
-ref-architecture.md:        54줄
-ref-data-database.md:       53줄
-ref-security.md:            53줄
-ref-performance.md:         58줄
-ref-coding-standards.md:    62줄
-ref-test.md:                73줄
-review-code.md:             XX줄
-review-language.md:         XX줄
-review-team.md:             XX줄
+{파일명}: {N}줄
 ─────────────────────────
-Total:                     XXX줄
+Total:    {합계}줄
 ```
 
 ## Step 2: 중복/모순 탐지
