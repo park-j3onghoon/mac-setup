@@ -159,6 +159,13 @@ node "$CODEX_SCRIPT" adversarial-review --background "$PLAN_PATH 의 설계 선�
 - `BashOutput`으로 stdout을 polling하면서 완료까지 대기. **timeout은 명시하지 않는다** (Codex가 충분히 깊게 돌 수 있도록).
 - Codex stdout은 **원본 그대로** 사용자에게 제시. 요약/paraphrase 금지.
 
+### 운영 노트 (codex-companion 호출 실무)
+
+- **`adversarial-review`는 git diff 리뷰어다** (`--scope working-tree|branch`). 구현 전이라 대응 diff가 없거나(plan만 존재) working tree에 무관한 변경이 섞여 있으면 plan이 아닌 그 diff를 리뷰한다. 이때는 대신 `task --effort high "<plan 절대경로> 를 읽고 설계를 적대 검증하라. git diff는 무시하라 …"`를 쓴다(읽기 전용, `--write` 금지).
+- **`task`/`adversarial-review`는 비동기 job**이다. `task`는 thread만 띄우고 즉시 반환하므로 `status --all`로 job-id를 찾아 `status <job-id>` 폴링 후 `result <job-id>`로 회수한다. `status --all`의 'running' 문자열로 폴링하면 다른 job에도 매칭돼 오판 → 특정 job-id의 phase를 본다.
+- **stall 대비**: job이 "starting" phase에서 진척 없이(로그에 turn-start 이후 출력 0) 멈추면 `cancel <job-id>` 후 self-review(직접 적대 점검)로 대체하고 사용자에게 알린 뒤 Step 4로 진행한다.
+- `--help`를 인자로 주면 focus text로 먹혀 실제 job이 뜬다 — 계약 확인용으로 쓰지 말 것.
+
 ### 결과 반영
 
 Codex 리포트를 제시한 뒤 AskUserQuestion 1회:

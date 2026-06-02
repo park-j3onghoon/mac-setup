@@ -90,7 +90,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command' | grep -qE 'git push|gh pr create' && echo '{\"decision\":\"ask\",\"message\":\"git push/gh pr create 실행 전에 /review + /pr-size-check를 완료했나요?\"}' || echo '{\"decision\":\"allow\"}'",
+            "command": "jq -r '.tool_input.command // empty' | grep -qE 'git push|gh pr create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"git push/gh pr create 실행 전 /review + /pr-size-check 완료했나요?\"}}'; true",
             "timeout": 5,
             "statusMessage": "push/PR 사전 체크"
           }
@@ -109,7 +109,8 @@
     "sentry@claude-plugins-official": true,
     "figma@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "codex@openai-codex": true
+    "codex@openai-codex": true,
+    "datavil@buzzvil-plugins": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
@@ -117,9 +118,16 @@
         "source": "github",
         "repo": "openai/codex-plugin-cc"
       }
+    },
+    "buzzvil-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "buzzvil/buzzvil-plugins"
+      }
     }
   },
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
   "theme": "light-daltonized"
 }

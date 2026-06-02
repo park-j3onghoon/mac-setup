@@ -32,6 +32,7 @@
 - Zod 스키마: `stringSchema()` 등 `@/schemas/common` 공유 유틸 우선
 - watch handler에 구현 디테일 인라인 금지 → named method 추출
 - v-b-popover .html modifier → `{ content, html: true }` 객체 형태
+- flex 스크롤 컨테이너(`flex:1; overflow-y:auto`)를 grid area로 재배치할 때: 부모 grid-row를 고정/제한 높이(`auto` 금지)로 주고 flex 체인 전체에 `min-height:0`을 명시한다. row가 `auto`면 콘텐츠 누적 시 컨테이너가 무한 성장하고, `min-height:0` 누락 시 flex 자식이 콘텐츠 이하로 못 줄어 overflow가 무력화돼 자동스크롤이 silent하게 깨진다.
 
 ## Examples
 
