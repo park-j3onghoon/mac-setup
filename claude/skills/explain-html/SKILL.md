@@ -73,33 +73,7 @@ allowed-tools:
 
 ### 시각화 스타일 가이드
 
-```css
-/* 기본 색상 팔레트 */
---bg-primary: #ffffff;
---bg-secondary: #f8f9fa;
---bg-code: #1e1e1e;
---text-primary: #1a1a2e;
---text-secondary: #6c757d;
---accent-blue: #3b82f6;
---accent-green: #10b981;
---accent-orange: #f59e0b;
---accent-red: #ef4444;
---accent-purple: #8b5cf6;
---border: #e2e8f0;
-
-/* SVG 다이어그램 노드 */
---node-bg: #ffffff;
---node-border: #3b82f6;
---node-text: #1a1a2e;
---arrow-color: #64748b;
-
-/* 의미별 색상 */
---color-success: #dcfce7;   /* 정상/완료 */
---color-warning: #fef3c7;   /* 주의/경고 */
---color-error: #fecaca;     /* 에러/실패 */
---color-info: #dbeafe;      /* 정보/중립 */
---color-highlight: #fef9c3; /* 핵심 강조 */
-```
+CSS 변수로 팔레트를 정의한다. 밝은 배경(흰색/연회색)·어두운 코드 배경, 블루/그린/오렌지/레드/퍼플 액센트, SVG 노드(흰 배경+블루 테두리+회색 화살표). 의미색은 4종 구분: success(연녹)·warning(연노랑)·error(연빨강)·info(연파랑) + highlight(강조 노랑).
 
 규칙:
 - 폰트: 본문 `system-ui, -apple-system, sans-serif`, 코드 `'SF Mono', 'Fira Code', monospace`
@@ -115,30 +89,9 @@ allowed-tools:
 
 ### 필수 포함 요소
 
-```html
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{주제} — 상세 설명</title>
-  <style>
-    /* 전체 스타일 여기에 */
-  </style>
-</head>
-<body>
-  <header><!-- 제목 + 한줄 요약 --></header>
-  <nav><!-- 목차 (앵커 링크) --></nav>
-  <main>
-    <!-- 각 섹션 -->
-    <!-- 시각화는 인라인 SVG 또는 CSS로 -->
-  </main>
-  <script>
-    /* 인터랙션 (토글, 스크롤 등) 최소한만 */
-  </script>
-</body>
-</html>
-```
+- `<head>`: `charset=UTF-8`, viewport(반응형), `<title>{주제} — 상세 설명}`, 전체 스타일은 인라인 `<style>`
+- `<body>`: `header`(제목+한줄요약) → `nav`(앵커 목차) → `main`(각 섹션, 시각화는 인라인 SVG/CSS) → `script`(토글·스크롤 등 인터랙션 최소한)
+- `lang="ko"`
 
 ### 코드 스니펫 스타일링
 
