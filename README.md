@@ -12,7 +12,7 @@ mac-setup/
 │   ├── coding-rules*.md
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
-│   ├── skills/           # dev-plan, plan-review, review, cso, guard, hygiene, investigate,
+│   ├── skills/           # plan-review, review, cso, guard, hygiene, investigate,
 │   │                     # explain-html, pr-size-check, retro, session-review, unfreeze
 │   └── commands/sc/      # SuperClaude 명령
 ├── codex/                # ~/.codex/ 로 symlink 대상
@@ -20,7 +20,7 @@ mac-setup/
 │   ├── config.toml
 │   ├── hooks.json
 │   ├── rules/default.rules
-│   └── skills/           # cso, dev-plan, guard, hygiene, plan-review, review, session-review
+│   └── skills/           # cso, guard, hygiene, plan-review, review, session-review
 ├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
 │   └── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
