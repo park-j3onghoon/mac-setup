@@ -29,6 +29,15 @@
 - **Repo는 entity를 있는 그대로 저장한다**. 수정 가능 필드 whitelist/blacklist 같은 도메인 정책 강제는 application(usecase) 책임. infra는 시스템 필드(id/created_at/updated_at) 제외만 수행. Repo가 "어느 필드가 수정 가능한지" 판단하면 다른 usecase(승인/반려/취소 등)가 동일 `update()`를 못 쓰게 된다. 도메인 규칙은 DTO 설계·usecase 분기·엔티티 라우팅으로 표현한다.
 - **Repo `_to_entity` 정규화는 역방향 write와 비대칭임을 고려**. raw DB 값(schedule/live/pause/close) → canonical entity 값(APPROVE)으로 읽을 때 정규화하면, entity를 그대로 저장할 때 canonical 값이 DB EnumField에 없어서 충돌한다. 정규화를 응답 payload 계층으로 옮기거나, entity는 raw 값을 유지하고 정규화된 view는 별도 field/proeprty로 노출한다.
 
+## 검증 (Validation) 계층 분리
+
+- **검증은 3레벨로 나눠 배치한다 — 레벨마다 검사 대상이 다르다** (계층형 / Cosmic Python 아키텍처). 검증을 한 곳(예: DRF Serializer)에 다 몰면 도메인이 진입점에 종속되고, 진입점이 늘면 검증이 누락된다. 데이터 흐름 순서:
+  1. **형식·타입 검증 → 진입점 / 프레젠테이션** (DRF Serializer, View, Controller): "raw 입력이 올바른 **타입**으로 파싱되는가". 신뢰 못 할 외부 입력 정제 — 예: `"abc"`→int 실패(400). 직렬화/역직렬화도 이 계층 (도메인·서비스는 JSON/HTTP를 몰라야 함).
+  2. **단일 값 불변식 → 도메인 값 객체(Value Object) 생성자**: "타입은 맞는데 그 **값 하나**가 도메인적으로 유효한가". 단일 값으로 판단 — 예: `Quantity(-5)` 거부(`__post_init__`). 진입점을 신뢰하지 않는 최후 방어선이라 진입점 검증과 중복돼도 **생략 금지**(다층 방어; 진입점은 HTTP 외 CLI·큐·배치·테스트 등 다수).
+  3. **관계적 비즈니스 규칙 → 도메인 행동(메서드)**: "여러 객체의 **상태 관계**상 이 연산이 가능한가". 2개 이상 상태 필요 — 예: `line.qty > batch.available_quantity`(재고 초과). `can_xxx()` 쿼리 메서드 / 가드 절에 두고 도메인 예외(`OutOfStock`)로 표현 → 진입점에서 HTTP status로 번역.
+- **배치 판단 기준**: 파싱 가능성→①진입점 / 단일 값 유효성→②값 객체 / 객체 간 관계→③도메인 행동. ①은 "타입", ②는 "값", ③은 "관계"를 검사한다.
+- **적용 범위**: 도메인 규칙이 복잡할 때 값어치. 단순 CRUD나 얇은 게이트웨이성 레이어(예: billingsvc gRPC 게이트웨이)엔 과하므로 적용하지 않는다.
+
 ## 코드 구조
 
 - **import는 파일 최상단에 배치**. 함수/메서드 내부 import 금지. 순환 import는 모듈 구조로 해결.
@@ -87,6 +96,7 @@
   - 변경 이력·과거 구현 ("이전에는 Map이었으나...") — git log·PR 본문이 담당
   - 호출자 정보 ("X 화면이 이걸 쓴다") — 코드 변경에 따라 거짓이 된다
   - 한 줄 식별자를 풀어 쓴 설명 (`"X 토큰을 생성한다"` / `fun generate(): String`)
+  - **표준 패턴/제어 흐름을 말로 옮긴 주석 — 코드 구조가 이미 드러냄**. 예: `# compare-and-set 으로 중복 claim 방지`(조건부 update가 보여줌), `# try/except 로 한 항목 실패 격리`(loop 내 try/except가 보여줌), `# 예외 시 좀비 방지 FAILED 마감`(except→update(FAILED)가 보여줌), `# 전부 SENT면 성공 아니면 실패`(has_failure 식이 보여줌)
 - **지웠을 때 미래 독자가 헷갈리면 남기고, 그렇지 않으면 지운다.**
 
 ## 테스팅
@@ -98,6 +108,7 @@
 - **무효 케이스 전수 검증 불필요**. 유효 케이스로 비즈니스 규칙 검증이면 충분.
 - **단순 조합 UseCase 단독 테스트 불필요**. 필드 조합만 하고 비즈니스 로직이 없는 UseCase는 View/Controller 통합테스트에서 커버.
 - **중복 테스트 통합, 헬퍼는 공통 위치에 집중** (pytest는 conftest, vitest는 shared helper 등).
+- **도메인 객체 생성은 픽스처/팩토리 함수에 격리** (Cosmic Python: "keep all domain dependencies in fixture functions"). 테스트 본문에서 `Batch(...)`/`OrderLine(...)` 같은 도메인 객체를 직접 생성하지 말고 `make_batch()` 같은 팩토리 함수나 pytest fixture(conftest 등 공통 위치)에 모은다. 도메인 모델 생성자 시그니처가 바뀌어도 픽스처 한 곳만 고치면 되어 테스트가 도메인 API 변경에 깨지지 않는다. Fake repo/서비스 입력도 같은 헬퍼(`FakeRepository.for_batch(...)` 등)로 만든다.
 - **개인 프로젝트(linkcart 등 회사 외부 repo)는 MC/DC 커버리지(Modified Condition/Decision Coverage) 만족**. 복합 조건 `A && (B || C)`에서 각 sub-condition이 다른 condition을 고정한 채 단독으로 decision을 뒤집은 적이 있어야 한다. branch coverage 100%로는 부족. n+1개 케이스로 보통 충분(n=condition 수). JaCoCo 등 native 지원이 없으므로 입력 조합표를 직접 설계해 확인. 회사 프로젝트(buzzvil 등)에는 미적용.
 
 ## Git / CI
