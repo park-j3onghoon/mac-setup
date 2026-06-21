@@ -12,6 +12,7 @@
 - 타입 힌트 약화 여부 (Any 추가, Optional 남용)
 - import 최상단 배치 (함수 내부 import 금지, circular은 모듈 구조로 해결)
 - dataclass > dict, Enum > string 상수
+- 종류·상태·모드를 가르는 boolean 파라미터 → 2-값이어도 enum (boolean trap: 호출부 `False`가 "없음/반대값" 혼동, 동명 Optional 필드와 "존재 vs 종류" 축 충돌). 단일 on/off 플래그는 boolean 유지.
 - Django ORM annotate ↔ dataclass 필드명 동기화
 
 ### Kotlin / Spring Boot
