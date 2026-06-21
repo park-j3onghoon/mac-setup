@@ -119,6 +119,13 @@
   3. 동일 모듈 내 적용부터 시작하고 확산은 나중에 제안
 - 리뷰어가 "과한 유틸화" 지적 시 즉시 역전할 준비를 한다 (인라인 복귀 비용은 작음)
 
+## Boolean 파라미터 주의 (boolean trap)
+
+- **종류·상태·모드를 가르는 인자를 boolean으로 표현하면 호출부에서 "축"이 숨겨져 오독된다.** `f(is_take_profit=False)`의 `False`가 "없음(존재)"인지 "손절(종류)"인지 호출부만 보고 알 수 없다. 같은 어근의 Optional 필드(`take_profit: Decimal | None`)와 boolean(`is_take_profit`)이 공존하면 "존재 여부"와 "종류" 두 층위가 섞여 오독이 가중된다.
+- **값이 2개여도 "종류를 가르는" 인자면 2-값 enum을 우선한다.** 호출부가 `kind=ExitKind.STOP_LOSS`로 자기설명적이 되고, 값이 셋 이상으로 늘 때 확장이 자연스럽다. 두 boolean으로 쪼개기(`is_tp`+`is_sl`)는 (True,True)/(False,False) 모순 상태를 만드므로 금지 — 상호배타 2종은 enum 하나로(make illegal states unrepresentable).
+- **읽을 때 규칙**: boolean을 만나면 "이 값이 답하는 질문(축)"을 먼저 잡는다. `False`는 "없음"이 아니라 그 축의 반대극일 뿐이다.
+- 예외: 진짜 단일 on/off 플래그(`verbose`, `dry_run`)는 boolean이 맞다 — enum 강제 대상은 "종류를 가르는" 인자다.
+
 ## 코드 주석 (CRITICAL)
 
 - **주석은 코드로 안 드러나는 "왜/맥락"만. "무엇/어떻게"(코드 구조가 이미 보여주는 것)는 금지.** 표준 패턴/제어 흐름을 말로 옮긴 주석은 전부 제거 대상 — 예: `# compare-and-set 으로 중복 claim 방지`(조건부 update가 보여줌), `# try/except 로 한 항목 실패 격리`(loop 내 try/except가 보여줌), `# 예외 시 좀비 방지 FAILED 마감`(except→update(FAILED)가 보여줌), `# 전부 SENT면 성공 아니면 실패`(has_failure 식이 보여줌).
