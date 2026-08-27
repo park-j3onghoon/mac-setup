@@ -136,7 +136,7 @@
     // ───────── 에디터 공통 ─────────
     "editor.rulers": [100],
     "editor.tabSize": 2,
-    "editor.fontSize": 18,
+    "editor.fontSize": 20,
     "files.insertFinalNewline": true,
     "files.trimTrailingWhitespace": true,
 
