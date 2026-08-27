@@ -109,5 +109,49 @@
   {
     "key": "cmd+4",
     "command": "-workbench.action.focusFourthEditorGroup"
+  },
+
+  // ───── 7. Cmd+3: Python REPL (PyCharm의 Python Console) ─────
+  // 터미널 REPL(python.startREPL)이 아닌 Native REPL — Cmd+4 터미널과 영역이 겹치지 않게
+  {
+    "key": "cmd+3",
+    "command": "python.startNativeREPL"
+  },
+  {
+    "key": "cmd+3",
+    "command": "-workbench.action.focusThirdEditorGroup"
+  },
+
+  // ───── 8. Cmd+5: 에디터로 포커스 (PyCharm FocusEditor) ─────
+  {
+    "key": "cmd+5",
+    "command": "workbench.action.focusActiveEditorGroup"
+  },
+  {
+    "key": "cmd+5",
+    "command": "-workbench.action.focusFifthEditorGroup"
+  },
+
+  // ───── 9. Cmd+Shift+- / Cmd+Shift+=: 모두 접기 / 모두 펼치기 ─────
+  // PyCharm 커스텀 키맵은 숫자패드 -(subtract)를 썼으나 맥북 내장 키보드엔
+  // 숫자패드가 없어 눌리지 않는다. PyCharm 원래 기본값인 Cmd+Shift+-로 되돌림.
+  {
+    "key": "cmd+shift+-",
+    "command": "editor.foldAll",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "cmd+shift+=",
+    "command": "editor.unfoldAll",
+    "when": "editorTextFocus"
+  },
+  // 창 줌은 Cmd+= / Cmd+- 주 바인딩으로 유지하고, 보조 바인딩만 비워 충돌을 막는다
+  {
+    "key": "cmd+shift+=",
+    "command": "-workbench.action.zoomIn"
+  },
+  {
+    "key": "cmd+shift+-",
+    "command": "-workbench.action.zoomOut"
   }
 ]

@@ -181,16 +181,37 @@
     "workbench.preferredLightColorTheme": "Solarized Light",
     "workbench.preferredDarkColorTheme": "One Dark Pro",
 
+    // ───────── 눈 피로 보정 (밝은 실내 + 라이트 테마) ─────────
+    // Solarized 는 "최소 대비"가 설계 의도라 본문 4.13:1 / 주석 2.48:1 로
+    // WCAG AA(4.5:1) 에 못 미친다. 흐린 글자를 해상하려 눈이 계속 애쓰는 게 피로의 주범.
+    // 배경은 base3→base2 로 한 톤 낮춰(휘도 92%→81%) 눈부심을 줄이고,
+    // 전경은 색상(hue)은 그대로 두고 명도만 내려 전 토큰을 AA 위로 올린다.
+    // 다크 테마로 가지 않는 이유: 밝은 실내에선 화면·주변 휘도 차가 커져 오히려 역효과.
+    "workbench.colorCustomizations": {
+        "[Solarized Light]": {
+            "editor.background": "#EEE8D5",
+            "editor.foreground": "#323D42",
+            "editorCursor.foreground": "#323D42",
+            "editorLineNumber.foreground": "#9AA6A6",
+            "editorLineNumber.activeForeground": "#323D42",
+            "editor.lineHighlightBackground": "#E3DCC6",
+            "editor.selectionBackground": "#D3CBB0",
+            "editorIndentGuide.background1": "#D8D1BB",
+            "editorIndentGuide.activeBackground1": "#B8AE92"
+        }
+    },
+
     // ───────── 함수/메서드만 색으로 구분 ─────────
     // 파라미터·프로퍼티·타입까지 색을 주면 코드의 대부분이 물들어 오히려 구분이 사라진다.
     // 색은 함수/메서드 한 축에만 쓰고, 선언부는 색 없이 굵기로만 구분한다.
-    // 색상값은 각 테마의 자체 팔레트에서 고름 (Solarized blue / One Dark Pro blue).
+    // Solarized 기본 blue(#268BD2)는 배경 대비 3.41:1 로 미달이고 theme 이 변수에도
+    // 쓰는 색이라 충돌한다 → 명도를 낮춘 violet 계열로 교체(5.01:1, 본문과 명도차 1.82:1).
     "editor.semanticTokenColorCustomizations": {
         "enabled": true,
         "rules": {
-            "function": { "foreground": "#268BD2", "fontStyle": "bold" },
-            "method": { "foreground": "#268BD2", "fontStyle": "bold" },
-            "function.defaultLibrary": { "foreground": "#268BD2" },
+            "function": { "foreground": "#5257B9", "fontStyle": "bold" },
+            "method": { "foreground": "#5257B9", "fontStyle": "bold" },
+            "function.defaultLibrary": { "foreground": "#5257B9" },
             "*.declaration": { "fontStyle": "bold" }
         },
         "[One Dark Pro]": {
@@ -204,8 +225,19 @@
         }
     },
 
-    // TextMate 스코프 fallback (LSP 의미 토큰이 없는 부분 대비)
     "editor.tokenColorCustomizations": {
+        // Solarized Light 토큰색은 전부 3:1 안팎이라 배경과 뭉갠다.
+        // 색상은 유지하고 명도만 내려 ≥4.6:1 로 올린 값.
+        "[Solarized Light]": {
+            "comments": "#5C6A6A",
+            "strings": "#1C6C66",
+            "keywords": "#5B6800",
+            "numbers": "#B3276B",
+            "types": "#7B5D00",
+            "functions": "#5257B9",
+            "variables": "#323D42"
+        },
+        // TextMate 스코프 fallback (LSP 의미 토큰이 없는 부분 대비)
         "textMateRules": [
             {
                 "scope": [
