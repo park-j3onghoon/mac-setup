@@ -177,40 +177,28 @@
     // ───────── 테마 (시스템 라이트/다크에 따라 자동 전환) ─────────
     // window.autoDetectColorScheme: true → 시스템 모드 따라 preferred*ColorTheme 적용
     // workbench.colorTheme도 명시 (auto-detect 미작동 시 fallback)
-    "workbench.colorTheme": "GitHub Light Default",
-    "workbench.preferredLightColorTheme": "GitHub Light Default",
+    "workbench.colorTheme": "Solarized Light",
+    "workbench.preferredLightColorTheme": "Solarized Light",
     "workbench.preferredDarkColorTheme": "One Dark Pro",
 
-    // ───────── PyCharm 스타일 함수/멤버 시각적 구분 ─────────
-    // 의미론 토큰: 함수/메서드/파라미터/클래스를 명시적 색 + 스타일로 강제
-    // (GitHub Light Default나 One Dark Pro의 기본 색이 약하면 이게 덮어씀)
+    // ───────── 함수/메서드만 색으로 구분 ─────────
+    // 파라미터·프로퍼티·타입까지 색을 주면 코드의 대부분이 물들어 오히려 구분이 사라진다.
+    // 색은 함수/메서드 한 축에만 쓰고, 선언부는 색 없이 굵기로만 구분한다.
+    // 색상값은 각 테마의 자체 팔레트에서 고름 (Solarized blue / One Dark Pro blue).
     "editor.semanticTokenColorCustomizations": {
         "enabled": true,
         "rules": {
-            "function": { "foreground": "#6F42C1", "fontStyle": "bold" },
-            "method": { "foreground": "#6F42C1", "fontStyle": "bold" },
-            "function.defaultLibrary": { "foreground": "#6F42C1", "fontStyle": "bold" },
-            "parameter": { "foreground": "#E36209", "fontStyle": "italic" },
-            "property": { "foreground": "#005CC5" },
-            "class": { "foreground": "#22863A", "fontStyle": "bold" },
-            "interface": { "foreground": "#22863A" },
-            "enum": { "foreground": "#22863A" },
-            "*.static": { "fontStyle": "italic" },
+            "function": { "foreground": "#268BD2", "fontStyle": "bold" },
+            "method": { "foreground": "#268BD2", "fontStyle": "bold" },
+            "function.defaultLibrary": { "foreground": "#268BD2" },
             "*.declaration": { "fontStyle": "bold" }
         },
-        // 다크 테마 (One Dark Pro)에선 색을 다크 친화적으로 오버라이드
         "[One Dark Pro]": {
             "enabled": true,
             "rules": {
                 "function": { "foreground": "#61AFEF", "fontStyle": "bold" },
                 "method": { "foreground": "#61AFEF", "fontStyle": "bold" },
-                "function.defaultLibrary": { "foreground": "#61AFEF", "fontStyle": "bold" },
-                "parameter": { "foreground": "#D19A66", "fontStyle": "italic" },
-                "property": { "foreground": "#E06C75" },
-                "class": { "foreground": "#E5C07B", "fontStyle": "bold" },
-                "interface": { "foreground": "#E5C07B" },
-                "enum": { "foreground": "#E5C07B" },
-                "*.static": { "fontStyle": "italic" },
+                "function.defaultLibrary": { "foreground": "#61AFEF" },
                 "*.declaration": { "fontStyle": "bold" }
             }
         }
@@ -226,22 +214,6 @@
                     "entity.name.function.java",
                     "support.function",
                     "meta.function-call entity.name.function"
-                ],
-                "settings": { "fontStyle": "bold" }
-            },
-            {
-                "scope": [
-                    "variable.parameter",
-                    "variable.parameter.function",
-                    "variable.parameter.kotlin"
-                ],
-                "settings": { "fontStyle": "italic" }
-            },
-            {
-                "scope": [
-                    "entity.name.type.class",
-                    "entity.name.type.interface",
-                    "entity.name.type.enum"
                 ],
                 "settings": { "fontStyle": "bold" }
             }
