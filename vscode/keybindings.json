@@ -153,5 +153,24 @@
   {
     "key": "cmd+shift+-",
     "command": "-workbench.action.zoomOut"
+  },
+
+  // ───── 10. Cmd+[ / Cmd+]: 직전 본 코드 위치 뒤로/앞으로 (PyCharm Back/Forward) ─────
+  {
+    "key": "cmd+[",
+    "command": "workbench.action.navigateBack"
+  },
+  {
+    "key": "cmd+]",
+    "command": "workbench.action.navigateForward"
+  },
+  // 기본 내어쓰기/들여쓰기 비활성화 (Tab / Shift+Tab으로 대체 가능)
+  {
+    "key": "cmd+[",
+    "command": "-editor.action.outdentLines"
+  },
+  {
+    "key": "cmd+]",
+    "command": "-editor.action.indentLines"
   }
 ]
