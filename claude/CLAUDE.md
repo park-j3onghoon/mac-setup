@@ -16,6 +16,17 @@
 - 세션 시작 시 코드 구현/수정 작업이 예상되면, 작업 대상 디렉토리를 사용자에게 확인한 후 `/guard` 스킬을 실행하여 해당 디렉토리 외부 편집을 제한한다. 조사/분석만 하는 세션에서는 guard를 걸지 않는다.
 - **규모 있는 작업(구현/리팩토링/조사 등 여러 단계에 걸쳐 플랜·컨텍스트가 쌓인 작업) 마무리 시**, 사용자 요청이 없어도 다음 세션 시작용 프롬프트를 선제적으로 정리해서 제시한다. 포함 항목: ① 작업 대상 repo/디렉토리 ② 현재 상태(완료/대기) ③ 계획·분석 파일 경로 ④ 남은 단계 ⑤ 다음 액션 힌트. 형식은 사용자가 복사-붙여넣기 가능한 코드 블록으로. 단순 1회성 질문·답변에는 적용하지 않는다.
 
+## 탭 이름·세션 이름 자동 설정
+
+- 작업 컨텍스트가 생기면 `bash ~/.claude/set-tab-title.sh "<제목>"` 로 **터미널 탭 제목과 Claude Code 세션 이름을 같은 값으로** 바꾼다. 스크립트가 둘 다 처리하므로 사용자에게 `/rename` 을 따로 요청하지 않는다.
+  - 탭 제목: cmux 안에서는 `cmux rename-tab`(sticky 제목), 그 외 Ghostty 에서는 PTY 에 OSC 2 직접 쓰기. Bash 도구 stdout 은 파이프라 OSC 가 터미널에 안 닿아 스크립트가 부모 프로세스 체인에서 PTY 를 찾는다.
+  - 세션 이름: `/rename` 은 인터랙티브 명령이라 에이전트가 못 부르므로, 스크립트가 트랜스크립트에 `custom-title` 엔트리를 append 한다. Codex 에서 호출하면 `CLAUDE_CODE_SESSION_ID` 가 없어 탭 제목만 바뀐다.
+- 트리거별 제목:
+  - 사용자가 PR URL 을 주면(예: `.../pull/1698`) → 마지막 숫자로 `1698 review`.
+  - 구현 중 PR 을 새로 만들면 → 탭 이름을 그 PR 번호로 교체(예: `1698`).
+  - PR 번호가 없으면 → 작업을 공백 포함 10글자 이내로 요약해 제목으로.
+- 사용자가 매번 명시 요청하지 않아도 위 트리거에서 자동 적용한다.
+
 ## Plan 파일 저장 경로 (CRITICAL)
 
 - Plan·분석·change-summary 등 **작업 설계 문서는 repo 내부 `docs/`가 아닌 `~/plans/{repo이름}/{작업명}/` 하위**에 저장한다.
@@ -43,23 +54,36 @@
   - 주의: displayName 은 `teddy.park` 이지만 GitHub username (gh CLI `--assignee`) 은 `park-j3onghoon`. `teddy.park` 시도 시 "user not found" 에러 발생.
 - **reviewer는 추가하지 않는다.** 사용자가 직접 수동으로 지정한다.
 - 커밋 메시지, PR 제목/본문은 한글로 작성한다.
-- **PR 제목은 Conventional Commits prefix** 로 시작한다 (`feat:`, `refactor:`, `fix:`, `docs:`, `chore:`, `test:`, `perf:`, `build:`, `ci:`, `style:`). 괄호 scope 는 붙이지 않는다.
-- **PR 본문 구조**: 상단에 As-Is / To-Be 간단 요약 → 하단에 추가 설명.
-  - `## As-Is`: 변경 전 상태 (1~3 줄, 핵심만)
-  - `## To-Be`: 변경 후 상태 (1~3 줄, 핵심만)
-  - 그 아래에 Background (Linear/RFC/PRD 링크), 디자인 결정, 호환성, 후속 작업, Test plan 등 상세 작성
-  - 이유: 리뷰어가 변경 본질을 한눈에 파악 가능. 상세는 필요한 사람만 읽음.
-- **PR 생성 시 항상 아래 3블록 포함 (CRITICAL, 멀티-PR 효과)**:
-  1. **전체 진행 체크박스 목록**: 이 작업 전체를 체크박스로 나열하고 **이번 PR에서 한 것은 `[x]`로 체크**(완료된 선행 단계 포함). 리뷰어가 전체 그림에서 이 PR 위치를 파악.
-  2. **후속 작업**: 남은 단계(다음 PR들) 정리.
-  3. **설계 논의 요약**: 이 작업에서 내린 설계 결정 + 대안·근거(왜 이렇게 했나). 핵심 결정만 간결히.
-  - 단발성 단일 PR(멀티-PR 효과 아님)은 1·3을 생략하거나 1줄로 축약 가능.
+- **PR 제목 = `<prefix>: [<Linear 카드 ID>] <설명>`** (예: `fix: [PLB-678] 정산 메일 중복 발송 방어`).
+  - prefix 는 Conventional Commits (`feat:`, `refactor:`, `fix:`, `docs:`, `chore:`, `test:`, `perf:`, `build:`, `ci:`, `style:`) 중 하나. 괄호 scope 는 붙이지 않는다.
+  - **Linear 카드 연결 확인 (CRITICAL)**: PR 생성·수정 시 연결된 Linear 카드가 있는지 먼저 확인한다 — 브랜치명(`teddy/plb-xxx-…`)·제목·본문의 `PLB-xxx`, 또는 Linear API 로 PR URL attachment 조회. 있으면 그 ID 를 제목 `[PLB-xxx]` 에 넣는다 (제목/본문에 ID 가 들어가면 Linear-GitHub 통합이 자동 연결).
+  - 연결 카드를 못 찾으면 **사용자에게 카드 번호를 묻는다 (임의 추정 금지)**. 사용자가 "없음"이라 하면 대괄호 생략.
+- **PR 본문에는 "리뷰어가 변경을 이해하는 데 필요한 핵심"만 남긴다.** 작업 진행상황·설계 논의/결정·중간 과정·멀티-PR 전체 맥락 같은 과정성 내용은 본문에 넣지 말고 **PR 코멘트**로 남긴다 (기존 PR 본문 수정 시에도 동일).
+  - **본문** (짧게, 상단 요약 → 하단 상세):
+    - `## As-Is`: 변경 전 상태 (1~3 줄, 핵심만)
+    - `## To-Be`: 변경 후 상태 (1~3 줄, 핵심만)
+    - 그 아래에 Background (Linear/RFC/PRD 링크), 호환성·영향, Test plan 등 리뷰에 꼭 필요한 것만.
+    - 이유: 리뷰어가 변경 본질을 한눈에 파악. 과정은 본문에 섞지 않는다.
+  - **코멘트** (PR 생성 직후 `gh pr comment {번호} --body ...` 로 작성. 이 명령은 hook 차단 대상 아님):
+    1. **전체 진행 체크박스 목록**: 이 작업 전체를 체크박스로 나열하고 이번 PR에서 한 것은 `[x]` (완료된 선행 단계 포함). 멀티-PR 그림에서 이 PR 위치.
+    2. **후속 작업**: 남은 단계(다음 PR들).
+    3. **설계 논의 요약**: 내린 설계 결정 + 대안·근거(왜 이렇게 했나). 핵심 결정만 간결히.
+  - 남길 과정 맥락이 없는 단발성 단일 PR은 코멘트를 생략한다.
 
 ## Hook 존중 (CRITICAL)
 
 - `settings.json` 또는 `hooks.json`에 `ask` 모드로 설정된 hook이 있으면, **반드시 사용자 확인을 받은 후** 해당 명령을 실행한다.
 - `git push`/`gh pr create` 실행 전에 "push 진행할까요?" 등으로 사용자에게 먼저 확인한다.
 - hook이 자동으로 물어보더라도, 사용자 동의 없이 진행하지 않는다.
+
+## 파일 검색 명령 — 권한 프롬프트 회피
+
+- **`cd X && grep/cat/find/rg ...` 조합을 쓰지 않는다.** 검색 루트가 `cd` 실행 후에야 정해져 정적 분석이 대상 디렉토리를 확정하지 못하고, 회사 관리형 정책(`/Library/Application Support/ClaudeCode/managed-settings.json`)의 `Read(**/.ssh/id_*)`·`Read(**/.aws/credentials)` 같은 deny 규칙 위반 여부를 증명할 수 없어, **읽기 전용 명령인데도 매번 승인 프롬프트가 뜬다.**
+- 대신 **① 전용 검색 도구(Grep/Glob/Read) 우선, ② 불가피하게 셸을 쓰면 절대경로를 인자로 넘긴다.**
+  - ❌ `cd ~/buzzvil/postbacksvc && grep -rn "foo" --include="*.py" .`
+  - ✅ `grep -rn "foo" --include="*.py" /Users/teddy.park/buzzvil/postbacksvc`
+- `Bash(*)` 같은 allow 규칙을 넓혀도 소용없다 — deny(관리형) > allow(사용자) 우선순위라 파생 읽기 경로 검사를 통과하지 못한다. 프롬프트를 없애는 방법은 **경로를 리터럴로 확정하는 것뿐**.
+- 빌드·테스트 등 파일을 읽지 않는 명령의 `cd`는 해당 없음.
 
 ## 공유 파일 vs 개인 파일 구분 (CRITICAL)
 
@@ -92,16 +116,12 @@
 - merge conflict 해결 시, master(또는 base 브랜치)의 코드가 이미 다른 PR에서 검증/머지된 최신 버전이면 **master 기준으로 해결**한다.
 - PR 브랜치 코드를 무조건 우선하지 않는다. 어느 쪽이 최신인지 판단한 뒤 선택한다.
 
-## 자가 개선 (Self-improvement)
+## CLAUDE.md/AGENTS.md 페어 업데이트 (CRITICAL)
 
-- 각 스킬(plan-review, review)은 완료 시 자가 개선 단계를 실행한다.
-- **개인 참조 문서**(`~/.claude/skills/{스킬}/ref-*.md`, `~/.codex/skills/{스킬}/references/*.md`, `~/.claude/coding-rules.md`, `~/.claude/projects/*/memory/`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`)를 자동 업데이트한다.
-- **CLAUDE.md/AGENTS.md 페어 업데이트 (CRITICAL)**: 둘 중 하나를 수정할 때는 **양쪽 파일을 동시에 같은 내용으로 업데이트**한다. 도구별 차이(assignee 등)만 분기 섹션으로 다르게 유지한다. 페어 위치:
+- 둘 중 하나를 수정할 때는 **양쪽 파일을 동시에 같은 내용으로 업데이트**한다. 도구별 차이(assignee 등)만 분기 섹션으로 다르게 유지한다. 페어 위치:
   - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
   - `~/buzzvil/CLAUDE.md` ↔ `~/buzzvil/AGENTS.md`
   - `~/buzzvil_analysis/CLAUDE.md` ↔ `~/buzzvil_analysis/AGENTS.md`
-- 2회+ 반복된 패턴, 사용자 명시 교정, 참조 문서에 없는 새 체크리스트만 반영.
-- 일시적 판단, 이미 있는 내용, "이번만" 예외는 스킵.
 
 ## 설계·기술 결정 프로세스 (아키텍처/도구/인프라 선택)
 
@@ -126,6 +146,12 @@
 - **읽을 때 규칙**: boolean을 만나면 "이 값이 답하는 질문(축)"을 먼저 잡는다. `False`는 "없음"이 아니라 그 축의 반대극일 뿐이다.
 - 예외: 진짜 단일 on/off 플래그(`verbose`, `dry_run`)는 boolean이 맞다 — enum 강제 대상은 "종류를 가르는" 인자다.
 
+## 배치/루프 실패 로깅 (집계)
+
+- **배치·루프에서 항목별 실패는 항목마다 로깅하지 말고, 실패를 모아 루프 종료 후 1회 요약 로깅한다** (`logger.error('... %d failed: %s', n, {id: 메시지})`). 항목이 많을 때 로그 스팸·성능 부담을 막는다.
+- **트레이드오프**: 항목별 트레이스백(`logger.exception`)을 잃는다. 따라서 실패 항목을 **terminal 상태(예: run FAILED)로 영속**해 모니터링·재처리로 추적성을 보완한다.
+- 중첩 루프는 각 레벨에서 자기 실패를 집계한다(예: run 루프·org 루프 각각). claim 후 항목은 예외 시 반드시 terminal 상태로 마감해 좀비(처리중 고착)를 막는다.
+
 ## 코드 주석 (CRITICAL)
 
 - **주석은 코드로 안 드러나는 "왜/맥락"만. "무엇/어떻게"(코드 구조가 이미 보여주는 것)는 금지.** 표준 패턴/제어 흐름을 말로 옮긴 주석은 전부 제거 대상 — 예: `# compare-and-set 으로 중복 claim 방지`(조건부 update가 보여줌), `# try/except 로 한 항목 실패 격리`(loop 내 try/except가 보여줌), `# 예외 시 좀비 방지 FAILED 마감`(except→update(FAILED)가 보여줌), `# 전부 SENT면 성공 아니면 실패`(has_failure 식이 보여줌).
@@ -146,6 +172,16 @@
 - 워크플로우: navigate → snapshot → 요소 확인 → click/type → snapshot으로 결과 검증
 - 테스트 완료 후 **반드시 `browser_close` 호출**. 브라우저 리소스 누수를 방지한다.
 
+## Athena·DB 쿼리 가드 (인덱스/파티션, CRITICAL)
+
+로컬(내 맥)에서 Athena·프로덕션 DB에 쿼리할 때 항상 적용. 로컬 훅(`~/.claude/hooks/query-guard-hook.sh` + `sql-guard.py`)이 Redash ad-hoc Athena 쿼리를 `ask`로 강제하지만, 훅이 못 잡는 경로는 아래 규칙으로 직접 지킨다.
+
+- **Athena(파티션 프루닝(partition pruning) = "인덱스"에 해당)**: 로그/마트/`ls_`/`g_`/`l_`/`mart_` 테이블은 `partition_timestamp`(UTC) 범위 필터 **필수**, 범위는 **≤31일**. 디멘전 뷰(`v_lineitem`·`v_ad_group`·`v_device` 등)는 면제.
+- **긴 기간은 ≤31일 창으로 분할 루프**: 1년치가 필요하면 31일씩 12회로 나눠 조회한다(훅은 초과를 막기만 하고 자동 분할은 안 함).
+- **prod/staging MySQL**: 인덱스를 타는지 확인. 미심쩍으면 `EXPLAIN` 실행 → `type=ALL`(풀 테이블 스캔) 또는 `key=NULL`(인덱스 미사용)이면 조건/인덱스를 재검토.
+- **훅 미커버 경로(직접 준수)**: 대화형 `mysql>` REPL에 친 SQL, 브라우저 Redash 웹 UI, 저장된 쿼리 실행(`execute_query`).
+- 의도적으로 31일 초과를 실행해야 하면 SQL에 `-- sqlguard:allow` 주석으로 우회.
+
 # 설명 스타일
 
 상시 적용:
@@ -153,6 +189,8 @@
 - 정의 나열보다 "왜 이런 구조/관례가 생겼는지"를 먼저 설명한다.
 - Python/Django 비교는 대응 관계와 차이점을 함께 쓴다.
 - 예시는 trivial 금지, 실제 맥락이 보이는 것만 쓴다.
+- **질문 답변엔 구체적 예시 필수 (2026-08-27)**: 개념·용어를 물으면 정의만 말하지 않고, 반드시 실제 맥락의 예시(숫자·시나리오·코드 조각)를 붙여 답한다. 예: "큐잉이 뭐야?" → 정의 + "워커 9개가 찼는데 초당 400요청이 오면 391개가 줄을 선다" 같은 구체 상황.
+- **HTML 설명 문서는 ELI5(Explain Like I'm 5) 원칙 참고 (2026-08-27)**: 각 개념을 ① 일상 비유/친숙한 예시 → ② 정확한 정의 → ③ 실제 맥락 예시 순서로 푼다. 전문용어를 비유 없이 먼저 던지지 않는다.
 
 **개념 설명·입문서·비교 문서·스터디 자료·HTML 설명을 작성할 때는 `~/.claude/explain-style.md`를 Read로 먼저 읽고 따른다.**
 
