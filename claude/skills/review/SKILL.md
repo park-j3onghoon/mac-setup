@@ -22,10 +22,17 @@ allowed-tools:
 
 인자로 GitHub PR URL이 전달된 경우 (`https://github.com/{owner}/{repo}/pull/{number}`):
 1. URL에서 owner/repo와 PR 번호를 파싱한다.
-2. `~/example/{repo}` 등 로컬 클론 경로를 찾아 `cd`한다. 없으면 사용자에게 경로를 묻는다.
-3. PR 브랜치를 checkout한다: `git fetch origin {branch} && git checkout {branch}`
+2. **리뷰 작업 시작 전에 먼저 Ghostty 탭 제목을 `리뷰 {number}#{repo}` 로 변경**한다 (예: `리뷰 954#payments-api`). Claude Code 제어 pty에 OSC를 기록:
+   ```bash
+   # {number}·{repo}는 파싱값으로 치환 (PR 번호 없으면 {number}=현재 브랜치명)
+   _cc_tty=$(ps -o tty= -p "$(ps -o ppid= -p $$ | tr -d ' ')" | tr -d ' ')
+   [ -n "$_cc_tty" ] && [ -w "/dev/$_cc_tty" ] && printf '\033]0;리뷰 {number}#{repo}\007' > "/dev/$_cc_tty"
+   ```
+   > Claude Code가 매 턴 탭 타이틀을 덮어쓰므로, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`(`~/.claude/settings.json`의 `env`, **재시작 후 적용**) 전제에서만 유지된다. 미설정 시 무해하게 무시.
+3. `~/example/{repo}` 등 로컬 클론 경로를 찾아 `cd`한다. 없으면 사용자에게 경로를 묻는다.
+4. PR 브랜치를 checkout한다: `git fetch origin {branch} && git checkout {branch}`
 
-로컬 브랜치에서 직접 실행하는 경우 이 단계를 건너뛴다.
+로컬 브랜치에서 직접 실행하는 경우 1·3·4의 PR 관련 단계는 건너뛰되, **2의 탭 제목 설정은 먼저 실행**한다 (`{number}` 자리에 현재 브랜치명 사용 → `리뷰 {브랜치명}#{repo}`).
 
 ## Step 1: Diff 수집
 
@@ -60,6 +67,7 @@ diff 전문을 각 서브에이전트에 전달한다. **반드시 3개를 동�
 각 서브에이전트 프롬프트에 아래를 포함한다:
 1. diff 전문 (또는 diff가 길면 파일별 요약 + 핵심 변경부)
 2. 해당 기준 파일 내용 (review-code.md / review-language.md / review-team.md)
+2.5. **공통 설계 원칙** — `~/.claude/skills/design-decisions.md`를 Read해 **3개 서브에이전트 전부**에 포함(상태머신·추측금지·영속계약·동시성·에러표준·프레임워크함정 등 누적 결정)
 3. "각 항목을 빠짐없이 체크하고, 해당 여부를 명시적으로 판단하라. PASS면 PASS라고 써라."
 4. "발견 사항은 [CRITICAL/INFO] file:line — 설명 형식으로 출력하라."
 5. "코드베이스에서 확인이 필요한 것은 Grep/Read로 직접 검증하라. 추측 금지."
@@ -191,7 +199,3 @@ Remaining: V
 ```
 
 **주의**: `git push`와 `gh pr create`는 PreToolUse hook으로 차단된다. 사용자가 `!` 접두사로 직접 실행해야 한다. Claude가 직접 `git push`를 실행하지 않는다.
-
-## Step 9: 스킬 자가 개선
-
-리뷰에서 내린 결정/발견한 패턴 중 스킬 파일에 없는 내용을 반영한다. 시작 전 `~/.claude/skills/review/references/self-improve.md`를 Read한다 — 신규 지식 추출(9a) + 양방향 반영(9b: 리뷰 체크리스트/coding-rules/CLAUDE↔AGENTS 페어, 분류 게이트) + coding-rules 분할 관리(9c)가 거기 있다. 신규 지식 없으면 "스킬 업데이트 없음" 출력 후 건너뛴다.

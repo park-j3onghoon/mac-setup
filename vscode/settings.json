@@ -6,10 +6,11 @@
     "editor.minimap.enabled": false,
 
     // ───────── PyCharm 스타일 Cmd+B (정의 ↔ 사용처 자동 토글) ─────────
-    // "Go to Definition"이 결과를 못 찾으면 (= 이미 정의 위에 있으면) "Find References"로 폴백
+    // 사용처 위: 정의로 바로 점프 / 정의 위: alternativeDefinitionCommand 폴백으로
+    // 사용처 peek 목록을 띄워 선택 이동 (사용처가 하나뿐이면 목록 없이 바로 점프)
     "editor.gotoLocation.alternativeDefinitionCommand": "editor.action.goToReferences",
     "editor.gotoLocation.multipleDefinitions": "goto",
-    "editor.gotoLocation.multipleReferences": "goto",
+    "editor.gotoLocation.multipleReferences": "peek",
 
     // ───────── 에디터 탭 / 클릭 동작 ─────────
     "workbench.editor.enablePreview": false,
@@ -250,5 +251,145 @@
                 "settings": { "fontStyle": "bold" }
             }
         ]
-    }
+    },
+
+    // ───────── SQLTools: 에디터에서 바로 SQL 실행 ─────────
+    // 경로: VSCode → 127.0.0.1:<고정포트> → `tsh proxy db --tunnel` → staging/dev RDS.
+    // 전제: 해당 포트의 프록시가 떠 있어야 한다. 터미널에서 `db <서비스>`(기동) / `dbls`(확인).
+    //       프록시가 없으면 ECONNREFUSED. Teleport 인증서 만료도 같은 증상 → `tsh login` 후 재기동.
+    // 파일 첫 줄 `-- @conn <name>` 으로 파일↔환경을 고정한다. 환경을 잘못 골라 쏘는 사고 방지가 목적.
+    // viewer 는 읽기 전용 + --skip-password 계정이라 usePassword 는 "Use empty password".
+    // 프록시 로컬 리스너는 평문이므로 SSL 은 켜지 않는다(드라이버 기본값 Disabled).
+    "sqltools.connections": [
+        {
+            "name": "staging-payments-api",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13308,
+            "database": "payments-api",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-stats-api",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13310,
+            "database": "stats-api",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-network-api",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13313,
+            "database": "network-api",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-ad-core",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13306,
+            "database": "lockjoyUS",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-mobile-app",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13307,
+            "database": "mobile-app",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-postback-api",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13309,
+            "database": "postback-api",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-dash",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13313,
+            "database": "dash",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "staging-product-api",
+            "group": "staging",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13311,
+            "database": "ba_product",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "dev-payments-api",
+            "group": "dev",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13314,
+            "database": "payments-api",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        },
+        {
+            "name": "dev-mobile-app",
+            "group": "dev",
+            "driver": "MySQL",
+            "server": "127.0.0.1",
+            "port": 13314,
+            "database": "mobile-app",
+            "username": "viewer",
+            "usePassword": "Use empty password",
+            "connectionTimeout": 15,
+            "previewLimit": 50
+        }
+    ],
+
+    // SQLTools 기본 체인 키(Cmd+E …)를 끈다 — Cmd+E(Use Selection for Find)를 뺏기지 않기 위해.
+    // 실행은 keybindings.json 의 Cmd+Enter 단일 키로 대체한다.
+    "sqltools.disableChordKeybindings": true,
+    "sqltools.results.location": "next",
+    "sqltools.results.limit": 200,
+    "sqltools.results.reuseTabs": "connection",
+    "sqltools.autoOpenSessionFiles": false,
+    "sqltools.disableReleaseNotifications": true,
+    "sqltools.connectionExplorer.groupConnected": true
 }
