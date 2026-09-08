@@ -78,6 +78,7 @@ ACTIVE인 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰�
 각 Agent 프롬프트에 포함할 내용:
 1. **계획 전문**
 2. **참조 문서 내용** — 해당 차원의 `ref-{dimension}.md`를 Read한 뒤 프롬프트에 포함
+2.5. **공통 설계 원칙** — `~/.claude/skills/design-decisions.md`를 Read해 **모든 차원 Agent**에 포함(상태머신·추측금지·영속계약·동시성·에러표준·프레임워크함정 등 누적 결정)
 3. **이슈 번호 시작점** — "이슈 번호를 {N}부터 시작하라"
 4. **제한** — "최대 4개 이슈. 없으면 'No issues found.' 반환"
 5. **엔지니어링 선호와 인지 패턴** — 위 목록 포함
@@ -165,6 +166,7 @@ node "$CODEX_SCRIPT" adversarial-review --background "$PLAN_PATH 의 설계 선�
 - **`task`/`adversarial-review`는 비동기 job**이다. `task`는 thread만 띄우고 즉시 반환하므로 `status --all`로 job-id를 찾아 `status <job-id>` 폴링 후 `result <job-id>`로 회수한다. `status --all`의 'running' 문자열로 폴링하면 다른 job에도 매칭돼 오판 → 특정 job-id의 phase를 본다.
 - **stall 대비**: job이 "starting" phase에서 진척 없이(로그에 turn-start 이후 출력 0) 멈추면 `cancel <job-id>` 후 self-review(직접 적대 점검)로 대체하고 사용자에게 알린 뒤 Step 4로 진행한다.
 - `--help`를 인자로 주면 focus text로 먹혀 실제 job이 뜬다 — 계약 확인용으로 쓰지 말 것.
+- **참고 코드는 "체크아웃된 워킹트리" 기준으로 읽는다**: 계획이 특정 브랜치(미체크아웃) 위 작업이면 Codex가 파일시스템의 옛 코드를 읽고 "이미 고쳐진 문제"를 오탐한다(ISSUE-000 PR-5에서 8건 중 2건 오탐). 대상 브랜치를 체크아웃/worktree로 깔아주거나, 프롬프트에 "코드 인용은 브랜치 X 기준(`git show X:path`)"을 명시하고, **Codex 지적을 반영하기 전 대상 브랜치 코드로 사실 검증**한다.
 
 ### 결과 반영
 
@@ -182,40 +184,6 @@ Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
 - A) 구현 시작
 - B) 계획 수정 필요
 - C) 지금은 구현하지 않음
-```
-
-## Step 5: 자가 개선 (Self-improvement)
-
-구현 시작 확인 후, 다음 단계로 넘어가기 전에 이번 리뷰에서 학습한 내용을 반영한다.
-
-### 업데이트 대상
-
-1. **ref-*.md 참조 문서** — 이번 리뷰에서 발견한 새로운 패턴/위반이 기존 참조 문서에 없으면 추가
-   - 예: 새로운 N+1 패턴 → ref-performance.md Checklist에 추가
-   - 예: 새로운 보안 위반 패턴 → ref-security.md에 추가
-2. **coding-rules.md** — 이번 리뷰에서 확정된 새 코딩 규칙이 있으면 추가
-3. **메모리** — 프로젝트 맥락, 사용자 피드백 중 다음 세션에도 유효한 것
-4. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
-5. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 페어 한쪽을 수정하면 **양쪽을 동시에 같은 내용으로** 업데이트하고 `diff -q`로 분기 섹션(assignee 등) 외 차이가 없는지 점검한다. 페어 위치·규칙은 CLAUDE.md "CLAUDE.md/AGENTS.md 페어 업데이트" 참조.
-
-### 판단 기준
-
-반영할 것:
-- 이번 리뷰에서 **2회 이상 반복**된 이슈 패턴
-- 사용자가 **명시적으로 교정**한 리뷰 기준
-- 참조 문서에 **없는** 새 체크리스트 항목
-
-반영하지 않을 것:
-- 이번 작업에서만 유효한 일시적 판단
-- 이미 참조 문서/coding-rules.md에 있는 내용
-- 사용자가 "이번만" 이라고 한 예외
-
-### 실행
-
-업데이트할 내용이 있으면 1줄씩 나열 후 자동 반영. 없으면 스킵.
-```
-[Self-improvement] ref-performance.md에 "Django async view에서 sync ORM 호출" 패턴 추가
-[Self-improvement] coding-rules.md에 "select_for_update 사용 시 트랜잭션 범위 최소화" 규칙 추가
 ```
 
 ## 브랜치 이력 확인
