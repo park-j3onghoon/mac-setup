@@ -47,12 +47,18 @@ allowed-tools:
 - **reference**: 새로 알게 된 외부 리소스 위치
 - 확인 사항: 기존 메모리와 중복/충돌 여부 (`MEMORY.md` 확인)
 
-### 2d: 위생 검사 필요 여부
+### 2d: SW 설계 원칙 (design-decisions.md)
+이번 세션에 **SW 설계 논의/결정**(상태머신·레이어·추상화·command/query·도메인 모델·테스트 전략·배치/동시성·에러 처리 등)이 있었으면, **design-log 스킬 절차**로 일반 설계 원칙 후보를 추출한다:
+- **분류 게이트 (CRITICAL)**: (A) 프로젝트·프레임워크·언어·회사 이름을 빼도 성립 + Clean Arch/Hexagonal/CQRS/CQS/TDD/DDD 부합 → `design-decisions.md` 후보 / (B) 특화(프로젝트·프레임워크·언어·회사 컨벤션) → 메모리·`coding-rules`로 라우팅(design-decisions **금지**) / (C) 이미 있음 → 스킵
+- 자문: "프로젝트/프레임워크/언어/회사 이름을 빼도 성립하나?" 아니오 → (B). "어느 패러다임에 부합?" 못 대면 재분류.
+- `design-decisions.md`는 review·plan-review가 자동 로드하므로 **합의된 (A)만** 반영. 상세 절차·게이트는 design-log 스킬을 따른다.
+
+### 2e: 위생 검사 필요 여부
 - 이번 세션에서 self-improvement가 실행됐는지 확인
 - 최근 5회 작업(메모리에서 확인)에서 self-improvement가 3회 이상이면:
   > "/hygiene(위생 검사)를 실행하여 축적된 규칙을 정리할 때가 됐습니다. 실행할까요?"
 
-### 2e: 기타
+### 2f: 기타
 - **hooks/설정**: 자동화할 만한 반복 작업이 있었는지
 - **에이전트 설정**: 서브에이전트 구성에 개선할 점이 있었는지
 
@@ -72,8 +78,11 @@ allowed-tools:
 ### 메모리
 3. [user/feedback/project/reference] 내용 요약
 
+### 설계 원칙
+4. [design-decisions / 메모리·coding-rules 라우팅] 내용 — 게이트 분류 결과
+
 ### 기타
-4. 내용 요약
+5. 내용 요약
 
 ---
 반영할 항목 번호를 알려주세요 (예: 1,3,4 / 전부 / 없음)
@@ -97,6 +106,8 @@ allowed-tools:
 - 이번 세션에서만 유효한 일시적 맥락
 - 이미 CLAUDE.md나 메모리에 있는 내용
 - 코드/git에서 직접 확인 가능한 것
+
+**SW 설계 원칙(2d)은 design-log 게이트 적용**: 프로젝트/프레임워크/언어/회사 특화는 design-decisions 금지 → 메모리·coding-rules로 라우팅. 패러다임(Clean Arch/Hexagonal/CQRS/CQS/TDD/DDD)에 부합하는 일반 원칙만 design-decisions로.
 
 ## Step 5: 세션 종료
 

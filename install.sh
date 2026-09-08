@@ -81,7 +81,7 @@ link_file "$REPO_DIR/mac/zprofile" "$HOME/.zprofile"
 log "~/.claude/ 설정 symlink"
 mkdir -p "$HOME/.claude/skills" "$HOME/.claude/commands"
 
-for f in CLAUDE.md coding-rules.md coding-rules-python.md coding-rules-frontend.md settings.json statusline-command.sh; do
+for f in CLAUDE.md coding-rules.md coding-rules-python.md coding-rules-frontend.md settings.json statusline-command.sh set-tab-title.sh; do
   link_file "$REPO_DIR/claude/$f" "$HOME/.claude/$f"
 done
 
@@ -89,6 +89,9 @@ for skill_dir in "$REPO_DIR/claude/skills"/*/; do
   skill_name="$(basename "$skill_dir")"
   link_file "$REPO_DIR/claude/skills/$skill_name" "$HOME/.claude/skills/$skill_name"
 done
+
+# 낱개 파일(위 루프는 디렉토리만 링크). review·plan-review 공통 참조라 skills/ 루트에 둠.
+link_file "$REPO_DIR/claude/skills/design-decisions.md" "$HOME/.claude/skills/design-decisions.md"
 
 for cmd_dir in "$REPO_DIR/claude/commands"/*/; do
   cmd_name="$(basename "$cmd_dir")"
