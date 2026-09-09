@@ -1,8 +1,10 @@
 # Performance Review Reference
 
+타임아웃·락 유지 범위·배치 실패 집계는 `~/.claude/coding-rules.md` §1 Architecture · §6 Errors에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+
 ## Core Principles
 
-- **측정 없이 최적화하지 않는다** — 잘못된 병목에 시간 낭비 방지. 단, N+1은 무조건 잡는다.
+- **최적화는 측정된 병목에만** — N+1은 측정 없이도 잡는다.
 - **캐싱은 일관성 비용을 동반한다** — stale data 버그, invalidation 복잡도를 사전에 식별.
 - **O(n) 이하를 기본으로** — O(n²) 이상은 데이터 증가 시 급격히 악화.
 
@@ -12,7 +14,6 @@
 - N+1 쿼리: select_related/prefetch_related(Django), JOIN FETCH(JPA) 누락
 - 루프 안 DB 호출 → 배치 조회로 전환
 - 불필요한 쿼리 (같은 데이터 중복 조회)
-- 새 WHERE/ORDER BY에 인덱스 존재 여부
 
 ### 메모리/CPU
 - 대량 데이터 한번에 로드 (iterator/pagination 필요)
@@ -34,13 +35,12 @@
 - 데드락: 트랜잭션 내 락 순서 일관성
 - 트랜잭션 격리 수준: READ COMMITTED vs REPEATABLE READ 선택 근거
 - Kotlin 코루틴 / Django async: 공유 상태 접근 시 동기화 메커니즘
-- **Read-after-write 전파 지연**: write 직후 *별도 read*로 상태를 판정하지 말 것. 이벤트적 일관성 시스템(read replica, S3, 외부 거래소 포지션 API)은 write 성공 후에도 read가 옛 상태를 반환할 수 있어 오판한다. **write 응답값 자체를 권위(source of truth)로** 쓰고 후속 read는 보조 확인으로만. 실패 시 blast radius가 큰 분기(예: 거래소 IOC 주문 직후 `get_position`이 None → "체결인데 미체결" 오판 → 보호주문 미등록 = 무방비 포지션)일수록 응답 기반 판정이 필수.
-
-- **full-replace 쓰기 + 부분 수정 = lost-update 레이스**: write API 가 리소스를 전체 교체(full upsert)하면, 한 필드만 바꾸려는 호출자가 read-modify-write(현재값 읽어 일부만 덮어 전체 전송)를 하게 된다. 두 요청이 같은 레코드의 *다른* 필드를 동시 수정하면 나중 쓰기가 앞 변경을 덮어 silent lost-update. 소유 서비스가 **부분 업데이트(field-mask/PATCH) API** 를 제공해 각 수정이 자기 필드만 원자적으로 건드리게 하는 게 낫다(호출자 RMW 제거).
+- **Read-after-write 전파 지연**: 이벤트적 일관성 시스템(read replica, S3, 외부 거래소 포지션 API)은 write 성공 후에도 read가 옛 상태를 반환한다. **write 응답값 자체를 권위(source of truth)로** 판정하고 후속 read는 보조 확인으로만 쓴다 — 별도 read로 판정하면 "체결인데 미체결" 같은 오판이 blast radius 큰 분기에서 터진다.
+- **full-replace 쓰기 + 부분 수정 = lost-update 레이스**: write API가 리소스를 전체 교체하면 한 필드만 바꾸려는 호출자가 read-modify-write를 하게 되고, 같은 레코드의 *다른* 필드를 동시 수정한 두 요청 중 나중 쓰기가 앞 변경을 덮는다(silent lost-update). 소유 서비스가 **부분 업데이트(field-mask/PATCH) API**를 제공해 각 수정이 자기 필드만 원자적으로 건드리게 한다.
 
 ### 멱등성 / dedup canonical 직렬화
-- **정확-문자열(exact-string) dedup 은 직렬화 결정성에 의존**: 수신 측이 정규화 없이 `body == stored_body` 로 중복을 거르면(흔한 best-effort dedup), 송신 측의 직렬화가 **재호출마다 byte-동일**해야 dedup 이 매칭된다. 안 맞으면 중복 레코드 → 머니패스면 더블 발송/결제.
-- **`json.dumps(sort_keys=True)` 는 dict 키만 정렬, 리스트 원소 순서는 그대로** 둔다. 상위(DB/gRPC) 가 `ORDER BY` 없이 리스트를 주면 호출마다 순서가 흔들려 같은 내용도 다른 문자열이 된다 → dedup miss. **모든 리스트 섹션을 안정 키로 명시 정렬**한 뒤 직렬화하고, "상위 row 셔플 → 동일 문자열" 테스트로 고정한다. (숫자는 포맷 문자열/Decimal 로 고정해 float drift 도 제거.)
+- **정확-문자열(exact-string) dedup은 직렬화 결정성에 의존**: 수신 측이 정규화 없이 `body == stored_body`로 중복을 거르면 송신 측 직렬화가 재호출마다 byte-동일해야 매칭된다. 안 맞으면 중복 레코드 → 머니패스면 더블 발송/결제.
+- **`json.dumps(sort_keys=True)`는 dict 키만 정렬하고 리스트 원소 순서는 그대로** 둔다. 상위(DB/gRPC)가 `ORDER BY` 없이 리스트를 주면 호출마다 순서가 흔들려 같은 내용도 다른 문자열이 된다 → dedup miss. **모든 리스트 섹션을 안정 키로 명시 정렬**한 뒤 직렬화하고, "상위 row 셔플 → 동일 문자열" 테스트로 고정한다. (숫자는 포맷 문자열/Decimal로 고정해 float drift도 제거.)
 
 ### 프론트엔드 데이터 캐시 (React Query / TanStack Query)
 - **queryKey는 구조 보존 배열 사용**. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함하면 React Query가 deep equality로 올바르게 구분.
@@ -50,7 +50,7 @@
 ## Examples
 
 ```python
-# 잘된 예시: N+1 방지 + 배치 처리
+# 잘된 예시: N+1 방지
 campaigns = (
     Campaign.objects
     .select_related("advertiser")      # FK → JOIN
@@ -64,7 +64,3 @@ with transaction.atomic():
     campaign.budget -= amount
     campaign.save()
 ```
-
-## User Preferences
-- 엣지 케이스 더 많이 처리
-- 명시적 > 영리한
