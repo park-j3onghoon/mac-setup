@@ -1,62 +1,35 @@
 ---
 name: plan-review
-version: 3.1.0
-description: 계획 완성 후 구현 전에 6개 서브에이전트로 체계적 리뷰 후 Codex CLI로 설계 재검증. Plan Mode 여부 무관. Step 0 스코프 챌린지 → 6 Agent 병렬 → 계획 저장 → Codex adversarial 검증 → 구현 여부 확인.
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Agent
-  - AskUserQuestion
-  - Bash
+description: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·Codex 적대 검증으로 통과시킨다.
+disable-model-invocation: true
 ---
 
-# Plan Review v3.1 — 6-Agent Parallel + Codex Adversarial
-
-계획을 구현 전에 리뷰한다. **Plan Mode 여부와 무관하게 발동.** 코드 변경 절대 금지.
-
-## 엔지니어링 선호
-- DRY 중요, 반복 공격적 지적
-- 테스트 많은 쪽, 엣지 케이스 더 많이
-- 명시적 > 영리한 코드, 최소 diff
-- 과잉도 부족도 안 됨
-
-## 인지 패턴
-1. **Blast radius** — 최악의 경우 영향 범위
-2. **Boring by default** — 검증된 기술 우선
-3. **Incremental > revolutionary** — 빅뱅 금지
-4. **Systems over heroes** — 새벽 3시 안전 운영
-5. **Reversibility** — 실패 비용 낮게
-6. **Essential vs accidental complexity** — 진짜 문제를 푸는가
-7. **Make the change easy, then make the easy change**
-8. **Two-week smell test** — 2주 안에 기능 못 붙이면 아키텍처 문제
+구현 계획이 완성된 뒤 코드를 건드리기 전의 **plan gate**. 이 스킬이 쓰는 파일은 `~/plans/{repo이름}/{작업명}/plan.md` 하나이고, 나머지 코드·문서는 읽기만 한다.
 
 ## Step 0: 스코프 챌린지
 
-### 사전 검색 (Search Before Building)
-- 프레임워크 빌트인 있는지?
-- 현재 best practice인지?
-- 커스텀 솔루션 대신 빌트인 가능하면 스코프 축소 기회.
+**사전 검색 (Search Before Building)** — 프레임워크·라이브러리 빌트인으로 이미 되는 부분을 먼저 찾는다. 있으면 스코프 축소 기회다. `git log`에 이전 리뷰발 리팩토링·리버트 흔적이 있는 영역은 같은 자리를 더 공격적으로 본다.
 
-### 스코프 질문
+**스코프 질문**
 1. 기존 코드로 이미 해결되는 부분은?
 2. 목표 달성을 위한 최소 변경 세트는?
-3. 8+ 파일 수정 또는 2+ 새 클래스/서비스 → 경고
-4. 완전한 버전인가 숏컷인가? AI 보조라면 완전한 구현 권장.
+3. 8+ 파일 수정 또는 2+ 새 클래스/서비스면 scope creep 경고를 낸다.
 
-AskUserQuestion으로 3가지 옵션:
-- **A) SCOPE REDUCTION** — 최소 버전 제안 후 리뷰
-- **B) BIG CHANGE** — 6개 Agent 동시 병렬 리뷰 (차원당 최대 4개 이슈)
-- **C) SMALL CHANGE** — 인라인 압축 리뷰 (차원당 1개 이슈)
+AskUserQuestion 1회, 3옵션:
+- **A) SCOPE REDUCTION** — 최소 버전을 제안하고 승인받은 뒤 B 또는 C로 재진입
+- **B) BIG CHANGE (Recommended)** — 차원별 Agent 병렬 리뷰, 차원당 최대 4개 이슈
+- **C) SMALL CHANGE** — 인라인 압축 리뷰, 차원당 1개 이슈
 
-사용자가 SCOPE REDUCTION을 선택하지 않으면, 이후 스코프 축소 재주장 금지.
+기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 여기서 고른 스코프는 settled — 이후 모든 이슈는 그 스코프 안에서 낸다.
 
-## Step 0.5: 차원 관련성 판단
+**완료 기준**: 사용자가 A/B/C 중 하나를 선택했다.
 
-계획의 파일 경로, 키워드, 변경 유형으로 6개 차원의 ACTIVE/SKIP 결정:
+## Step 0.5: 차원 triage
+
+계획의 파일 경로·키워드·변경 유형으로 6차원의 ACTIVE/SKIP을 정한다.
 
 | 차원 | 활성 조건 |
-|------|----------|
+|---|---|
 | Architecture | **항상 ACTIVE** |
 | Coding Standards | **항상 ACTIVE** |
 | Test Coverage | **항상 ACTIVE** |
@@ -64,26 +37,21 @@ AskUserQuestion으로 3가지 옵션:
 | Security | 인증, 인가, API 엔드포인트 추가, 사용자 입력 처리 |
 | Performance | 쿼리, 루프, 대량 데이터, 외부 API, 동시성 |
 
-출력:
-```
-DIMENSION RELEVANCE: 5/6 active (Security skipped — no auth/API changes)
-```
+**완료 기준**: 한 줄 출력 — `DIMENSION RELEVANCE: 5/6 active (Security skipped — no auth/API changes)`
 
 ## Step 1: 리뷰 실행
 
-### BIG CHANGE — 6 Agent 동시 병렬
+### B) BIG CHANGE — 차원별 Agent 병렬
 
-ACTIVE인 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한다.
+ACTIVE 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한다. 각 프롬프트에 넣을 것:
+1. 계획 전문
+2. "`~/.claude/skills/plan-review/ref-{dimension}.md`를 Read하고 그 체크리스트로 계획을 훑어라"
+3. "`~/.claude/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
+4. "이슈 번호를 {N}부터 시작하라"
+5. "최대 4개 이슈. 없으면 `No issues found.` 반환"
+6. 아래 「리뷰 관점」의 엔지니어링 선호와 인지 패턴
 
-각 Agent 프롬프트에 포함할 내용:
-1. **계획 전문**
-2. **참조 문서 내용** — 해당 차원의 `ref-{dimension}.md`를 Read한 뒤 프롬프트에 포함
-2.5. **공통 설계 원칙** — `~/.claude/skills/design-decisions.md`를 Read해 **모든 차원 Agent**에 포함(상태머신·추측금지·영속계약·동시성·에러표준·프레임워크함정 등 누적 결정)
-3. **이슈 번호 시작점** — "이슈 번호를 {N}부터 시작하라"
-4. **제한** — "최대 4개 이슈. 없으면 'No issues found.' 반환"
-5. **엔지니어링 선호와 인지 패턴** — 위 목록 포함
-
-각 Agent는 아래 형식으로 응답:
+응답 형식:
 ```
 [Issue {N}] {문제 요약}
   - Option A: {내용} — 노력: 낮음, 리스크: 낮음
@@ -91,39 +59,21 @@ ACTIVE인 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰�
   → B 추천. 이유: {인지 패턴 또는 엔지니어링 선호 연결}
 ```
 
-**이슈 번호 할당:**
-- Architecture: 1~4
-- Data/Database: 5~8
-- Security: 9~12
-- Performance: 13~16
-- Coding Standards: 17~20
-- Test Coverage: 21~24
+이슈 번호: Architecture 1~4 · Data/Database 5~8 · Security 9~12 · Performance 13~16 · Coding Standards 17~20 · Test Coverage 21~24.
 
-SKIP된 차원의 번호 범위는 건너뛴다.
+### C) SMALL CHANGE — 인라인
 
-6 Agent 결과 수집 후 통합하여 사용자에게 제시. AskUserQuestion 1회.
+Agent 없이 ACTIVE 차원의 `~/.claude/skills/plan-review/ref-{dimension}.md`와 `~/.claude/coding-rules.md`를 직접 Read하고, 차원당 핵심 1개 이슈만 같은 번호 범위로 매겨 한 번에 제시한다.
 
-### SMALL CHANGE — 인라인
-
-Agent 스폰 없이 직접 ref-*.md를 읽고, ACTIVE 차원당 핵심 1개 이슈만 뽑아서 번호 매긴 리스트로 한 번에 제시. AskUserQuestion 1회.
-
-### SCOPE REDUCTION
-
-최소 버전 제안 → 승인 → BIG/SMALL 선택.
+**완료 기준**: 통합 결과를 제시하고 AskUserQuestion 1회로 "어느 이슈를 계획에 반영할지"를 받았다(차원별로 ≤4개(B)·1개(C) 또는 `No issues found.`).
 
 ## Step 2: 종합 산출물
 
-### NOT in scope
-고려했으나 명시적으로 제외한 작업 (항목당 1줄 근거)
+- **NOT in scope** — 고려했으나 제외한 작업, 항목당 1줄 근거
+- **What already exists** — 하위 문제를 이미 부분적으로 푸는 기존 코드·흐름
+- **Failure modes** — 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 3개 모두 없으면 **critical gap**
+- **Completion summary**
 
-### What already exists
-하위 문제를 이미 부분적으로 해결하는 기존 코드/흐름
-
-### Failure modes
-각 새 코드패스: 테스트 커버? 에러 핸들링? 무음 실패?
-3개 모두 없음 = **critical gap**
-
-### Completion summary
 ```
 - Step 0: 스코프 챌린지 (사용자 선택: ___)
 - Dimensions: ___/6 active
@@ -136,49 +86,39 @@ Agent 스폰 없이 직접 ref-*.md를 읽고, ACTIVE 차원당 핵심 1개 이�
 - Critical gaps: ___
 ```
 
+**완료 기준**: 네 블록을 모두 채웠다.
+
 ## Step 3: 계획 저장
 
-리뷰 반영 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 저장한다. repo 내부(`docs/`)에 커밋하지 않는다 — plan은 개인 작업 문서이며 PR diff를 부풀리지 않아야 한다. repo이름은 현재 git top-level 디렉토리 이름(`basename $(git rev-parse --show-toplevel)`).
+리뷰를 반영한 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 쓴다. `repo이름`은 `basename $(git rev-parse --show-toplevel)`. plan.md는 repo 밖 이 경로에만 둔다(근거: CLAUDE.md "작업 방식"의 작업 문서 경로 규칙).
 
-## Step 3.5: Codex Adversarial 검증 (필수)
+**완료 기준**: 그 경로에 파일이 있다.
 
-계획 저장 직후, 이종 LLM(Codex/GPT 계열)에게 설계 자체의 타당성을 공격적으로 검증받는다. Opus가 놓쳤을 가정·트레이드오프·실패 모드를 짚는 단계이므로 **모든 plan-review 실행에서 필수**.
+## Step 3.5: Codex 적대 검증 (모든 실행에서 필수)
 
-### 실행
+이종 LLM(Codex/GPT 계열)에게 계획을 red-team 시킨다.
 
 ```bash
 CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
 REPO=$(basename $(git rev-parse --show-toplevel))
-PLAN_PATH=~/plans/$REPO/{작업명}/plan.md
+PLAN_PATH=~/plans/$REPO/{작업명}/plan.md   # plan이 repo 밖이라 절대경로로 넘긴다
 
-# Adversarial review — Bash tool의 run_in_background: true 로 실행
-# plan 파일이 repo 바깥에 있으므로 Codex에게 경로를 명시적으로 전달한다.
-node "$CODEX_SCRIPT" adversarial-review --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라."
+node "$CODEX_SCRIPT" task --effort high "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라. git diff는 무시하라."
 ```
 
-- `--background`는 Codex 플러그인 자체 배경 모드이고, Claude Code Bash tool도 `run_in_background: true`로 띄워 두 층으로 비동기 처리한다.
-- `BashOutput`으로 stdout을 polling하면서 완료까지 대기. **timeout은 명시하지 않는다** (Codex가 충분히 깊게 돌 수 있도록).
-- Codex stdout은 **원본 그대로** 사용자에게 제시. 요약/paraphrase 금지.
+계획에 대응하는 git diff가 이미 있으면 `adversarial-review --background "<같은 focus 문구>"`를 대신 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙은 `~/.claude/lib/codex-adversarial.md`를 Read하고 따른다.
 
-### 운영 노트 (codex-companion 호출 실무)
+Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
+- A) 제기된 이슈를 전부 plan.md에 반영(Edit) → Step 4
+- B) 사용자가 지정한 일부만 반영 → Step 4
+- C) 원안대로 진행 → Step 4
+- D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
 
-- **`adversarial-review`는 git diff 리뷰어다** (`--scope working-tree|branch`). 구현 전이라 대응 diff가 없거나(plan만 존재) working tree에 무관한 변경이 섞여 있으면 plan이 아닌 그 diff를 리뷰한다. 이때는 대신 `task --effort high "<plan 절대경로> 를 읽고 설계를 적대 검증하라. git diff는 무시하라 …"`를 쓴다(읽기 전용, `--write` 금지).
-- **`task`/`adversarial-review`는 비동기 job**이다. `task`는 thread만 띄우고 즉시 반환하므로 `status --all`로 job-id를 찾아 `status <job-id>` 폴링 후 `result <job-id>`로 회수한다. `status --all`의 'running' 문자열로 폴링하면 다른 job에도 매칭돼 오판 → 특정 job-id의 phase를 본다.
-- **stall 대비**: job이 "starting" phase에서 진척 없이(로그에 turn-start 이후 출력 0) 멈추면 `cancel <job-id>` 후 self-review(직접 적대 점검)로 대체하고 사용자에게 알린 뒤 Step 4로 진행한다.
-- `--help`를 인자로 주면 focus text로 먹혀 실제 job이 뜬다 — 계약 확인용으로 쓰지 말 것.
-- **참고 코드는 "체크아웃된 워킹트리" 기준으로 읽는다**: 계획이 특정 브랜치(미체크아웃) 위 작업이면 Codex가 파일시스템의 옛 코드를 읽고 "이미 고쳐진 문제"를 오탐한다(ISSUE-000 PR-5에서 8건 중 2건 오탐). 대상 브랜치를 체크아웃/worktree로 깔아주거나, 프롬프트에 "코드 인용은 브랜치 X 기준(`git show X:path`)"을 명시하고, **Codex 지적을 반영하기 전 대상 브랜치 코드로 사실 검증**한다.
-
-### 결과 반영
-
-Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
-- A) Codex가 제기한 이슈를 plan.md에 반영 → Edit으로 plan.md 업데이트 → Step 4
-- B) Codex 제안을 일부만 반영 (사용자가 항목 지정) → 반영 후 Step 4
-- C) Codex 제안 없이 원안대로 진행 → Step 4
-- D) 설계 재검토 필요 → Step 0 또는 Step 1로 되돌림
+**완료 기준**: Codex 리포트(대기가 timeout으로 끝나 자체 적대 점검으로 대체했다면 그 고지)를 제시하고 A~D 중 하나를 받았다.
 
 ## Step 4: 구현 시작 확인
 
-절대 바로 구현 시작 금지. AskUserQuestion:
+AskUserQuestion:
 ```
 계획이 ~/plans/{repo}/{작업명}/plan.md에 저장되었습니다.
 - A) 구현 시작
@@ -186,5 +126,20 @@ Codex 리포트를 제시한 뒤 AskUserQuestion 1회:
 - C) 지금은 구현하지 않음
 ```
 
-## 브랜치 이력 확인
-git log에서 이전 리뷰 기반 리팩토링/리버트 흔적이 있으면 해당 영역을 더 공격적으로 리뷰.
+**완료 기준**: 구현은 A) 구현 시작을 받은 뒤에만 착수한다.
+
+## 리뷰 관점
+
+Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
+
+**엔지니어링 선호** — 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/coding-rules.md` §9) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+
+**인지 패턴**
+1. **Blast radius** — 최악의 경우 영향 범위
+2. **Boring by default** — 검증된 기술 우선
+3. **Incremental > revolutionary** — 되돌릴 수 있는 작은 단계로 쪼갠다
+4. **Systems over heroes** — 새벽 3시에도 안전하게 도는가
+5. **Reversibility** — 실패 비용을 낮게
+6. **Essential vs accidental complexity** — 진짜 문제를 푸는가
+7. **Make the change easy, then make the easy change**
+8. **Two-week smell test** — 2주 안에 기능을 못 붙이면 아키텍처 문제

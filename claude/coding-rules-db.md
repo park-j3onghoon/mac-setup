@@ -1,33 +1,33 @@
-# DB 설계 규칙 (MySQL)
+# Coding Rules — DB schema (MySQL)
 
-DB 스키마/마이그레이션 작성 시 적용. example 등 MySQL 기준.
+Applies when writing schema/migrations for example-style MySQL, together with `coding-rules.md` (core).
 
-## 타입
+## Types
 
-- **`user_id`는 int**로 관리한다.
-- **enum이 가능하면 enum**으로 처리한다. enum은 내부적으로 정수로 저장된다.
-- **정수형은 default를 넣지 않는다**. 기본값이 0이라 불필요.
-- **`datetime(6)` 대신 `timestamp`**만 쓴다. 마이크로초는 필요 없다.
-- **varchar는 20~30% 여유**를 준다.
+- **`user_id` is int**.
+- **Enum where possible** — stored internally as an integer.
+- **Integer columns carry no default** — the implicit default is already 0.
+- **`timestamp`, not `datetime(6)`** — microseconds are never needed.
+- **varchar gets 20–30% headroom** over the longest expected value.
 
-## enum
+## Enum columns
 
-- **매칭되는 값이 없으면 첫 번째 값이 default**다. 따라서 **첫 번째 값은 `''`(빈 문자열)**로 두는 게 좋다.
-- **enum 타입 칼럼명은 `{enum_타입}_type`**으로 통일한다.
+- **First enum value is `''`** because an unmatched value falls back to the first value.
+- **Column name `{enum_type}_type`** for every enum column.
 
-## charset
+## Charset
 
-- **기본은 ascii**. 한글 등이 필요한 경우에만 utf8mb4를 쓴다. (한글 1글자=3바이트, ascii=1바이트)
+- **ascii by default; utf8mb4 only where Korean etc. is stored** — a Korean character costs 3 bytes, ascii 1.
 
-## 칼럼 순서 (중요도순, 위 → 아래)
+## Column order (top → bottom)
 
-데이터 가독성을 위해 중요도순으로 배치한다:
-1. 외부 테이블과의 관계 (FK 등) — 상위로
-2. fact 값 — 중간
-3. varchar, json 등 — 하위로
+- **Relations first, facts next, wide values last**: FK/relations to other tables → fact values → varchar/json.
 
-## 집계 카운터 (캐시 필드)
+## Aggregate counters (cached fields)
 
-- **집계 대상 row가 1,000개 이상이면 매 조회 집계 대신 캐시 필드(저장 카운터)를 둔다** (DBA 가이드).
-- 이유: 사용자가 새로고침을 어뷰징처럼 연타할 수 있어, 조회마다 전수 집계(COUNT/SUM)하면 부하가 조회 빈도에 비례해 커진다.
-- 쓰기(처리) 시점에 카운터를 갱신하고 조회는 카운터만 읽는다. 예: 진행률 = `total_count`(실행 시작 시 고정) / `completed_count`(처리마다 갱신).
+- **Cache a counter when the aggregated rows reach 1,000** (DBA guide) — a user hammering refresh makes per-read COUNT/SUM load scale with read frequency; update the counter at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
+
+## updated_at
+
+- **`ON UPDATE CURRENT_TIMESTAMP` is the DDL convention** for `updated_at`, applied by the DBA out-of-band — it is absent from repo migrations, so its absence in a grep is not a bug (ORM consequence: `coding-rules-python.md` "Never set updated_at by hand").
+- **Legacy tables may lack it** (payments-api `payout_organization`: `datetime(6)`, no ON UPDATE, `auto_now` only) — verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.

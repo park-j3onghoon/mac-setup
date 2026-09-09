@@ -73,16 +73,30 @@ link_file() {
   ok "symlink: $dst -> $src"
 }
 
+# 대상이 사라진 심링크 제거 (레포에서 파일을 지우거나 롤백했을 때 자동 정리)
+prune_dangling() {
+  local dir
+  for dir in "$@"; do
+    [ -d "$dir" ] || continue
+    find "$dir" -maxdepth 1 -type l ! -exec test -e {} \; -print 2>/dev/null | while read -r l; do
+      rm -f "$l"
+      warn "dangling 제거: $l"
+    done
+  done
+}
+
 log "Shell dotfile symlink"
 link_file "$REPO_DIR/mac/zshrc"    "$HOME/.zshrc"
 link_file "$REPO_DIR/mac/zprofile" "$HOME/.zprofile"
 
 # ---- 4. Claude 설정 ----
 log "~/.claude/ 설정 symlink"
-mkdir -p "$HOME/.claude/skills" "$HOME/.claude/commands"
+mkdir -p "$HOME/.claude/skills" "$HOME/.claude/lib"
 
-for f in CLAUDE.md coding-rules.md coding-rules-python.md coding-rules-frontend.md settings.json statusline-command.sh set-tab-title.sh; do
-  link_file "$REPO_DIR/claude/$f" "$HOME/.claude/$f"
+# 규칙 문서·설정·스크립트: 레포에 있는 것을 전부 링크 (파일 추가 시 install.sh 수정 불필요)
+for f in "$REPO_DIR"/claude/*.md "$REPO_DIR"/claude/*.sh "$REPO_DIR"/claude/settings.json; do
+  [ -e "$f" ] || continue
+  link_file "$f" "$HOME/.claude/$(basename "$f")"
 done
 
 for skill_dir in "$REPO_DIR/claude/skills"/*/; do
@@ -90,13 +104,13 @@ for skill_dir in "$REPO_DIR/claude/skills"/*/; do
   link_file "$REPO_DIR/claude/skills/$skill_name" "$HOME/.claude/skills/$skill_name"
 done
 
-# 낱개 파일(위 루프는 디렉토리만 링크). review·plan-review 공통 참조라 skills/ 루트에 둠.
-link_file "$REPO_DIR/claude/skills/design-decisions.md" "$HOME/.claude/skills/design-decisions.md"
-
-for cmd_dir in "$REPO_DIR/claude/commands"/*/; do
-  cmd_name="$(basename "$cmd_dir")"
-  link_file "$REPO_DIR/claude/commands/$cmd_name" "$HOME/.claude/commands/$cmd_name"
+# 하위 공용 모듈 (스킬이 포인터로 읽는 파일들)
+for lib_entry in "$REPO_DIR/claude/lib"/*; do
+  [ -e "$lib_entry" ] || continue
+  link_file "$lib_entry" "$HOME/.claude/lib/$(basename "$lib_entry")"
 done
+
+prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib"
 
 # ---- 5. Codex 설정 ----
 log "~/.codex/ 설정 symlink"
@@ -112,6 +126,8 @@ for skill_dir in "$REPO_DIR/codex/skills"/*/; do
   skill_name="$(basename "$skill_dir")"
   link_file "$REPO_DIR/codex/skills/$skill_name" "$HOME/.codex/skills/$skill_name"
 done
+
+prune_dangling "$HOME/.codex" "$HOME/.codex/skills"
 
 # ---- 6. VSCode 설정 ----
 log "VSCode 설정 symlink"
