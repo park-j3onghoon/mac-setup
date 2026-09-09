@@ -1,5 +1,7 @@
 # Data/Database Review Reference
 
+MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)는 `~/.claude/coding-rules-db.md`, 레이어·리포지토리 계약은 `~/.claude/coding-rules.md` §1 Architecture에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+
 ## Core Principles
 
 - **스키마는 비즈니스 규칙의 마지막 방어선** — NOT NULL, UNIQUE, CHECK 제약으로 잘못된 데이터 진입 차단.
@@ -22,10 +24,11 @@
 - 데이터 마이그레이션과 스키마 마이그레이션 분리
 
 ### 쿼리 최적화
-- SELECT * 금지 → 필요한 컬럼만 (values/values_list, only/defer)
-- JOIN 순서, GROUP BY/DISTINCT 정확성
+- 필요한 컬럼만 조회 (values/values_list, only/defer)
+- JOIN 순서, GROUP BY/DISTINCT 정확성 — 1:N JOIN 위의 카운팅은 중복 집계를 확인
 - 서브쿼리 vs JOIN 선택 근거
 - EXPLAIN 확인 필요한 복잡 쿼리 식별
+- ORM annotate ↔ dataclass 필드명, SELECT ↔ INSERT 컬럼 동기화
 
 ### 인덱싱
 - 새 WHERE/ORDER BY 조건에 인덱스 존재 여부
@@ -46,8 +49,3 @@ qs = Campaign.objects.annotate(
     click_count=Count("clicks"),
 ).values("id", "impression_count", "click_count")
 ```
-
-## User Preferences
-- ORM annotate ↔ dataclass 필드 동기화 확인
-- SELECT ↔ INSERT 컬럼 동기화
-- 1:N 카운팅 중복 주의

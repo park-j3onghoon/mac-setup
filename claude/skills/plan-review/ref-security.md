@@ -4,8 +4,8 @@
 
 - **Defense in depth** — 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
 - **Least privilege** — 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
-- **공격자처럼 생각, 보안 극장 금지** — 현실적 공격 경로 없으면 지적하지 않는다.
-- 심층 보안 감사는 `/cso` 스킬로 위임. 여기서는 계획 레벨 점검만.
+- **공격자처럼 생각한다** — 현실적 공격 경로가 있는 것만 지적한다(보안 극장 배제).
+- 여기서는 계획 레벨 점검만 한다. 심층 보안 감사는 상위에서 `/cso`로 위임.
 
 ## Checklist
 
@@ -18,18 +18,18 @@
 
 ### 인증/인가
 - 새 API 엔드포인트마다 인증 확인 (permission_classes, @login_required)
-- 역할 기반 접근 제어(RBAC) 일관성 — 기존 패턴과 다르면 왜?
+- 역할 기반 접근 제어(Role-Based Access Control, RBAC) 일관성 — 기존 패턴과 다르면 왜?
 - 토큰 만료/갱신 메커니즘 존재 여부
 
 ### 입력 검증
 - 사용자 입력 sanitization (HTML escape, SQL 파라미터 바인딩)
 - 파일 업로드 검증 (타입, 크기, 내용)
-- 경로 순회(path traversal) 방지 — os.path.join에 사용자 입력 직접 사용 금지
+- 사용자 입력으로 만든 경로는 정규화 후 base 디렉토리 안인지 확인 (path traversal)
 
 ### 시크릿 관리
 - 하드코딩된 시크릿, API 키 없는지
 - .env가 .gitignore에 포함되어 있는지
-- 에러 메시지에 내부 정보 노출 금지 (`str(e)` → 고정 문자열)
+- 클라이언트 에러 응답은 고정 문자열, 상세는 로그로 (`str(e)` 노출 대신)
 
 ## Examples
 
@@ -47,7 +47,3 @@ def update_campaign(request, campaign_id):
         logger.exception("campaign update failed")
         return Response({"error": "Internal Server Error"}, status=500)  # str(e) 노출 안 함
 ```
-
-## User Preferences
-- `except` 블록에서 `str(e)` 클라이언트 노출 금지
-- 보안 극장 금지 — 실제 열린 문만 지적

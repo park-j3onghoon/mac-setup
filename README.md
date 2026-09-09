@@ -13,8 +13,10 @@ mac-setup/
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── skills/           # plan-review, review, cso, guard, hygiene, investigate,
-│   │                     # explain-html, pr-size-check, retro, session-review, unfreeze
-│   └── commands/sc/      # SuperClaude 명령
+│   │                     # explain-html, retro, session-review
+│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (review 브리프, codex 교차검증)
+│   └── commands/sc/      # SuperClaude 명령 — 미사용이라 install.sh가 링크하지 않는다
+├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── codex/                # ~/.codex/ 로 symlink 대상
 │   ├── AGENTS.md
 │   ├── config.toml

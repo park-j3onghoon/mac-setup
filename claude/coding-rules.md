@@ -1,147 +1,174 @@
-# Coding Rules — 모든 언어/프로젝트에 공통 적용할 규칙
+# Coding Rules — core (every language, every project)
 
-이 파일은 리뷰와 피드백에서 학습한 "코드를 쓸 때 따라야 할 공통 규칙"이다.
-코드를 작성/수정할 때 이 파일을 참조하여 같은 실수를 반복하지 않는다.
+Read this file before writing or modifying code, then read the specifics file for the stack you touch: `coding-rules-python.md` (Python / Django / DRF / Pydantic / pytest), `coding-rules-frontend.md` (React / Vue / TS; Vue + Example main projects such as admin-center also read `coding-rules-vue.md`), `coding-rules-db.md` (MySQL schema). Tool and project know-how stays in memory (`reference_tool_{tool}.md`, `project_{name}.md`). Updated by `/review` Step 9 or by hand.
 
-언어/프레임워크/프로젝트 특화 규칙은 서브 파일에 있다. 현재 작업 대상에 해당하면 함께 읽는다:
+## 0. Precedence
 
-- `coding-rules-python.md` — Python / Django / Pydantic
-- `coding-rules-vue.md` — Vue + Example 메인 프로젝트 (admin-center 등)
-- `coding-rules-frontend.md` — React / Vue 프론트 공통
-- `coding-rules-db.md` — DB 스키마/마이그레이션 (MySQL)
+- **Quality ladder**: Architecture > Module > Class/Object > Function > Naming — when two rules conflict, apply the higher level (a Function rule such as "prefer inline" never justifies breaking the Module rule "no cross-usecase calls").
+- **Cross-cutting sections** — Errors, Comments, Tests, Simple Design & Refactoring, Change discipline — apply at every rung of the ladder.
+- **Specifics files** (`coding-rules-python.md`, `coding-rules-frontend.md`, `coding-rules-db.md`) add stack detail inside their own scope and never override a rule here; a narrowing is allowed (Python's falsy-sentinel scalars), a contradiction is not.
+- **Paradigms** behind these rules: Clean Architecture, Hexagonal (Ports & Adapters), DDD, CQRS/CQS, TDD, Kent Beck Simple Design; a rule tagged (canon) comes from that canon rather than from a past review.
 
-도구별 노하우는 메모리에 있다:
+## 1. Architecture
 
-- `reference_tool_{tool}.md` — Playwright 등 특정 도구 전용 노하우
-- `project_{name}.md` — 해당 프로젝트에만 국한된 노하우
+- **Dependency rule**: point every dependency inward — `presentation → application → domain`, and `infrastructure → domain` by implementing the ports the domain defines (DIP); the domain depends on nothing, infrastructure never imports application implementation, and the domain is designed first — never bent to fit a repo signature.
+- **Layering** (canon, Cosmic Python): route every request entrypoint (view, servicer, CLI, consumer) → service layer (use case) running inside a unit of work → domain model, with adapters (repositories, gateways, email, publishers) implementing the ports — a use case never touches the ORM or an HTTP client directly.
+- **Thin entrypoint**: let a view/servicer only build the use case, map request → payload, call `execute`, and map result → response — even List/Retrieve get their own use case, so no entrypoint calls a repository directly (DRF shape: `coding-rules-python.md` "View shape").
+- **Aggregate** (canon): treat one aggregate as one consistency boundary — a unit of work modifies one aggregate root per transaction and references other aggregates by id, never through an object graph.
+- **Domain event / message bus** (canon): raise a cross-aggregate side effect (send the approval email, bump a counter on another aggregate) as a domain event on the aggregate and handle it after the unit of work commits, never inline from the first aggregate.
+- **CQRS / CQS at the boundary**: give a command its side effects and a minimal return (id/status) and a query no side effects; split read and write models when their shapes or paths diverge, and give an externally served query endpoint its own read model rather than a repository projection.
+- **Bounded context** (canon): keep each service/module's own terms and model and translate at the boundary (anti-corruption mapping in the adapter) instead of importing another context's entity or enum into the domain.
+- **Validation ladder**: place each check where its criterion lives — type → ①, single value → ②, relation → ③ — because one place for everything (all in a DRF Serializer) ties the domain to one entrypoint and misses the next one:
+  1. **Type/format → entrypoint** (DRF Serializer, View, Controller): "does raw input parse to the right type" — `"abc"` → int fails with 400; (de)serialization lives here and the domain/service never sees JSON or HTTP.
+  2. **Single-value invariant → value object constructor**: "is this one value valid" — `Quantity(-5)` is rejected in `__post_init__`; this is the last line of defence, kept even when the entrypoint duplicates it (entrypoints multiply: HTTP, CLI, queue, batch, tests).
+  3. **Relational rule → domain behaviour**: "given several objects' state, may this operation run" — `line.qty > batch.available_quantity` in a `can_xxx()` query or guard raising a domain exception (`OutOfStock`) that the entrypoint translates to an HTTP status.
+  - Scope: apply when domain rules are rich; skip for simple CRUD or a thin gateway layer (payments-api gRPC gateway).
+- **State stored, not resolved**: persist an explicit state field instead of computing status from other fields — an event-driven action (send an email once) cannot be judged from resolve, and resolve gives a snapshot with no history.
+- **Transition diagram first**: fix the transition diagram and terminal conditions before any state design (states rarely change later) and require the diagram before reviewing one.
+- **State machine shape**: keep one transition map as the single source of truth, a shared `_transition_to` guard, and named `mark_*` methods carrying intent and per-state logic; expose the map for test reuse so adding a transition is one map line, and guard only transitions that can actually happen — a guard for a system-impossible state is noise.
+- **Gateway / BFF / adapter**: transform and forward only — defaults, field merge/preserve and invariants stay in the service that owns the domain, because a caller-side read-modify-write to "preserve missing fields" scatters the rule, races under concurrency and drifts.
+- **Verify before build**: read the dependent service's actual write/merge/error behaviour (its proto, entity, repo — especially cross-repo) before adding RMW field preservation, default mapping or error translation on the caller side; an assumed contract ("upsert is full-replace") turns into partial updates and silently dropped fields.
+- **Repository contract**: return aggregates/entities through a domain-defined port by default and allow count/summary/id projections explicitly (Evans DDD; ISP) — do count/existence via a projection method returning e.g. `list[int]` instead of hydrate-then-discard; the return type itself says "projection" (no comment needed) and suits command-internal computation such as a progress denominator.
+- **Repo stores the entity as-is**: keep the modifiable-field whitelist/blacklist in the usecase and let infra strip only `id`/`created_at`/`updated_at` — a repo that judges which fields may change blocks approve/reject/cancel usecases from sharing one `update()`; express such rules through DTO design, usecase branching or entity routing.
+- **Pagination meta in application**: the repo takes `limit`/`offset` and returns `count` + `items`; compute `num_pages`/`has_next`/`has_previous`/page number in the usecase — a repo that knows `page_number`/`page_size` has a business contract leaking into infra.
+- **Timezone anchoring**: when a repo anchors a received `date` to a zone's midnight (`arrow.replace(tzinfo='Asia/Seoul').floor('day')`), pass the calendar date in that zone (`astimezone(tz).date()`) — a UTC tz-aware `.date()` alone is off by one during UTC 15:00–23:59; check the repo's actual internals, not its comments or types.
+- **`_to_entity` normalization asymmetry**: normalizing raw DB values on read (`schedule/live/pause/close` → canonical `APPROVE`) collides on write when the canonical value is absent from the DB EnumField — normalize in the response payload layer instead, or keep the raw value in the entity and expose the normalized view as a separate field/property.
+- **Timeouts**: set explicit connect/read timeouts on every HTTP/gRPC/SMTP/external call (Django `EMAIL_TIMEOUT`, requests `timeout=`, gRPC `timeout=`), above all while a DB transaction or lock is held, so lock hold time never depends on a remote's latency.
+- **Lock across network by workload**: with a single-worker batch + rare manual trigger + single-purpose low-contention row, hold `select_for_update` through the SES call (lock-during-send) — simpler than a SENDING/IN_PROGRESS state plus reaper, since InnoDB `FOR UPDATE` blocks only locking reads/writes (plain reads use the MVCC snapshot) and releases on session death; with high concurrency (multiple workers) use a committed SENDING state + compare-and-set without a lock.
+- **Dedup read under `FOR UPDATE`**: lock all candidate rows and decide after the lock is held — a status filter in the locking read drops a row that turned SENT while waiting and opens a "none, create new" hole.
+- **Check-then-insert**: serialize with `GET_LOCK`, a unique constraint or a single entry point — a status value cannot stop a concurrent INSERT.
+- **Extension by addition (OCP)**: when the same branch keeps being edited for each new case, introduce a strategy/polymorphism/port so the next case is added code, not modified code.
+- **Tracer bullet / vertical slice** (canon): deliver one thin end-to-end slice (entrypoint → usecase → repo → DB → test) first and widen from there, never a whole layer at a time.
+- **Ideal architecture first**: propose the ideal DDD/Clean/Layered/CQS/Simple-Design structure first, compare candidates when several are ideal, state scope/legacy/schedule compromises separately afterwards, and never call something "excessive" or "complex" without grounds; check every model design for dependency direction and store-vs-resolve.
 
-> `/review` Step 9에서 자동 업데이트된다. 수동 추가도 가능.
+## 2. Module
 
----
+- **Deep module** (canon): offer a small interface over a deep implementation — `repo.save(entity)` hiding ORM mapping, enum conversion and system-field stripping beats `save_fields(dict, mask)` that pushes the work onto every caller.
+- **One-way dependencies**: A references B ⇒ B never knows A; a cycle nullifies the split.
+- **Imports at the top** of the file, test files included; resolve a circular import by restructuring modules, never by moving the import into a function.
+- **Domain vs application placement**: a rule true in every use case → domain (`can_transition_to()` — APPROVE→DRAFT is never allowed; entity field constraint `title max_length=15`); a rule true only in one flow → application ("all fields required on submit" while a draft may be empty; "start date 2 business days ahead" on create/update); split constants and exceptions the same way (`domain/constants` vs `application/constants`).
+- **Module constants** go after imports + logger and before the first function (`_STRATEGY_REGISTRIES`), shared `DEFAULT_*` at module top; make a constant only when the value means something — `_ZERO = Decimal('0')` is inlined as `Decimal('0')`.
+- **Interface method order**: list Repository/Port methods in CRUD order `save` → `findBy*`/`findAll*` → `countBy*` → `existsBy*` → `deleteBy*` (or `update`/`revoke`), the same order in every port of a project so the main entrypoint is found at a glance.
+- **Abstraction discipline**: extract the same *knowledge* (a business decision, a discriminating rule) at its 2nd occurrence into its domain module; let a formatting/conversion helper that would become a cross-module shared util wait for the Rule of Three / AHA (Avoid Hasty Abstractions), because a wrong coupling costs more than a little duplication; keep a 1-call-site helper when it is a single defence point (encapsulating `as unknown as T` or a drift guard); same-module step helpers are never "over-abstraction" (Function "Length"); in doubt, keep it local.
+- **Requested scope only**: add only the structure the task asked for and ask before introducing a ClassVar, helper or layer that did not exist — "why did you add this?" ends in a revert.
+- **Team-norm caution**: a shared helper/orchestrator/new layer absent from team practice draws reviewer resistance even past the Rule of Three — check sibling modules (livecommerce, collaborative) first; if absent, infer why inline/duplication was chosen, confirm the benefit clearly beats resistance + learning curve, start inside one module and propose spreading later, and revert to inline at once on "over-utilized" (that revert is cheap).
+- **No cross-usecase calls**: usecase A never calls usecase B; reuse only shared atomic validators (`validate_campaign_request_ownership`, `validate_status_transition`); a lookup repeated across usecases is inlined or given its own private helper.
+- **Shared atomic helpers at module level** (`_month_range`, `fetch_org_payout_reports`), never inside a usecase class or a base class — a base class must sit above its subclasses and breaks step-down order.
 
-## 아키텍처 / 모델 설계
+## 3. Class / Object
 
-- **단방향 의존성 필수, 순환 의존 금지**. A가 B를 참조하면 B는 A를 절대 알아서는 안 된다. 순환이 되면 분리한 의미가 없다.
-- **상태는 resolve가 아니라 저장**. 다른 필드에서 현재 상태를 계산(resolve)하는 방식 지양. 이벤트 기반 동작(이메일 1회 발송 등)은 resolve만으로 "이미 실행했는지" 판단 불가 — 명시적 상태 필드를 저장한다.
-- **상태값은 초기에 정확히 설계**. 상태는 잘 변하지 않으므로 처음에 전이 다이어그램과 종결 조건을 확정한다.
-- **페이지네이션 메타 계산은 application(usecase) 책임**. Repo는 DB 프리미티브(`limit`/`offset`)와 `count`/`items`만 반환. `num_pages`/`has_next`/`has_previous`/페이지 번호 같은 "비즈니스 페이지 계약" 계산은 호출자(usecase)가 수행. Repo가 `page_number`/`page_size`를 알면 infra 레이어에 비즈니스 계약이 침투.
-- **시간 범위 인자는 수신자 타임존에 맞춰 변환**. repo/API 구현체가 전달받은 `date`를 특정 타임존 자정에 앵커링하면(예: `arrow.replace(tzinfo='Asia/Seoul').floor('day')`), 호출부는 동일 타임존 기준 달력 날짜(`astimezone(tz).date()`)를 넘긴다. UTC tz-aware `datetime`에 `.date()`만 쓰면 경계 구간(UTC 15:00~23:59)에서 off-by-one. 계약은 주석·타입이 아닌 **실제 repo 내부 처리 방식**을 확인한다.
-- **Repo는 entity를 있는 그대로 저장한다**. 수정 가능 필드 whitelist/blacklist 같은 도메인 정책 강제는 application(usecase) 책임. infra는 시스템 필드(id/created_at/updated_at) 제외만 수행. Repo가 "어느 필드가 수정 가능한지" 판단하면 다른 usecase(승인/반려/취소 등)가 동일 `update()`를 못 쓰게 된다. 도메인 규칙은 DTO 설계·usecase 분기·엔티티 라우팅으로 표현한다.
-- **Repo `_to_entity` 정규화는 역방향 write와 비대칭임을 고려**. raw DB 값(schedule/live/pause/close) → canonical entity 값(APPROVE)으로 읽을 때 정규화하면, entity를 그대로 저장할 때 canonical 값이 DB EnumField에 없어서 충돌한다. 정규화를 응답 payload 계층으로 옮기거나, entity는 raw 값을 유지하고 정규화된 view는 별도 field/proeprty로 노출한다.
-- **의존 서비스의 계약은 가정하지 말고 코드로 검증한 뒤 그 위에 구현한다** (verify-before-build). 호출자/어댑터에 보완 로직(누락 필드 보존 RMW, 기본값 매핑, 에러 변환 등)을 쌓기 전에 의존 서비스의 *실제* write/merge/error 동작을 확인한다. 가정한 계약("upsert 는 full-replace 겠지") 위에 짜면 실제 동작이 다를 때(부분 업데이트·필드 silent drop 등) 불필요한 보완 로직·silent 버그가 생긴다. cross-repo 의존(다른 서비스 proto/엔티티/repo)일수록 직접 읽어 확인. (CLAUDE.md verify-before-advocate 의 구현 버전.)
+- **SRP**: one reason to change — split a usecase that validates ownership and also renders the notification email.
+- **OCP**: see Architecture "Extension by addition".
+- **LSP**: make a Fake repository honour the real one's contract (update of a missing row raises `NotFound` in both) so tests and production agree.
+- **ISP**: expose narrow port methods (`count_by_status()`) instead of forcing a caller to take `find_all()` for a count.
+- **DIP**: a usecase depends on the port abstraction and infrastructure implements it — never the reverse.
+- **Value object** (canon): immutable, equal by value, invariants enforced in the constructor (Architecture "Validation ladder" ②).
+- **Always-valid entity**: check state transitions inside entity methods and raise a domain exception on an invalid one — never rely on caller checks, which scatter invariants and get missed.
+- **Rich domain** (canon): put behaviour that reads or changes an entity's state on the entity (`payout.approve(now)`), not as `if` chains over its fields in a usecase; an anemic entity is acceptable only for plain CRUD.
+- **Tell, don't ask / Law of Demeter** (canon): call `order.mark_paid(now)` instead of reading `order.status` and assigning from the usecase; a method talks to its own fields, its parameters and objects it creates — no `a.b().c().d()` chains.
+- **Composition over inheritance** (canon): share behaviour through a collaborator or strategy object, not a base usecase class.
+- **Make illegal states unrepresentable**: model a kind/state/mode argument as an enum even with two values (`kind=ExitKind.STOP_LOSS`, not `f(is_take_profit=False)` whose `False` cannot be read as "absent" vs "stop-loss kind"); two booleans (`is_tp` + `is_sl`) create (True,True)/(False,False) contradictions → one enum; an Optional field plus a same-root boolean (`take_profit: Decimal | None` + `is_take_profit`) mixes existence with kind → one field; fields that travel with a variant form a discriminated union (`coding-rules-frontend.md` "Types") and a constrained value gets a constrained type (`coding-rules-python.md` "Types").
+- **Boolean only for a true on/off flag** (`verbose`, `dry_run`); when reading any boolean, first name the axis it answers — `False` is the opposite pole of that axis, not "absent".
+- **Usecase class structure**: state-holding builders and UseCases are classes (`PayoutStatementTree`, `PayoutStatementSummaryUseCase`); pure orchestration/fetch helpers may be module functions (`resolve_statement_scope`, `build_statement_tree`, `summarize_statement`, `_statement_*`); externally called → public, internal → private instance method, public `@staticmethod` only for pure state-independent computation, never a private classmethod/staticmethod, and all private helpers of one class are one kind.
+- **CQS with the entity exception**: accept `Entity.change()` mutating in memory and returning the result (DDD / cosmicpython); everywhere else keep Query and Command apart (Function "SRP + CQS per helper").
+- **Immutable copy**: a helper that would mutate a dict/list returns `dict(input)` + modification as a new object.
+- **dataclass vs dict**: keep dict kwargs for an entity API in sentinel style (`None` = no change, `unset_xxx` = explicit unset), which distinguishes "explicitly set" from "default"; adopt a dataclass only together with an `UNSET` sentinel / separate-method refactor.
+- **Explicit validation over framework magic**: put checks in a `*Validator` class with `@classmethod validate_<field>(value) -> None` and plain `if ...: raise <Domain>InvalidArgumentError` (benefit_contract / booster_contract), called from both repo `create`/`update` and the entity `@validator` that returns the value unchanged (Django model/assignment bypasses validators, so the repo call is mandatory); the Fake repo mirrors the same calls (2-track), tests call the `*Validator` directly, and the entity validator is never dropped as "low-value re-validation" — since `to_entity()` validates on every read, confirm seed/existing rows pass first.
+- **Validators never replace the value**: avoid pydantic `constr(...)` and any `@validator` whose return value replaces the field (even `return v.strip()`) — a check-raise-return-unchanged validator is fine; strip/normalize at the entrypoint (servicer/view) or not at all, rejecting whitespace-only input via `if not x.strip()` without changing the value.
 
-## 검증 (Validation) 계층 분리
+## 4. Function
 
-- **검증은 3레벨로 나눠 배치한다 — 레벨마다 검사 대상이 다르다** (계층형 / Cosmic Python 아키텍처). 검증을 한 곳(예: DRF Serializer)에 다 몰면 도메인이 진입점에 종속되고, 진입점이 늘면 검증이 누락된다. 데이터 흐름 순서:
-  1. **형식·타입 검증 → 진입점 / 프레젠테이션** (DRF Serializer, View, Controller): "raw 입력이 올바른 **타입**으로 파싱되는가". 신뢰 못 할 외부 입력 정제 — 예: `"abc"`→int 실패(400). 직렬화/역직렬화도 이 계층 (도메인·서비스는 JSON/HTTP를 몰라야 함).
-  2. **단일 값 불변식 → 도메인 값 객체(Value Object) 생성자**: "타입은 맞는데 그 **값 하나**가 도메인적으로 유효한가". 단일 값으로 판단 — 예: `Quantity(-5)` 거부(`__post_init__`). 진입점을 신뢰하지 않는 최후 방어선이라 진입점 검증과 중복돼도 **생략 금지**(다층 방어; 진입점은 HTTP 외 CLI·큐·배치·테스트 등 다수).
-  3. **관계적 비즈니스 규칙 → 도메인 행동(메서드)**: "여러 객체의 **상태 관계**상 이 연산이 가능한가". 2개 이상 상태 필요 — 예: `line.qty > batch.available_quantity`(재고 초과). `can_xxx()` 쿼리 메서드 / 가드 절에 두고 도메인 예외(`OutOfStock`)로 표현 → 진입점에서 HTTP status로 번역.
-- **배치 판단 기준**: 파싱 가능성→①진입점 / 단일 값 유효성→②값 객체 / 객체 간 관계→③도메인 행동. ①은 "타입", ②는 "값", ③은 "관계"를 검사한다.
-- **적용 범위**: 도메인 규칙이 복잡할 때 값어치. 단순 CRUD나 얇은 게이트웨이성 레이어(예: payments-api gRPC 게이트웨이)엔 과하므로 적용하지 않는다.
+- **Length**: 30–40 lines soft limit (Bob Martin < 20, Google soft 40); past it, split by responsibility into private helpers (Composed Method) — a helper called only 1–2 times still earns its name, and private → private calls between step helpers are fine (2026-05-19 reversal on the 140-line `batch_update_unit_contracts`).
+- **Step-down order**: public main above, helpers below, one abstraction level per step — usecase `execute` on top and `_needs_requeue` below; module-level shared helpers below the usecase classes in call-chain order (`_publish_job_resource` above `_is_publish_stale`); Python's late binding makes helper-after-caller safe.
+- **SRP + CQS per helper**: one reason to change; a Query (returns a value, no side effect) and a Command (mutates, returns nothing) never share a function — split one that does both.
+- **Guards belong to the caller**: `_verify_value(field, value, registry)` does not open with `if field not in mask: return` / `if not value: return`; the caller loop `continue`s or returns early and the helper does only what its name promises.
+- **Same helper N times → table + loop**: turn 2+ explicit calls of one helper with different arguments into an `(argument combination)` list as a module constant iterated in a for-loop — 4 calls + 2 similar mapping-validation calls is where readability tips.
+- **Inline up to 100–110 chars**, otherwise a named variable — `return Payload(**repo.create(entity).dict())` is decided by its length.
+- **No unnecessary defaults**: remove a parameter default once every call site passes the value explicitly (UI defaults in API payloads: `coding-rules-frontend.md` "UI defaults are FE responsibility").
+- **Collection params non-nullable**: an empty collection means "no filter"; scalars may be `None` (Python narrowing: `coding-rules-python.md` "Types").
+- **kwargs override order**: put explicit parameters after the spread — `Entity(**payload.dict(), explicit_field=value)` — so the explicit value always wins over a same-named payload key.
 
-## 코드 구조
+## 5. Naming
 
-- **import는 파일 최상단에 배치**. 함수/메서드 내부 import 금지. 순환 import는 모듈 구조로 해결.
-- **2곳 이상 반복 로직은 추출**. 판별 로직은 해당 도메인 모듈에, 포맷팅/변환은 공유 유틸에.
-- **불필요한 default 값 금지**. 모든 callsite가 명시적으로 값을 전달하면 default 제거.
-- **컬렉션 파라미터는 non-nullable, 빈 컬렉션으로 default**. nullable 배열/맵 대신 빈 컬렉션 = "필터 없음". 스칼라는 null/None 허용.
-- **한 번만 쓰는 코드에 과도한 추상화 금지**.
-- **리팩토링 스코프 밖 새 추상화 무단 추가 금지**. 사용자/이슈가 요청한 변경만 수행한다. 유사 위치에 ClassVar·헬퍼 메서드·레이어를 "겸사겸사" 추가하면 사용자가 "처음에 없었는데 왜 새로 넣었냐"로 되돌림 요청한다. 기존에 없던 구조를 넣기 전에 사용자 확인.
-- **인라인 가능하면 인라인을 선호**. 단, 100~110자를 초과하면 변수로 분리.
-- **인터페이스/클래스의 메서드 순서는 일관되게**. Repository/Port 인터페이스는 **CRUD 순서**로 통일: `save` → `findBy*` / `findAll*` → `countBy*` → `existsBy*` → `deleteBy*`(또는 `update/revoke` 등 변경 동작). 파일마다 순서가 다르면 리뷰어가 "어느 게 메인 엔트리포인트인지" 파악하기 어렵고, 비슷한 포트끼리 비교가 힘들어진다. 한 프로젝트 안에서 동일 패턴 유지.
+- **Ubiquitous language**: use the term the codebase/glossary already uses, one word per concept — never `org` here and `publisher` there for the same thing.
+- **Function name = business role**: `send_payout_email`, never `send_payout_email_async`/`_in_thread` — mechanism words stay out of the name.
+- **Model field = DB column** so a debugging query maps 1:1.
+- **Positive predicates**: `can_*`/`is_*`/`has_*` over `blocks_*`/`*_unfinished` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
+- **Intention-revealing, searchable names** (canon): `remaining_budget` not `rb`, a named constant not a magic number, single letters only in comprehensions/lambdas.
+- **Enum naming**: model enum without suffix (`DisplayCampaignStatus`) vs domain enum with `Type` suffix (`DisplayCampaignStatusType`); infra converts via `ModelEnum(domain_enum.value)`.
+- **Enum zero value by direction**: a server-filled output/stored enum puts a real domain value at 0 (`STATUS_PLANNED=0`, `PAYOUT_EMAIL_STATUS_PENDING=0`, `PayoutStatus.DRAFT=0`), 1:1 with the DB default and with no UNSPECIFIED in the domain enum; a client-filled input discriminator/view selector keeps `_UNSPECIFIED=0` so an unset value is rejected (INVALID_ARGUMENT) or defaulted; when an enum flips input ↔ output, flip its 0 policy too (ISSUE-000 restored `ACTION_UNSPECIFIED=0`).
 
-## 함수 분할 / 설계 패턴
+## 6. Errors
 
-- **함수 길이는 Clean Code / Google guide 기준** (30~40줄 soft limit). 초과 시 책임 단위로 private helper 분할 (Composed Method 패턴, Bob Martin). "한 번만 쓰는 코드에 과도한 추상화 금지" 룰은 *cross-module utility* 자제 의미 — 같은 모듈 안 step helper 분할은 OK.
-- **Composed Method + Stepdown Rule**: 분할 후 파일 내 순서는 **public main 위 → helper 아래** (위→아래로 추상화 한 단계씩 내려감). Python 은 late binding (runtime lookup) 이라 helper 가 main 아래에 있어도 호출 시점에 module 정의 완료 후라 동작 OK.
-- **SRP + CQS 적용**: helper 도 단일 책임 (reason to change 가 하나). **Query** (값 반환 + side-effect 없음) 와 **Command** (state 변경 + void) 분리. 한 함수가 둘 다 하면 분할.
-- **CQS 의 도메인 예외 수용**: entity 메서드 (`Entity.change()` 등) 가 in-memory mutate + 결과 반환 — DDD / cosmicpython 도메인 객체 패턴이라 엄격 CQS 와 충돌하지만 도메인 차원 수용.
-- **immutable copy 패턴**: helper 가 dict/list mutate 가 자연스러워도 CQS 정합 위해 `dict(input) + 수정 + 새 객체 반환` 권장.
-- **`private → private` 호출 OK** (2026-05-19 reversal): 같은 추상화 수준의 step helper 가 서로 호출해도 됨. 단 **cross-usecase 호출은 여전히 금지** (atomic validator 만 공유).
-- **dataclass vs dict (kwargs 표현)**: entity API 가 sentinel 스타일 (None=변경 안 함, unset_xxx=명시 unset) 이면 dict 가 자연스럽게 fit (명시 set vs default 구분 가능). dataclass 도입은 entity API 의 sentinel 리팩토링 (`UNSET` sentinel / 별도 메서드) 과 함께 진행 — 그 전엔 dict 유지.
-- **helper 의 책임 단일화 — 진입 가드는 호출자**: helper 함수가 첫머리에서 `if 진입조건: return` 을 쌓고 있다면 그 가드는 helper 가 아니라 호출자 (loop `continue` 또는 early return) 의 책임이다. helper 는 함수 이름이 약속한 로직만 수행한다 — 그래야 이름과 동작이 일치하고 호출 흐름이 외부에서 읽힌다. 예: `_verify_value(field, value, registry)` 내부에 `if field not in mask: return` / `if not value: return` 을 두지 말고, 호출자 loop 에서 `continue` 로 처리.
-- **동일 패턴 N 호출은 list + loop 로**: 같은 helper 를 인자만 바꿔 2회 이상 명시 호출한다면 `(인자조합)` list 를 모듈 상수로 빼고 for-loop 로 묶는다. 4 호출 + 비슷한 매핑 검증 2 호출 같이 누적되면 가독성 큰 차이.
-- **모듈 상수는 파일 최상단**: 모듈 상수 (`_STRATEGY_REGISTRIES` 등) 는 imports + logger 정의 다음, 첫 함수 정의 전 위치. 함수들 사이에 끼면 가독성 떨어지고 "어디서 정의됐지" 추적 부담.
+- **Not-found**: `update`/`delete` on a missing target raise a domain exception (`NotFound`/`EntityNotFound`) and drop `| None` from the return type; `find`/`search` may return `None` — criterion: the caller expects absence → `None`, existence is a precondition → exception.
+- **404 vs 200 + null**: `GET /resources/{id}` → 404 (`NotFound`, REST standard); a condition-based single lookup ("the in-progress amendment") → 200 with a null field, because "looked, none" is a normal path.
+- **Catch-all handlers** return a fixed response and log the original error — raw error text never reaches the client (Python cue: `coding-rules-python.md` "Errors").
+- **Unreachable branch**: in a pure function return a safe fallback with the comment `정상 경로 도달 불가: ...`; in an async/event handler `throw new Error('unreachable: ...')` so Sentry/console can trace it — a silent return is a silent failure with no user feedback.
+- **Batch/loop failure aggregation**: collect per-item failures and log once after the loop — `logger.error('... %d failed: %s', n, {id: 메시지})` — instead of logging each item; this loses per-item `logger.exception` tracebacks, so persist each failed item in a terminal state (run FAILED) for monitoring/reprocessing; nested loops aggregate per level (run loop, org loop), and a claimed item is closed to a terminal state on exception so no zombie stays "in progress".
+- **Message style**: English + resource name + id — `raise NotFoundError(f'Campaign request not found: id={request_id}')`, `raise NotFoundError(f'Campaign creative not found: displaycam_id={displaycam_id}')` — with domain exceptions `NotFoundError`/`NotAllowedError`/`ValidationError`; keep usecase context out (stack trace/APM has it) and let the FE map to Korean.
 
-## 에러 처리
+## 7. Comments
 
-- **update/delete에서 대상 미존재 시 도메인 예외** (`NotFound` 등). null/None 반환 금지.
-- **find/search에서 null/None 반환 허용**. 없을 수 있는 조회는 None OK.
-- **구분 기준**: 호출자가 "없을 수 있다"고 예상하면 None, "있어야 한다"가 전제면 예외.
-- **Retrieve API 응답 404 vs 200+null 구분**:
-  - **id 기반 리소스 상세 조회**(`GET /resources/{id}`): 리소스 부재 시 **404 (NotFound 예외)**. REST 표준.
-  - **조건 기반 단건 조회**("조건 맞는 하나 찾기", 예: "진행중 amendment"): 없으면 **200 + null 필드**. "찾아봤는데 없음"이 정상 경로.
-- **포괄 예외 핸들러에서 원본 에러 메시지를 클라이언트에 노출 금지**. 고정된 에러 응답을 반환하고 원본 에러는 로깅에만 남긴다.
-- **Unreachable 분기는 맥락에 맞게 처리**. 순수 함수의 도달 불가 분기는 "안전한 fallback 반환 + '정상 경로 도달 불가: ...' 주석"이 호출부에 혼란을 덜 준다. 반면 async handler/이벤트 핸들러의 invariant 위반은 `throw new Error('unreachable: ...')`로 즉시 노출해 Sentry/콘솔로 원인 추적 가능하게 한다. 조용히 return하면 유저에게 피드백 없이 사일런트 실패한다.
-- **외부 서비스/네트워크 호출에는 항상 타임아웃을 건다**. HTTP/gRPC/SMTP/외부 API 등 응답이 보장되지 않는 호출은 타임아웃이 없으면 무한 대기로 스레드/커넥션/트랜잭션/락을 묶는다. 클라이언트 레벨 타임아웃(connect/read)을 명시하고, **DB 트랜잭션·락을 쥔 채 외부 호출을 하는 경우엔 특히** 상한을 둬서 락 보유 시간이 외부 응답 지연에 종속되지 않게 한다(예: Django `EMAIL_TIMEOUT`, requests `timeout=`, gRPC `timeout=`).
+- **Why, not what**: default to no comment — identifiers and signatures carry the "what"; self-check "would a future reader be confused without it?" and delete when the answer is no.
+- **Keep** (context the code cannot show):
+  - external standard references (AIP-XXX, RFC NNNN, company RFC links)
+  - security rationale (enumeration prevention, capability token, XSS vector blocking)
+  - architecture decision + the alternatives rejected after review
+  - non-obvious algorithm tricks (limit+1 hasNext, microsecond-precision cursor, base64url format)
+  - disambiguation between confusable code/types ("vs" comparison)
+  - hidden constraints/invariants (DB column type alignment, external API nullability assumption), external-system contracts, circular-import avoidance
+  - value rationale only, e.g. `MAX_*=65535  # MySQL unsigned smallint 최대`
+- **Delete**:
+  - descriptions obvious from the signature; "X용 VO/DTO" labels on data classes
+  - change history ("이전에는 Map이었으나...") → git log/PR body; caller info ("X 화면이 이걸 쓴다") → goes stale
+  - an identifier paraphrased (`"X 토큰을 생성한다"` over `fun generate(): String`)
+  - standard pattern/control-flow narration the structure already shows: `# compare-and-set 으로 중복 claim 방지`, `# try/except 로 한 항목 실패 격리`, `# 예외 시 좀비 방지 FAILED 마감`, `# 전부 SENT면 성공 아니면 실패`, `# 도메인 status → 모델 status 변환`
+  - multi-line design essays ("why safe / why this design") → PR body or plan (a 4-line get_or_create justification shrinks to the one line the code cannot show: the UNIQUE constraint is owned by `send_email`); another function's behaviour is never described away from its own code
+  - references to deleted migrations (`시드 migration 0108`), fail-fast notes, roadmap/follow-up notes
+- **Docstrings follow the same rule (CRITICAL — often broken)**: delete `def mark_in_progress(self): """Start (or restart) this run"""` and avoid `"""Approve payout"""` (payout.py) in new code; a docstring stays only for "why/context" — test docstrings are the one exception (Tests "Naming and structure").
+- **Language**: write comments and docstrings in Korean, identifiers and test names in English — an English "what" comment is a double violation.
+- **Review shrinks only**: a review AUTO-FIX may shorten or delete a comment, never expand one "for accuracy".
+- **Proto files carry shape and signatures only**: contract, validation and rationale live in server code, the PR body and Linear; the one exception is the "why" of a structure that looks like a mistake (an intentionally empty `Foo {}`), removed as soon as a field arrives; `*_UNSPECIFIED = 0` is a value, not a comment.
 
-## 네이밍
+## 8. Tests (TDD)
 
-- **용어는 코드베이스 기존 용어와 일치**. 같은 개념에 다른 단어 사용 금지.
-- **함수명 = 비즈니스 역할**. 구현 세부사항(async, thread) 노출 금지.
-- **모델 필드명 = DB 컬럼명**. 디버깅 용이성.
+- **Red / green / refactor** (canon): write the failing test as the contract first, the minimal code that passes, then refactor under green.
+- **Test at the seams** (canon): assert behaviour through the public interface (usecase `execute`, port, HTTP) — a private helper or internal dict is exercised through what calls it.
+- **Naming and structure**: English method name (`test_rejects_invalid_status_type`), a Korean scenario docstring that is not a name tautology, and `# given` / `# when` / `# then` markers (`# when & then` when mixed; mobile-app uses uppercase with a short note, `# Given: 기본그룹 org + 배정그룹 org`) — the deliberate opposite of the production docstring rule, because intent does not show from asserts.
+- **Markers beat file-local convention**: new tests carry the docstring and markers even when neighbouring tests do not, while lightly edited existing tests stay untouched; split `assert call().data...` into When (`response = call()`) and Then; a routing-smoke or exception test may combine `# When / Then`; the Then comment never echoes the docstring.
+- **Do not test** — ask "is this testing our code or the framework?" and check the sister module's test practice before copying a layer:
+  - framework built-ins (field types, Enum, required/optional, Pydantic `Field(gt=0)`, frozenset membership, Django ORM basics)
+  - pure data objects ("x=1 → x is 1") and Fake-repo "fields set correctly"
+  - snapshots (private dict copy-paste that breaks on refactor)
+  - exhaustive invalid cases (set/dict "not in" is a runtime test — valid cases prove the rule)
+  - simple-composition UseCases (View/Controller integration via APIClient covers them)
+  - log wording (only the functional property, e.g. run_id submit/finish pairing — the wording contract lives in a constant comment)
+- **Dedup and helpers**: keep one of a single-field and a multi-field change test proving the same thing; the same rule via different fields is one test; helpers (`create_draft`, `force_status`, `_make_repo_with_usecases`) live in conftest (vitest: shared helper).
+- **Domain objects only in fixtures/factories** (Cosmic Python "keep all domain dependencies in fixture functions"): `make_batch()` / `FakeRepository.for_batch(...)`, never inline `Batch(...)`/`OrderLine(...)` in a test body, so a constructor change touches one place.
+- **Inject now**: time-dependent code takes `now` as an optional parameter down to usecase `execute` and tests pin it (mechanics: `coding-rules-python.md` "Time").
+- **No flaky tests (CRITICAL)** — remove every source of nondeterminism at the test boundary; self-check "same result over 1,000 runs and on a slow CI machine?":
+  1. background thread/executor: patch the submit function to run synchronously (autouse fixture when shared — payments-api `run_analysis_recalc_inline`), verify real threads only in a dedicated `threading.Event.wait(timeout)` test, wait on events/conditions never `sleep`
+  2. time: inject `now`
+  3. random/Faker: set every result-affecting value explicitly (Faker unique-constraint seed failures happened)
+  4. shared state: no module-level mutables, leftover DB rows or order coupling
+- **MC/DC for personal repos only** (linkcart etc.): in `A && (B || C)` each sub-condition flips the decision alone with the others fixed — branch coverage 100% is not enough, n+1 cases usually suffice, and with no JaCoCo-style support the input table is designed by hand; not applied to company repos.
+- **Test-only attributes** (`data-testid`) ship in the same PR as the test that queries them (`getByTestId`); otherwise defer the attribute (YAGNI).
 
-## 주석
+## 9. Simple Design & Refactoring
 
-- **기본은 주석 없음**. 식별자·시그니처로 파악되는 것은 적지 않는다. "무엇"이 아니라 "왜"만 적는다.
-- **남길 맥락**:
-  - 외부 표준 참조 (AIP-XXX, RFC NNNN, 회사 RFC 링크)
-  - 보안 근거 (enumeration 방지, capability 토큰, XSS 벡터 차단 등)
-  - 아키텍처 결정 근거·검토 후 채택하지 않은 대안
-  - 비명시적 알고리즘 트릭 (limit+1 hasNext, microsecond precision cursor, base64url 형식 등)
-  - 혼동되는 코드/타입 간 disambiguation (vs 비교)
-  - 숨어 있는 제약·invariant (DB 컬럼 타입 정합, 외부 API 응답 nullability 가정 등)
-- **지워야 할 주석**:
-  - 시그니처로 자명한 함수/클래스 동작 설명
-  - 데이터 클래스의 "X용 VO/DTO" 라벨
-  - 변경 이력·과거 구현 ("이전에는 Map이었으나...") — git log·PR 본문이 담당
-  - 호출자 정보 ("X 화면이 이걸 쓴다") — 코드 변경에 따라 거짓이 된다
-  - 한 줄 식별자를 풀어 쓴 설명 (`"X 토큰을 생성한다"` / `fun generate(): String`)
-  - **표준 패턴/제어 흐름을 말로 옮긴 주석 — 코드 구조가 이미 드러냄**. 예: `# compare-and-set 으로 중복 claim 방지`(조건부 update가 보여줌), `# try/except 로 한 항목 실패 격리`(loop 내 try/except가 보여줌), `# 예외 시 좀비 방지 FAILED 마감`(except→update(FAILED)가 보여줌), `# 전부 SENT면 성공 아니면 실패`(has_failure 식이 보여줌)
-- **지웠을 때 미래 독자가 헷갈리면 남기고, 그렇지 않으면 지운다.**
-- **docstring도 주석과 동일 규칙 (CRITICAL — 자주 어김)**: 메서드명·시그니처가 보여주는 "무엇"을 docstring으로 반복 금지. `def mark_in_progress(self): """Start (or restart) this run"""` 처럼 이름을 풀어쓴 동어반복 docstring은 **삭제**. docstring을 남길 땐 코드로 안 드러나는 "왜/맥락"만(payout.py `"""Approve payout"""` 류 동어반복도 새 코드에선 지양).
-- **주석·docstring 언어 = 한글** (코드 식별자·테스트 메서드명만 영어). 영어로 "무엇"을 적는 건 이중 위반.
+- **Four rules** (Kent Beck, in priority order): ① tests pass ② reveals intention ③ no duplication ④ fewest elements.
+- **DRY of knowledge only**: give every fact/decision one source of truth, but leave code that merely looks alike and changes for different reasons (accidental duplication) apart (how much to extract: Module "Abstraction discipline").
+- **YAGNI**: build nothing not needed now — defensive logic without PRD/design basis (a cancel-confirmation modal) is left out unless it prevents irreversible user loss; pre-extracting shared code for a planned later PR is a planned split, not a YAGNI violation.
+- **KISS**: the simplest thing that works; remove accidental complexity before adding structure.
+- **Two hats** (canon): one change either restructures (behaviour unchanged, tests untouched) or changes behaviour (tests change) — never both in one commit.
+- **Make the change easy, then make the easy change** (canon): when a feature is hard to add, first refactor under green until it is easy, then add it in its own commit.
 
-## 테스팅
+## 10. Change discipline
 
-- **테스트 메서드명은 영어**.
-- **각 테스트에 docstring(한글) + given-when-then 주석 (CRITICAL)**: docstring에 "무엇을 검증하는지"를 한글 시나리오/규칙으로(메서드명 동어반복 말고). 본문은 `# given` / `# when` / `# then`(혼합 시 `# when & then`)으로 구분. ⚠️ production 코드의 "docstring 무엇 금지"와 **반대** — 테스트는 시나리오 docstring을 **남긴다**(테스트 의도는 assert만으로 안 드러남).
-- **프레임워크 빌트인 검증 테스트 금지**. 프레임워크가 보장하는 제약(필드 타입, Enum, 필수/선택 등)은 테스트하지 않는다. "이 테스트가 검증하는 건 우리 코드인가, 프레임워크인가?" 자문. 자매 모듈을 복사할 때는 원본의 테스트 관행(어떤 레이어를 테스트/생략하는지)을 먼저 확인하고 따른다.
-- **순수 데이터 객체 단독 테스트 불필요**. UseCase/Repo/Service 테스트에서 자연스럽게 검증된다.
-- **스냅샷 테스트 금지**. private dict 복붙 비교는 의미 없음.
-- **무효 케이스 전수 검증 불필요**. 유효 케이스로 비즈니스 규칙 검증이면 충분.
-- **단순 조합 UseCase 단독 테스트 불필요**. 필드 조합만 하고 비즈니스 로직이 없는 UseCase는 View/Controller 통합테스트에서 커버.
-- **중복 테스트 통합, 헬퍼는 공통 위치에 집중** (pytest는 conftest, vitest는 shared helper 등).
-- **도메인 객체 생성은 픽스처/팩토리 함수에 격리** (Cosmic Python: "keep all domain dependencies in fixture functions"). 테스트 본문에서 `Batch(...)`/`OrderLine(...)` 같은 도메인 객체를 직접 생성하지 말고 `make_batch()` 같은 팩토리 함수나 pytest fixture(conftest 등 공통 위치)에 모은다. 도메인 모델 생성자 시그니처가 바뀌어도 픽스처 한 곳만 고치면 되어 테스트가 도메인 API 변경에 깨지지 않는다. Fake repo/서비스 입력도 같은 헬퍼(`FakeRepository.for_batch(...)` 등)로 만든다.
-- **flaky 테스트 금지 (CRITICAL)**: 비결정성 원천을 테스트 경계에서 제거한다.
-  1. **배경 스레드/executor**: 실제 스레드에 제출한 뒤 결과를 즉시 단언하지 않는다. 행동 테스트는 제출 함수를 **동기 실행으로 패치**(전 테스트 공통이면 autouse fixture — payments-api `run_analysis_recalc_inline` 패턴)하고, 실제 스레드 실행 검증은 `threading.Event.wait(timeout)` 기반 전용 테스트로 분리한다. `sleep` 기반 대기 금지 — 이벤트/조건 대기만.
-  2. **시간 의존**: `now`를 옵셔널 파라미터로 주입 (기존 규칙).
-  3. **랜덤/Faker**: 결과에 영향 주는 값은 명시 지정. Faker 유니크 제약 충돌 등 시드 의존 실패 사례 있음.
-  4. **테스트 간 공유 상태**: 모듈 레벨 mutable 상태·실 DB 잔존 데이터에 의존하는 순서 결합 금지.
-  자문: "이 테스트를 1,000번 돌려도 같은 결과인가? CI 머신이 느려도?"
-- **개인 프로젝트(linkcart 등 회사 외부 repo)는 MC/DC 커버리지(Modified Condition/Decision Coverage) 만족**. 복합 조건 `A && (B || C)`에서 각 sub-condition이 다른 condition을 고정한 채 단독으로 decision을 뒤집은 적이 있어야 한다. branch coverage 100%로는 부족. n+1개 케이스로 보통 충분(n=condition 수). JaCoCo 등 native 지원이 없으므로 입력 조합표를 직접 설계해 확인. 회사 프로젝트(example 등)에는 미적용.
-
-## Git / CI
-
-- **push 전 관련 테스트 실행**. 빌드/타입체크를 통과해도 런타임에서만 드러나는 에러는 테스트로 잡는다.
-- **파일 이동/import 변경 후 빌드 검증 필수**. 테스트 통과 ≠ 빌드 성공. 프레임워크의 빌드 명령을 직접 돌려 확인한다.
-- **import 경로는 절대 경로 우선** (path alias 사용).
-- **stacked branch merge 후 하위 브랜치 전파 필수**. base 브랜치에 변경 push 후 의존 브랜치에 merge 전파. conflict는 즉시 해결.
-- **commit/merge 전 현재 브랜치 확인 필수**. 여러 브랜치를 오가는 세션에서는 직전 checkout이 원하는 브랜치인지 `git branch --show-current`로 먼저 확인한 뒤 명령을 실행한다. 엉뚱한 브랜치에 커밋하면 reset + 재작업이 필요해 시간 손실이 크다.
-
-## PR
-
-- **PR 본문에 RFC/PRD 링크 포함** (해당 문서가 있다면).
-- **커밋 메시지, PR 제목/본문은 한글**.
-- **PR 코멘트 답글은 습니다체, 자연스럽게**. 커밋 해시 금지, 로봇 포맷 금지.
-- **PR push 후 제목/본문이 코드와 일치하는지 확인**. 파일 추가/제거/이동 시 PR 본문의 파일 목록도 갱신.
-- **다수 리뷰어 독립 지적은 반영 가중**. 2명 이상의 리뷰어(봇 포함)가 같은 이슈를 독립적으로 지적하면 반영 신호. 1명 지적은 설계 의도 설명으로 갈음 가능하지만, 독립 2명 이상은 관점이 더 나을 가능성이 높다.
-- **반복 지적은 재고려**. 이전 라운드에 "의도"로 답변한 이슈를 리뷰어가 다시 지적하면 "답변으로 끝"보다 재검토/반영이 안전. 한 번 거부 후 반복되면 설명이 부족했거나 리뷰어의 관점이 옳았을 가능성.
-- **PRD/디자인 근거 없는 방어 로직은 YAGNI**. 규격에 없는 "안전 장치"(취소 시 확인 모달 등)는 기본적으로 빼는 쪽. 되돌릴 수 없는 유저 손실 방어처럼 명확한 근거가 있을 때만 추가.
-- **호출처 1곳 헬퍼도 "단일 방어 지점" 가치가 있으면 허용**. Rule of Three 예외: 이중 캐스트(`as unknown as T`)나 drift 방어를 캡슐화하는 함수는 호출처가 1곳이어도 미래 변경 포인트를 한 곳에 모으는 가치가 있음.
-
-## 코드 변경 원칙
-
-- **코드 변경 제안 전 다른 모듈의 기존 패턴을 먼저 확인**한다 (Grep).
-- **리뷰 에이전트 제안을 맹목적으로 적용하지 않는다**. 기존 패턴을 확인한 뒤 판단.
-- **파일 있다/없다/삭제됐다 단정 전 실제로 확인**한다 (git diff/ls).
+- **Existing patterns first**: before proposing a change, `grep -r "<pattern>" adscenter/ --include="*.py"` across sibling modules (id field `default=0`/`gt=0`, `VALID_TRANSITIONS` public/private, `Error` vs `Exception` naming); when the existing pattern differs from the ideal, show both and let the user decide; existing code is not automatically right (livecommerce section-footer placement) — no blind copying.
+- **Verify current code before asking**: confirm the target code is not already doing X before proposing X, and frame the question as "currently A, livecommerce does B — switch or keep?".
+- **Review-agent suggestions**: added `assert`s, a duplicate `updated_count` check and a manual `updated_at` were reverted 3 times — Grep the module and its siblings first and route new defensive code to ASK.
+- **Verify file state** with `git diff --name-only` / `ls` / `git status` before saying a file exists, changed or was deleted — branch switches and merges change the state.
+- **Tests before push**: run the tests of every changed module — a runtime-only error such as the `TYPE_CHECKING` `NameError` passes mypy and the build and fails only in pytest.
+- **Build check after moves/import changes**: after `git mv` or an import-path change, check the moved file's relative imports, prefer absolute path aliases (`lib/`, `modules/`), and run `npm run build` (or the project's build) — jest resolves leniently, vite/webpack does not (`./escape-html` CI failure); tests passing ≠ build passing.
+- **Branch check before commit/merge**: run `git branch --show-current` first in any session that switches branches — a commit on the wrong branch costs a reset and rework.
