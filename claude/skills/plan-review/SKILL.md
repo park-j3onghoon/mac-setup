@@ -109,7 +109,7 @@ PLAN_PATH=~/plans/$REPO/{작업명}/plan.md   # plan이 repo 밖이라 절대경
 node "$CODEX_SCRIPT" task --effort high --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라. git diff는 무시하라."
 ```
 
-`--background`가 있어야 detached job으로 떠서 job-id가 나오고 회수·취소가 가능하다(없으면 포그라운드로 돌아 셸과 함께 죽는다). 이어지는 블로킹 대기는 Bash `run_in_background: true`로 띄운다.
+`task`는 `--background`가 있어야 detached job으로 떠서 job-id가 나오고 회수·취소가 가능하다(없으면 포그라운드로 돌아 셸과 함께 죽는다). 이어지는 블로킹 대기(`status --wait`)는 Bash `run_in_background: true`로 띄운다.
 
 계획에 대응하는 git diff가 이미 있으면 `adversarial-review --background "<같은 focus 문구>"`를 대신 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙은 `~/.claude/lib/codex-adversarial.md`를 Read하고 따른다.
 

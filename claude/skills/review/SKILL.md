@@ -48,13 +48,13 @@ Agent tool로 **세 개를 동시에** 띄운다. 각 프롬프트에 아래를 
 1. diff 전문(너무 길면 파일별 요약 + 핵심 변경부).
 2. 담당 기준 파일 경로 — 서브에이전트가 직접 Read한다.
 3. "`~/.claude/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 적용하라. diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read하라."
-4. "기준의 각 항목을 빠짐없이 판단하고, 해당 없으면 PASS라고 쓴다."
+4. "기준의 각 항목을 빠짐없이 판단한다. 살펴봤는데 발견이 없으면 `PASS`, 이 diff와 무관한 기준이면 `해당 없음`으로 구분해 쓴다."
 5. "발견은 `[CRITICAL|INFO] file:line — 설명` 형식으로 낸다."
 6. "코드베이스 확인이 필요한 것은 Grep/Read로 직접 검증한다" + 아래 [주장 검증](#주장-검증) 4줄.
 
 | 서브에이전트 | 기준 파일 | 역할 |
 |---|---|---|
-| 코드 공통 | `~/.claude/lib/review/code.md` | 보안·정확성·계약 일관성·클린코드·YAGNI·아키텍처·에러핸들링·관측성·성능·테스팅·운영 안전성 |
+| 코드 공통 | `~/.claude/lib/review/code.md` | 보안·정확성·계약 일관성·반환 타입·클린코드·YAGNI·아키텍처·에러 핸들링·관측성·성능·테스팅·운영 안전성 |
 | 언어별 | `~/.claude/lib/review/language.md` | diff에 포함된 언어(Python·Go·Java·프론트엔드)의 관용구·타입 안전성·플랫폼 특화 이슈 |
 | 팀 리뷰어 | `~/.claude/lib/review/team.md` | 리뷰어 카탈로그(R1~R24 매핑표)별 관점. 매핑표의 도메인 컬럼으로 diff에 해당하는 리뷰어를 골라 점검 |
 
