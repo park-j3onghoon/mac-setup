@@ -49,3 +49,19 @@ FE가 돈을 움직이거나 발송하는 **비동기 서버 잡(202 Accepted)**
 - **미검증 BE 위 live 화면은 feature flag 뒤 새 컴포넌트로 만든다**: API mismatch(404/403/500)는 graceful 에러 상태로 받아 화면 자체가 깨지지 않게 하고, 구 컴포넌트를 보존해 롤백이 git revert에 의존하지 않게 한다.
 - **"생략/빈 컬렉션 = 전체 스코프" 직렬화는 UI 경로 제거 시 repo 계층에서 non-empty 강제로 반전한다**: UI가 "전체 실행" 경로를 없앴다면 클라이언트 repo도 빈 배열→키 생략(전체 확대) 직렬화를 throw로 바꾼다(illegal state 표현 불가). 가드를 view 한 곳에만 두면 후속 리팩터·직접 호출·테스트 헬퍼가 우회한다.
 - **UI 게이트가 참조하는 파생 카운트에는 stale 창이 있다(디바운스·비동기 재조회)**: 실행 직전 권위 소스(summary 등) 값으로 대상 0건이면 confirm 자체를 중단. 가드용 캐시 값(그룹 총원 등)은 컨텍스트 전환 시 즉시 unknown(null)으로 리셋 — 이전 컨텍스트의 0(허용값) 재사용이 fail-open 창이 된다. unknown은 fail-closed.
+
+## Examples
+
+```python
+# 잘된 예시: 레이어 의존성이 올바른 구조
+# domain/ — 외부 의존 없음
+class Campaign:
+    def can_activate(self) -> bool: ...
+
+# application/ — domain만 참조
+class ActivateCampaignUseCase:
+    def __init__(self, repo: CampaignRepository): ...  # DIP: 추상에 의존
+
+# infrastructure/ — application, domain 참조
+class DjangoCampaignRepository(CampaignRepository): ...
+```

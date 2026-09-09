@@ -73,4 +73,9 @@ Applies together with `coding-rules.md` (core); Vue + Example main projects (adm
   ```
 - **Form field subscription** (TanStack Form): `form.state.values.showDailyBudget` read directly is not subscribed and the UI never updates — wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop (cpas `isAutoDailyBudget`).
 - **Icon color prop**: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}` — a hardcoded `fill="currentColor"` ignores `<Icon color="red" />` (the 20+ existing icons follow this).
+- **bootstrap-vue `v-b-popover`** takes the object form `{ content, html: true }` instead of the `.html` modifier — the modifier form spreads raw-HTML popovers with no single place to audit the escaping.
 - **i18n keys ship with the rendering component**: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n (ISSUE-000 PR1: 3 reviewers flagged unused keys and 443 > 400 lines; moving them made PR2 382); planned pre-extraction applies to executable code only, not to unused keys.
+
+## Layout
+
+- **Flex scroll container moved into a grid area**: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain — an `auto` row grows without bound as content accumulates, and a missing `min-height: 0` breaks auto-scroll silently (`flex: 1; overflow-y: auto` alone is not enough).
