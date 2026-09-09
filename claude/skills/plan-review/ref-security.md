@@ -1,5 +1,7 @@
 # Security Review Reference
 
+`~/.claude/coding-rules.md`에는 보안 절이 없어 다른 `ref-*.md`와 달리 포인터가 없다. 아래가 이 차원의 유일한 출처다.
+
 ## Core Principles
 
 - **Defense in depth** — 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
