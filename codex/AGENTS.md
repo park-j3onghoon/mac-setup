@@ -40,7 +40,7 @@ Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `
 - **verify-before-advocate**: 권고가 기존 코드·인프라·비용 사실에 기대면 먼저 코드·설정으로 확인한 뒤 권고한다. 입장을 바꿀 땐 새 증거 때문임을 밝힌다.
 - **self-review**: 설계안을 내기 전 모순·잔재·구멍을 스스로 적대적으로 점검한다.
 
-상세·예시는 `~/.claude/lib/answer-style.md`.
+상세·예시는 `~/.claude/lib/answer-style.md` — 문서·리포트를 쓰는 스킬이 이 파일을 Read한다.
 
 # 환경
 
