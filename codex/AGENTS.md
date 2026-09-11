@@ -18,7 +18,7 @@
 | 인증·권한·시크릿·신규 엔드포인트·결제/민감 데이터를 건드렸을 때 | `cso --diff` |
 | 코드 구현·수정 세션 시작 (조사·분석만 하는 세션은 제외) | `guard`, 해제는 `guard off` |
 | 개발 착수 전 맥락 조사 | `research` (`~/example/.codex/skills/research`) |
-| 세션 마무리·규칙 정리 | `session-review`, `hygiene` |
+| 누적된 규칙 파일 정리 | `hygiene` |
 
 Claude Code 전용 스킬(`api-design-aip` `investigate` `pr-review-report` `explain-html` `retro` `daily-todo` `meeting-prep` `rfc-write` `linear-card` `save-document`)은 Codex에 없다. 그 작업이 필요하면 Claude Code 사용을 권한다.
 
