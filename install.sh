@@ -123,6 +123,34 @@ done
 
 prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib" "$HOME/.claude/hooks"
 
+# ---- 4b. 회사 전용 설정 (git 미추적, 있을 때만) ----
+if [ -d "$REPO_DIR/example" ]; then
+  log "회사 전용 설정 symlink"
+  for skill_dir in "$REPO_DIR/example/claude/skills"/*/; do
+    [ -d "$skill_dir" ] || continue
+    link_file "${skill_dir%/}" "$HOME/.claude/skills/$(basename "${skill_dir%/}")"
+  done
+  for hook in "$REPO_DIR/example/claude/hooks"/*; do
+    [ -e "$hook" ] || continue
+    link_file "$hook" "$HOME/.claude/hooks/$(basename "$hook")"
+  done
+  link_file "$REPO_DIR/example/claude/instructions" "$HOME/.claude/instructions"
+
+  # 워크스페이스(~/example)
+  if [ -d "$HOME/example" ]; then
+    mkdir -p "$HOME/example/.claude"
+    link_file "$REPO_DIR/example/workspace/CLAUDE.md" "$HOME/example/CLAUDE.md"
+    link_file "$REPO_DIR/example/workspace/AGENTS.md" "$HOME/example/AGENTS.md"
+    for entry in "$REPO_DIR/example/workspace/claude"/*; do
+      [ -e "$entry" ] || continue
+      link_file "$entry" "$HOME/example/.claude/$(basename "$entry")"
+    done
+    prune_dangling "$HOME/example/.claude"
+  fi
+else
+  warn "example/ 없음: 회사 전용 설정은 건너뜁니다 (새 맥이면 별도로 복사해야 합니다)"
+fi
+
 # ---- 5. Codex 설정 ----
 log "~/.codex/ 설정 symlink"
 mkdir -p "$HOME/.codex/skills" "$HOME/.codex/rules"

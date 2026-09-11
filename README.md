@@ -17,6 +17,7 @@ mac-setup/
 │   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (review 브리프, codex 교차검증)
 │   └── commands/sc/      # SuperClaude 명령(미사용이라 install.sh가 링크하지 않는다)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
+├── example/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
 ├── codex/                # ~/.codex/ 로 symlink 대상
 │   ├── AGENTS.md
 │   ├── config.toml
@@ -35,7 +36,7 @@ mac-setup/
 
 ## 스킬
 
-전부 사용자 호출이다. `/이름`으로 실행한다. 회사 전용 스킬은 이 레포에 없다(`~/.claude/skills/`·`~/example/.claude/skills/`).
+전부 사용자 호출이다. `/이름`으로 실행한다. 회사 전용 스킬 6개는 git이 추적하지 않는 `example/` 트리에 있어 이 목록에 없다.
 
 ### engineering
 

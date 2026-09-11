@@ -46,7 +46,15 @@ jq -e '.hooks.PreToolUse[] | select(.matcher=="Bash")' "$HOME/git/mac-setup/clau
 jq -e '.hooks.PreToolUse[] | select(.matcher=="ExitPlanMode")' "$HOME/git/mac-setup/claude/settings.json" >/dev/null 2>&1 \
   && note "plan 훅 있음" || { note "plan 훅 없음"; fail=1; }
 
-echo "== 6. 항상 로드되는 파일 크기"
+echo "== 6. 회사 트리 git 미추적"
+tracked=$(git -C "$HOME/git/mac-setup" ls-files example | head -3)
+if [ -n "$tracked" ]; then
+  note "example 트리가 git 에 추적되고 있습니다(공개 레포):"; echo "$tracked" | sed 's/^/    /'; fail=1
+else
+  note "example/ 추적 0건"
+fi
+
+echo "== 7. 항상 로드되는 파일 크기"
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/example/CLAUDE.md"; do
   [ -e "$f" ] && note "$(wc -c <"$f" | tr -d ' ') bytes  $f"
 done
