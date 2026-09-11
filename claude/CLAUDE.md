@@ -14,15 +14,15 @@
 | 시점 | 권할 명령 |
 |---|---|
 | 구현 계획이 확정됐을 때(Plan Mode 종료 전 포함) | `/plan-review` |
+| 계획대로 코드를 쓸 때 | `/implement [계획 파일]` — guard·코드 규칙·API 규칙을 함께 적재 |
 | push·PR 생성 직전 (회사 repo) | `/review` — 끝에서 PR 크기까지 검사 |
 | 인증·권한·시크릿·신규 엔드포인트·결제/민감 데이터를 건드렸을 때 | `/cso --diff` |
-| 코드 구현·수정 세션 시작 (조사·분석만 하는 세션은 제외) | `/guard`, 해제는 `/guard off` |
-| API(proto·REST)를 설계·수정할 때 | `/api-design-aip` |
+| 구현 외 세션에 안전장치가 필요할 때(프로덕션 작업·라이브 디버깅) | `/guard [경로]`, 해제는 `/guard off` |
 | 개발 착수 전 맥락 조사 | `/research` |
 | 버그·장애 원인 규명 | `/investigate` |
 | PR을 보고서로만 리뷰(수정·push 없음) | `/pr-review-report <PR URL>` |
 | 주제를 HTML 해설서로 | `/explain-html <주제>` |
-| 그 외 | `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` `/save-document` |
+| 그 외 | `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` |
 
 # 안전 하드룰
 
