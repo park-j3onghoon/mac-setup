@@ -23,7 +23,7 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 
 ### 리소스/안전성
 - cursor.close() 누락, context manager 오용
-- 에러 타입: None 반환 vs ValueError — 호출자 디버깅 용이성
+- 에러 타입: None 반환 vs ValueError, 호출자 디버깅 용이성 기준
 - Redis cluster mode에서 서로 다른 slot 조회 불가 → hashtag 또는 단일 key
 - Redis TTL 설정 누락
 - 시간 계산 off-by-one: `floor`/`shift` 경계값 오류
@@ -54,13 +54,13 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 - context 기반 logger 사용
 - interface 분리 (ISP)
 - 파라미터가 많으면 struct로 관리
-- `time.Now().UTC()` 명시 — `time.Now()` 사용 시 TZ 불명확
+- `time.Now().UTC()` 명시. `time.Now()` 사용 시 TZ 불명확
 - 함수 반환값의 TZ가 함수명에서 드러나지 않으면 경고
 
 ### 패키지/구조
-- 패키지 간 import 방향 — 순환참조 여부
+- 패키지 간 import 방향: 순환참조 여부
 - 불필요한 패키지 분리보다 단순 구조 선호
-- 기존 코드/라이브러리 재사용 — 이미 구현된 클라이언트 있는지 확인
+- 기존 코드/라이브러리 재사용: 이미 구현된 클라이언트 있는지 확인
 
 ### 인프라 특화
 - Kafka consumer/producer: consumer lag, micro-batch, confluent 라이브러리, `read_committed` 필요성
@@ -133,6 +133,6 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 
 ```
 ### [언어]: [PASS / N건 발견]
-- [CRITICAL/INFO] file:line — 설명
+- [CRITICAL/INFO] file:line · 설명
 ```
 해당 언어 파일이 diff에 없으면: `[언어]: 해당 없음 (변경된 파일 없음)`

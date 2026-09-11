@@ -18,14 +18,14 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 ## 실행과 회수
 
-블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다 — Bash 도구 timeout(기본 120s)이 Codex 실행 길이를 자르지 않게.
+블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다. Bash 도구 timeout(기본 120s)이 Codex 실행 길이를 자르지 않게 하려는 것이다.
 
 1. `task --background`는 detached worker로 큐잉되고 출력에 job-id를 찍는다(`started in the background as <id>`). `--background`를 빼면 포그라운드 자식 프로세스로 돌아 job-id 없이 결과만 나오고 호출한 셸이 끝나면 같이 죽는다(회수·취소 불가). `review`·`adversarial-review`는 `--background`를 인자로 받지만 1.0.4 기준 무시하고 포그라운드로 완주해 결과를 stdout에 찍으므로, 이 둘은 그 stdout으로 회수하고 job-id가 필요하면 `status --all`에서 찾는다.
 2. job-id가 있으면 반복 폴링 대신 블로킹 대기 한 줄로 완료를 기다린다.
    ```bash
    node "$CODEX_SCRIPT" status --wait <job-id> --timeout-ms 900000 --poll-interval-ms 5000
    ```
-   대기가 끝났는데 job이 아직 진행 중이면 대기 창이 닫힌 것일 뿐이므로 같은 명령을 다시 걸어 완료까지 간다 — Codex 실행 시간에는 상한을 두지 않는다(`--timeout-ms`를 생략하면 기본 4분이라 재대기가 잦아진다).
+   대기가 끝났는데 job이 아직 진행 중이면 대기 창이 닫힌 것일 뿐이므로 같은 명령을 다시 걸어 완료까지 간다. Codex 실행 시간에는 상한을 두지 않는다(`--timeout-ms`를 생략하면 기본 4분이라 재대기가 잦아진다).
 3. `node "$CODEX_SCRIPT" result <job-id>`로 회수한다.
 4. stall(phase가 `starting`에 머물고 진행 로그가 더 자라지 않음)이면 `cancel <job-id>` 후 자체 적대 점검으로 대체하고 사용자에게 알린다.
 

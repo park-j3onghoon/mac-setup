@@ -21,7 +21,7 @@ def frontmatter_name(p):
 
 skills = {}
 for root in SKILL_ROOTS:
-    for f in root.glob("*/SKILL.md"):
+    for f in list(root.glob("*/SKILL.md")) + list(root.glob("*/*/SKILL.md")):
         n = frontmatter_name(f)
         if n:
             skills[n] = f

@@ -27,7 +27,7 @@ git ls-files '*.env' '.env.*' | grep -v '.example\|.sample'
 ## GitHub Actions 3종 점검
 
 - 서드파티 액션이 SHA로 핀되지 않음(태그·브랜치 참조)
-- `pull_request_target` — fork PR에 write 접근이 붙는다(pwn request)
+- `pull_request_target`: fork PR에 write 접근이 붙는다(pwn request)
 - `${{ github.event.* }}`를 `run:` 안에서 사용(스크립트 인젝션)
 
 ## STRIDE 6축

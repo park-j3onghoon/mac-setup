@@ -99,9 +99,14 @@ for f in "$REPO_DIR"/claude/*.md "$REPO_DIR"/claude/*.sh "$REPO_DIR"/claude/sett
   link_file "$f" "$HOME/.claude/$(basename "$f")"
 done
 
-for skill_dir in "$REPO_DIR/claude/skills"/*/; do
-  skill_name="$(basename "$skill_dir")"
-  link_file "$REPO_DIR/claude/skills/$skill_name" "$HOME/.claude/skills/$skill_name"
+# 스킬은 레포에서 버킷(engineering/ productivity/)으로 정리하고, 하네스가 찾는
+# ~/.claude/skills 에는 평평하게 링크한다(하네스는 한 단계만 탐색한다).
+for bucket in "$REPO_DIR/claude/skills"/*/; do
+  for skill_dir in "$bucket"*/; do
+    [ -d "$skill_dir" ] || continue
+    skill_name="$(basename "$skill_dir")"
+    link_file "${skill_dir%/}" "$HOME/.claude/skills/$skill_name"
+  done
 done
 
 # 하위 공용 모듈 (스킬이 포인터로 읽는 파일들)

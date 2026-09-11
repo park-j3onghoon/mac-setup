@@ -46,10 +46,10 @@ Scope Check: [CLEAN / DRIFT / MISSING]
 Agent tool로 **세 개를 동시에** 띄운다. 각 프롬프트에 아래를 모두 넣는다.
 
 1. diff 전문(너무 길면 파일별 요약 + 핵심 변경부).
-2. 담당 기준 파일 경로 — 서브에이전트가 직접 Read한다.
+2. 담당 기준 파일 경로. 서브에이전트가 직접 Read한다.
 3. "`~/.claude/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 적용하라. diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read하라."
 4. "기준의 각 항목을 빠짐없이 판단한다. 살펴봤는데 발견이 없으면 `PASS`, 이 diff와 무관한 기준이면 `해당 없음`으로 구분해 쓴다."
-5. "발견은 `[CRITICAL|INFO] file:line — 설명` 형식으로 낸다."
+5. "발견은 `[CRITICAL|INFO] file:line · 설명` 형식으로 낸다."
 6. "코드베이스 확인이 필요한 것은 Grep/Read로 직접 검증한다" + 아래 [주장 검증](#주장-검증) 4줄.
 
 | 서브에이전트 | 기준 파일 | 역할 |
@@ -64,9 +64,9 @@ Agent tool로 **세 개를 동시에** 띄운다. 각 프롬프트에 아래를 
 
 이종 LLM(GPT 계열) 관점을 더할지 AskUserQuestion으로 **1회** 묻는다. 선택 기준을 질문에 같이 적고, 권장 옵션 라벨에 `(Recommended)`를 붙인다.
 
-- A) 건너뛰기 — 변경 200줄 미만 + 루틴 수정
-- B) `codex review` — 200줄 이상 또는 도메인·애플리케이션 레이어 변경
-- C) `codex review` + `codex adversarial-review` — 새 추상화·레이어 도입, 마이그레이션 동반, 아키텍처 결정
+- A) 건너뛰기: 변경 200줄 미만 + 루틴 수정
+- B) `codex review`: 200줄 이상 또는 도메인·애플리케이션 레이어 변경
+- C) `codex review` + `codex adversarial-review`: 새 추상화·레이어 도입, 마이그레이션 동반, 아키텍처 결정
 
 B·C면 `~/.claude/lib/codex-adversarial.md`를 Read하고 그대로 실행·회수한다.
 
@@ -80,12 +80,12 @@ B·C면 `~/.claude/lib/codex-adversarial.md`를 Read하고 그대로 실행·회
 
 ## 6. 수정 적용
 
-**모든 발견에 조치한다** — 고치거나, 묻거나, 남기는 이유를 적는다.
+**모든 발견에 조치한다**: 고치거나, 묻거나, 남기는 이유를 적는다.
 
-1. **기존 패턴 확인**: 수정 전에 같은 패턴이 다른 모듈에서 어떻게 쓰이는지 Grep으로 확인한다(예: id 필드 기본값 변경 → `grep "Field.*default.*description.*auto"`로 다른 엔티티 확인). 리뷰어가 제안한 방어 코드(assert·중복 존재 체크·수동 timestamp 세팅 등)가 기존 코드에 없는 패턴이면 ASK로 분류한다 — MySQL DDL·프레임워크 빌트인이 이미 처리하고 있을 수 있다.
+1. **기존 패턴 확인**: 수정 전에 같은 패턴이 다른 모듈에서 어떻게 쓰이는지 Grep으로 확인한다(예: id 필드 기본값 변경 → `grep "Field.*default.*description.*auto"`로 다른 엔티티 확인). 리뷰어가 제안한 방어 코드(assert·중복 존재 체크·수동 timestamp 세팅 등)가 기존 코드에 없는 패턴이면 ASK로 분류한다. MySQL DDL·프레임워크 빌트인이 이미 처리하고 있을 수 있다.
 2. **분류**: AUTO-FIX = 기존 패턴과 일치하는 기계적 수정(import 정리, 오타, 누락 필드). ASK = 판단이 필요한 것(아키텍처 결정, 트레이드오프, 기존 패턴과 다른 방향).
-3. **AUTO-FIX 적용** — 수정마다 한 줄: `[AUTO-FIXED] [file:line] 문제 → 조치`.
-4. **ASK 일괄 질문** — ASK 항목을 하나의 AskUserQuestion으로 묶어 묻고, 승인된 것만 적용한다.
+3. **AUTO-FIX 적용**: 수정마다 한 줄: `[AUTO-FIXED] [file:line] 문제 → 조치`.
+4. **ASK 일괄 질문**: ASK 항목을 하나의 AskUserQuestion으로 묶어 묻고, 승인된 것만 적용한다.
 
 **완료**: 모든 발견이 AUTO-FIXED · 승인 후 수정 · 사용자 보류 중 하나로 처리됐다.
 
@@ -125,7 +125,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V
 ! cd {작업 디렉토리 절대경로} && git push
 ```
 
-push는 사용자가 `!` 접두사로 직접 실행한다 — Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 `~/example/.claude/pr-rules.md`를 읽고 그대로 따른다(제목의 Linear ID·assignee·본문 형식).
+push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 `~/example/.claude/pr-rules.md`를 읽고 그대로 따른다(제목의 Linear ID·assignee·본문 형식).
 
 **완료**: 크기 판정과 절대경로가 든 push 명령을 사용자에게 전달했다.
 
@@ -134,4 +134,4 @@ push는 사용자가 `!` 접두사로 직접 실행한다 — Claude는 `git pus
 - "이 패턴은 안전" → 안전을 증명하는 구체적 라인을 인용한다.
 - "다른 곳에서 처리됨" → 그 코드를 읽고 인용한다.
 - "테스트가 커버함" → 테스트 파일과 메서드 이름을 댄다.
-- 확인하지 못한 것은 "미확인"으로 표시한다 — "아마 처리됐을 것"으로 넘기지 않는다.
+- 확인하지 못한 것은 "미확인"으로 표시한다. "아마 처리됐을 것"으로 넘기지 않는다.
