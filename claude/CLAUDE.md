@@ -22,7 +22,7 @@
 | 버그·장애 원인 규명 | `/investigate` |
 | PR을 보고서로만 리뷰(수정·push 없음) | `/pr-review-report <PR URL>` |
 | 주제를 HTML 해설서로 | `/explain-html <주제>` |
-| 그 외 | `/retro` `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` `/save-document` `/session-review` `/hygiene` |
+| 그 외 | `/retro` `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` `/save-document` `/hygiene` |
 
 # 안전 하드룰
 

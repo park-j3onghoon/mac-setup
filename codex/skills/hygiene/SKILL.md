@@ -10,7 +10,6 @@ description: 축적된 규칙/참조 문서의 위생 검사. 중복 합치기, 
 
 ## 트리거
 - 명시적: "위생 검사", "규칙 정리", "hygiene"
-- 자동 제안: session-review에서 self-improvement 3회+ 실행 시 제안
 
 ## 대상 파일
 
