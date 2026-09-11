@@ -112,6 +112,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"$HOME\"/.claude/hooks/block-dangerous-git.sh",
+            "timeout": 5,
+            "statusMessage": "되돌릴 수 없는 git 명령 차단"
+          },
+          {
+            "type": "command",
             "command": "jq -r '.tool_input.command // empty' | grep -qE 'git push|gh pr create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"push 전에 /review 를 실행했나요? 인증·권한·시크릿·결제 변경이면 /cso --diff 도.\"}}'; true",
             "timeout": 5,
             "statusMessage": "push/PR 사전 체크"
