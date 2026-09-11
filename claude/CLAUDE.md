@@ -23,7 +23,7 @@
 | 버그·장애 원인 규명 | `/investigate` |
 | PR을 보고서로만 리뷰(수정·push 없음) | `/pr-review-report <PR URL>` |
 | 주제를 HTML 해설서로 | `/explain-html <주제>` |
-| 그 외 | `/answer-style` `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` |
+| 그 외 | `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` |
 
 # 안전 하드룰
 
@@ -44,7 +44,7 @@
 - **verify-before-advocate**: 권고가 기존 코드·인프라·비용 사실에 기대면 먼저 코드·설정으로 확인한 뒤 권고한다. 입장을 바꿀 땐 새 증거 때문임을 밝힌다.
 - **self-review**: 설계안을 내기 전 모순·잔재·구멍을 스스로 적대적으로 점검한다.
 
-상세·예시는 `~/.claude/lib/answer-style.md`. 답변이 이 규칙에서 벗어났다 싶으면 `/answer-style`로 다시 적재한다.
+상세·예시는 `~/.claude/lib/answer-style.md` — 문서·카드·리포트를 쓰는 스킬이 이 파일을 Read한다.
 
 # 환경
 
