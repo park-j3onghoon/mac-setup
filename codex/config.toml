@@ -1,15 +1,36 @@
-model = "gpt-5.4-mini"
-model_reasoning_effort = "low"
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
 
 [features]
 codex_hooks = true
+[projects."/Users/teddy.park/example/ad-server"]
+trust_level = "trusted"
 
-# 프로젝트별 trust_level은 사용자 머신 경로에 종속되므로 새 맥에서 필요 시 개별 설정.
-# 예: [projects."/Users/{user}/git/{repo}"]
-#      trust_level = "trusted"
+[projects."/Users/teddy.park/git/mac-setup"]
+trust_level = "trusted"
+
+[projects."/Users/teddy.park/git/study"]
+trust_level = "trusted"
+
+[projects."/Users/teddy.park/git/screen-clicker"]
+trust_level = "trusted"
+
+[projects."/Users/teddy.park/example"]
+trust_level = "trusted"
+
+[projects."/Users/teddy.park/git/linkcart"]
+trust_level = "trusted"
+
+[projects."/Users/teddy.park/example/admin-center"]
+trust_level = "trusted"
 
 [tui]
 status_line = ["model-name", "model-with-reasoning", "current-dir", "project-root", "git-branch", "context-remaining", "context-used", "five-hour-limit", "weekly-limit"]
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+"gpt-5.6-sol" = 1
+gpt-6-astra = 1
 
 [notice]
 hide_full_access_warning = true

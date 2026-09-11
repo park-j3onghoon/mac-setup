@@ -18,3 +18,8 @@ linear_api_key
 redash_config.json
 auth.json
 installation_id
+
+# 회사 전용 설정 (공개 레포라 커밋하지 않는다)
+# 이 트리는 install.sh 가 심링크로 배포하고, git 은 전혀 추적하지 않는다.
+# 나중에 백업이 필요하면 이 디렉토리에서 git init 후 private 리모트만 붙이면 된다.
+/example/

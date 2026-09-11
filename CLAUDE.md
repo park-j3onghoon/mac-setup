@@ -9,7 +9,9 @@
 - `engineering/`: 일상적인 코드 작업
 - `productivity/`: 일상적인 비(非)코드 워크플로 도구
 
-버킷은 이 레포 안에서만 쓴다. 하네스는 `~/.claude/skills/<이름>/SKILL.md` 한 단계만 탐색하므로 `install.sh`가 버킷을 순회해 **평평하게** 심링크한다. 회사 전용 스킬은 이 레포에 두지 않는다(공개 레포다). 그것들은 `~/.claude/skills/`(로컬 실제 파일) 또는 `~/example/.claude/skills/`에 있고 버킷을 갖지 않는다.
+버킷은 이 레포 안에서만 쓴다. 하네스는 `~/.claude/skills/<이름>/SKILL.md` 한 단계만 탐색하므로 `install.sh`가 버킷을 순회해 **평평하게** 심링크한다.
+
+회사 전용 스킬은 `example/claude/skills/`에 둔다. 이 레포는 공개라 `/example/`을 `.gitignore`로 통째 제외하고, `install.sh`가 그 트리를 있을 때만 배포한다. 거기엔 버킷을 쓰지 않는다. `scripts/verify.sh`가 그 트리의 git 추적 여부를 검사한다.
 
 모든 `SKILL.md`는 사용자 호출이다(`disable-model-invocation: true`). 모델이 스스로 부르는 스킬은 두지 않는다. 프론트매터는 `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`·필요하면 `argument-hint`만 둔다. `version`·`context`·전역 허용과 겹치는 `allowed-tools`는 쓰지 않는다.
 
@@ -27,6 +29,10 @@
 이 레포의 산문(`SKILL.md`, `claude/**/*.md`, `README.md`, 커밋 메시지)에는 em-dash(`—`)를 쓰지 않는다. 문장이 em-dash를 쓰려 하면 쉼표·콜론·마침표·괄호·접속사 중 그 문장이 실제로 원하는 것으로 다시 쓴다. 기계적인 문자 치환은 하지 않는다.
 
 예외는 외부 서식을 그대로 옮겨 적은 곳뿐이다(예: `~/example/.claude/skills/linear-card/SKILL.md`의 Linear 카드 제목·근거 표기 규격). 그건 우리 산문이 아니라 인용이다.
+
+## 회사 전용 트리
+
+`example/`은 git이 추적하지 않는 회사 설정이다(스킬 4개·훅 5개·워크스페이스 규칙). 구조와 복원 방법은 `example/README.md`에 있다. 시크릿(API 키, Grafana 쿠키)은 그 트리에도 두지 않고 로컬에만 둔다.
 
 ## 설치
 
