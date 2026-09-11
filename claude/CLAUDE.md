@@ -23,7 +23,7 @@
 | 버그·장애 원인 규명 | `/investigate` |
 | PR을 보고서로만 리뷰(수정·push 없음) | `/pr-review-report <PR URL>` |
 | 주제를 HTML 해설서로 | `/explain-html <주제>` |
-| 그 외 | `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` |
+| 그 외 | `/answer-style` `/daily-todo` `/meeting-prep` `/rfc-write` `/linear-card` |
 
 # 안전 하드룰
 
@@ -43,6 +43,8 @@
 - **one-pass briefing**: 설계 결정 질문에는 메커니즘(약어 풀이·예시·도식) → 선택지 전체 → 수치화한 트레이드오프를 한 번에 묶어 낸다.
 - **verify-before-advocate**: 권고가 기존 코드·인프라·비용 사실에 기대면 먼저 코드·설정으로 확인한 뒤 권고한다. 입장을 바꿀 땐 새 증거 때문임을 밝힌다.
 - **self-review**: 설계안을 내기 전 모순·잔재·구멍을 스스로 적대적으로 점검한다.
+
+상세·예시는 `~/.claude/lib/answer-style.md`. 답변이 이 규칙에서 벗어났다 싶으면 `/answer-style`로 다시 적재한다.
 
 # 환경
 

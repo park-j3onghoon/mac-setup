@@ -40,6 +40,8 @@ Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `
 - **verify-before-advocate**: 권고가 기존 코드·인프라·비용 사실에 기대면 먼저 코드·설정으로 확인한 뒤 권고한다. 입장을 바꿀 땐 새 증거 때문임을 밝힌다.
 - **self-review**: 설계안을 내기 전 모순·잔재·구멍을 스스로 적대적으로 점검한다.
 
+상세·예시는 `~/.claude/lib/answer-style.md`.
+
 # 환경
 
 - 파일 검색·읽기는 전용 검색·읽기 도구로 한다. 셸이 꼭 필요하면 절대경로를 인자로 준다(`grep -rn foo /Users/teddy.park/example/x`) — Claude Code의 관리형 deny 규칙 때문에 생긴 습관이지만 Codex에서도 그대로 유지한다. 빌드·테스트처럼 파일을 읽지 않는 명령의 `cd`는 해당 없음.

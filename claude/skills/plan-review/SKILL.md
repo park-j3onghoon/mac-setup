@@ -46,7 +46,7 @@ AskUserQuestion 1회, 3옵션:
 
 ### B) BIG CHANGE — 차원별 Agent 병렬
 
-ACTIVE 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한다. 각 프롬프트에 넣을 것:
+ACTIVE 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다(선택지·수치화한 트레이드오프·근거). 각 프롬프트에 넣을 것:
 1. 계획 전문
 2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라" — 경로는 위 매핑에서 골라 그대로 적는다
 3. "`~/.claude/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
