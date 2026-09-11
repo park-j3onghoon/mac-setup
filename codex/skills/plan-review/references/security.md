@@ -2,9 +2,9 @@
 
 ## Core Principles
 
-- **Defense in depth** — 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
-- **Least privilege** — 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
-- **공격자처럼 생각, 보안 극장 금지** — 현실적 공격 경로 없으면 지적하지 않는다.
+- **Defense in depth**: 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
+- **Least privilege**: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
+- **공격자처럼 생각, 보안 극장 금지**: 현실적 공격 경로 없으면 지적하지 않는다.
 - 심층 보안 감사는 `/cso` 스킬로 위임. 여기서는 계획 레벨 점검만.
 
 ## Checklist
@@ -18,13 +18,13 @@
 
 ### 인증/인가
 - 새 API 엔드포인트마다 인증 확인 (permission_classes, @login_required)
-- 역할 기반 접근 제어(RBAC) 일관성 — 기존 패턴과 다르면 왜?
+- 역할 기반 접근 제어(RBAC) 일관성. 기존 패턴과 다르면 왜?
 - 토큰 만료/갱신 메커니즘 존재 여부
 
 ### 입력 검증
 - 사용자 입력 sanitization (HTML escape, SQL 파라미터 바인딩)
 - 파일 업로드 검증 (타입, 크기, 내용)
-- 경로 순회(path traversal) 방지 — os.path.join에 사용자 입력 직접 사용 금지
+- 경로 순회(path traversal) 방지: os.path.join에 사용자 입력 직접 사용 금지
 
 ### 시크릿 관리
 - 하드코딩된 시크릿, API 키 없는지
@@ -50,4 +50,4 @@ def update_campaign(request, campaign_id):
 
 ## User Preferences
 - `except` 블록에서 `str(e)` 클라이언트 노출 금지
-- 보안 극장 금지 — 실제 열린 문만 지적
+- 보안 극장 금지: 실제 열린 문만 지적

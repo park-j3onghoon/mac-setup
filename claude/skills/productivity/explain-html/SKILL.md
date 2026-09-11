@@ -5,13 +5,13 @@ disable-model-invocation: true
 argument-hint: <주제> [저장 경로]
 ---
 
-# /explain-html — HTML 해설서
+# /explain-html: HTML 해설서
 
 인자로 받은 주제를 조사해 단일 HTML 파일 하나로 설명한다.
 
 ## 1. 스타일 규칙 로드
 
-`~/.claude/lib/answer-style.md`와 `~/.claude/explain-style.md`를 Read한다 — 후자는 **ELI5**(비유 → 정의 → 실제 맥락 예시), why-first, 예상 후속 질문 흡수, 약어 풀네임, 혼동 쌍은 표로. 테이블·필드를 다루는 문서면 작업 대상 프로젝트의 `CLAUDE.md`에 있는 데이터 위치 표기 규칙도 Read해 그대로 적용한다.
+`~/.claude/lib/answer-style.md`와 `~/.claude/explain-style.md`를 Read한다. 후자는 **ELI5**(비유 → 정의 → 실제 맥락 예시), why-first, 예상 후속 질문 흡수, 약어 풀네임, 혼동 쌍은 표로. 테이블·필드를 다루는 문서면 작업 대상 프로젝트의 `CLAUDE.md`에 있는 데이터 위치 표기 규칙도 Read해 그대로 적용한다.
 
 → 완료: 읽은 규칙에서 이번 주제에 걸리는 항목을 뽑아 뒀다.
 
@@ -23,7 +23,7 @@ argument-hint: <주제> [저장 경로]
 - **concept**: 문제 배경 → 그래서 생긴 규칙 → 그 규칙의 한계 순서로 풀고, 대응하는 코드가 있으면 같이 읽는다.
 - **관계도**: 엔티티와 포함·연관 관계, 카디널리티를 전수로 모은다.
 
-**exhaustive** — 조사에서 알게 된 것은 전부 싣는다.
+**exhaustive**: 조사에서 알게 된 것은 전부 싣는다.
 
 → 완료: 진입점 → 저장소(개념이면 배경 → 결론) 경로에 "여기서 뭐가 일어나는지 모르는" 구간이 0개이고, 문서에 실을 주장마다 `파일:라인` 또는 출처(문서 URL·테이블명)를 확보했다. 하나라도 비면 더 조사한다.
 

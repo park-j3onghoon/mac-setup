@@ -22,7 +22,7 @@ while IFS= read -r f; do
   grep -q '^disable-model-invocation: true' <<<"$head" || { note "disable-model-invocation 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }
-done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/.claude/skills" "$HOME/example/.claude/skills" -maxdepth 2 -name SKILL.md 2>/dev/null)
+done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/.claude/skills" "$HOME/example/.claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"
 missing=0

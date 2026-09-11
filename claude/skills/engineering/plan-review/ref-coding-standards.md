@@ -7,7 +7,7 @@
 ### Python / Django
 - 타입 힌트 약화 여부 (Any 추가, Optional 남용)
 - dataclass > dict, Enum > string 상수
-- 계획이 새 boolean 파라미터를 도입하면 그 값이 답하는 축을 적는다 — 종류·상태·모드면 2-값이어도 enum
+- 계획이 새 boolean 파라미터를 도입하면 그 값이 답하는 축을 적는다. 종류·상태·모드면 2-값이어도 enum
 
 ### Kotlin / Spring Boot
 - data class 불변성, copy() 활용
