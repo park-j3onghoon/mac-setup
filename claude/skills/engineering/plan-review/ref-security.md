@@ -4,9 +4,9 @@
 
 ## Core Principles
 
-- **Defense in depth** — 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
-- **Least privilege** — 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
-- **공격자처럼 생각한다** — 현실적 공격 경로가 있는 것만 지적한다(보안 극장 배제).
+- **Defense in depth**: 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
+- **Least privilege**: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
+- **공격자처럼 생각한다**: 현실적 공격 경로가 있는 것만 지적한다(보안 극장 배제).
 - 여기서는 계획 레벨 점검만 한다. 심층 보안 감사는 상위에서 `/cso`로 위임.
 
 ## Checklist
@@ -20,7 +20,7 @@
 
 ### 인증/인가
 - 새 API 엔드포인트마다 인증 확인 (permission_classes, @login_required)
-- 역할 기반 접근 제어(Role-Based Access Control, RBAC) 일관성 — 기존 패턴과 다르면 왜?
+- 역할 기반 접근 제어(Role-Based Access Control, RBAC) 일관성. 기존 패턴과 다르면 왜?
 - 토큰 만료/갱신 메커니즘 존재 여부
 
 ### 입력 검증

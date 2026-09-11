@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## Step 0: 스코프 챌린지
 
-**사전 검색 (Search Before Building)** — 프레임워크·라이브러리 빌트인으로 이미 되는 부분을 먼저 찾는다. 있으면 스코프 축소 기회다. `git log`에 이전 리뷰발 리팩토링·리버트 흔적이 있는 영역은 같은 자리를 더 공격적으로 본다.
+**사전 검색 (Search Before Building)**: 프레임워크·라이브러리 빌트인으로 이미 되는 부분을 먼저 찾는다. 있으면 스코프 축소 기회다. `git log`에 이전 리뷰발 리팩토링·리버트 흔적이 있는 영역은 같은 자리를 더 공격적으로 본다.
 
 **스코프 질문**
 1. 기존 코드로 이미 해결되는 부분은?
@@ -17,11 +17,11 @@ disable-model-invocation: true
 4. 계획에 임시 우회·TODO 잔존(숏컷)이 있으면 완전판과의 차이·나중에 메우는 비용을 적는다.
 
 AskUserQuestion 1회, 3옵션:
-- **A) SCOPE REDUCTION** — 최소 버전을 제안하고 승인받은 뒤 B 또는 C로 재진입
-- **B) BIG CHANGE (Recommended)** — 차원별 Agent 병렬 리뷰, 차원당 최대 4개 이슈
-- **C) SMALL CHANGE** — 인라인 압축 리뷰, 차원당 1개 이슈
+- **A) SCOPE REDUCTION**: 최소 버전을 제안하고 승인받은 뒤 B 또는 C로 재진입
+- **B) BIG CHANGE (Recommended)**: 차원별 Agent 병렬 리뷰, 차원당 최대 4개 이슈
+- **C) SMALL CHANGE**: 인라인 압축 리뷰, 차원당 1개 이슈
 
-기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 여기서 고른 스코프는 settled — 이후 모든 이슈는 그 스코프 안에서 낸다.
+기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 여기서 고른 스코프는 settled다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
 **완료 기준**: 사용자가 A/B/C 중 하나를 선택했다.
 
@@ -38,17 +38,17 @@ AskUserQuestion 1회, 3옵션:
 | Security | 인증, 인가, API 엔드포인트 추가, 사용자 입력 처리 |
 | Performance | 쿼리, 루프, 대량 데이터, 외부 API, 동시성 |
 
-**완료 기준**: 한 줄 출력 — `DIMENSION RELEVANCE: 5/6 active (Security skipped — no auth/API changes)`
+**완료 기준**: 한 줄 출력. `DIMENSION RELEVANCE: 5/6 active (Security skipped: no auth/API changes)`
 
 ## Step 1: 리뷰 실행
 
 차원 → 참고 파일(모두 `~/.claude/skills/plan-review/` 아래): Architecture `ref-architecture.md` · Coding Standards `ref-coding-standards.md` · Test Coverage `ref-test.md` · Data/Database `ref-data-database.md` · Security `ref-security.md` · Performance `ref-performance.md`.
 
-### B) BIG CHANGE — 차원별 Agent 병렬
+### B) BIG CHANGE: 차원별 Agent 병렬
 
 ACTIVE 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다(선택지·수치화한 트레이드오프·근거). 각 프롬프트에 넣을 것:
 1. 계획 전문
-2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라" — 경로는 위 매핑에서 골라 그대로 적는다
+2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
 3. "`~/.claude/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
 4. "이슈 번호를 {N}부터 시작하라"
 5. "최대 4개 이슈. 없으면 `No issues found.` 반환"
@@ -57,14 +57,14 @@ ACTIVE 차원마다 Agent를 **하나의 메시지에서 동시에** 스폰한�
 응답 형식:
 ```
 [Issue {N}] {문제 요약}
-  - Option A: {내용} — 노력: 낮음, 리스크: 낮음
-  - Option B: {내용} — 노력: 중간, 리스크: 낮음
+  - Option A: {내용} (노력: 낮음, 리스크: 낮음)
+  - Option B: {내용} (노력: 중간, 리스크: 낮음)
   → B 추천. 이유: {인지 패턴 또는 엔지니어링 선호 연결}
 ```
 
 이슈 번호: Architecture 1~4 · Data/Database 5~8 · Security 9~12 · Performance 13~16 · Coding Standards 17~20 · Test Coverage 21~24.
 
-### C) SMALL CHANGE — 인라인
+### C) SMALL CHANGE: 인라인
 
 Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 직접 Read하고, 차원당 핵심 1개 이슈만 같은 번호 범위로 매겨 한 번에 제시한다.
 
@@ -72,9 +72,9 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 �
 
 ## Step 2: 종합 산출물
 
-- **NOT in scope** — 고려했으나 제외한 작업, 항목당 1줄 근거
-- **What already exists** — 하위 문제를 이미 부분적으로 푸는 기존 코드·흐름
-- **Failure modes** — 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 3개 모두 없으면 **critical gap**
+- **NOT in scope**: 고려했으나 제외한 작업, 항목당 1줄 근거
+- **What already exists**: 하위 문제를 이미 부분적으로 푸는 기존 코드·흐름
+- **Failure modes**: 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 3개 모두 없으면 **critical gap**
 - **Completion summary**
 
 ```
@@ -137,14 +137,14 @@ AskUserQuestion:
 
 Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
 
-**엔지니어링 선호** — 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/coding-rules.md` §2 Module "Abstraction discipline" · §9 Simple Design) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+**엔지니어링 선호**: 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/coding-rules.md` §2 Module "Abstraction discipline" · §9 Simple Design) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
 
 **인지 패턴**
-1. **Blast radius** — 최악의 경우 영향 범위
-2. **Boring by default** — 검증된 기술 우선
-3. **Incremental > revolutionary** — 되돌릴 수 있는 작은 단계로 쪼갠다
-4. **Systems over heroes** — 새벽 3시에도 안전하게 도는가
-5. **Reversibility** — 실패 비용을 낮게
-6. **Essential vs accidental complexity** — 진짜 문제를 푸는가
+1. **Blast radius**: 최악의 경우 영향 범위
+2. **Boring by default**: 검증된 기술 우선
+3. **Incremental > revolutionary**: 되돌릴 수 있는 작은 단계로 쪼갠다
+4. **Systems over heroes**: 새벽 3시에도 안전하게 도는가
+5. **Reversibility**: 실패 비용을 낮게
+6. **Essential vs accidental complexity**: 진짜 문제를 푸는가
 7. **Make the change easy, then make the easy change**
-8. **Two-week smell test** — 2주 안에 기능을 못 붙이면 아키텍처 문제
+8. **Two-week smell test**: 2주 안에 기능을 못 붙이면 아키텍처 문제

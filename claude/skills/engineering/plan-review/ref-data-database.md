@@ -4,9 +4,9 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 
 ## Core Principles
 
-- **스키마는 비즈니스 규칙의 마지막 방어선** — NOT NULL, UNIQUE, CHECK 제약으로 잘못된 데이터 진입 차단.
-- **마이그레이션은 별도 PR** — 스키마 변경과 코드 변경의 롤백 독립성 확보.
-- **인덱스는 쿼리 패턴을 따른다** — 잘못된 인덱스는 쓰기 성능 저하. 실제 WHERE/ORDER BY 기준으로 설계.
+- **스키마는 비즈니스 규칙의 마지막 방어선**: NOT NULL, UNIQUE, CHECK 제약으로 잘못된 데이터 진입 차단.
+- **마이그레이션은 별도 PR**: 스키마 변경과 코드 변경의 롤백 독립성 확보.
+- **인덱스는 쿼리 패턴을 따른다**: 잘못된 인덱스는 쓰기 성능 저하. 실제 WHERE/ORDER BY 기준으로 설계.
 
 ## Checklist
 
@@ -25,7 +25,7 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 
 ### 쿼리 최적화
 - 필요한 컬럼만 조회 (values/values_list, only/defer)
-- JOIN 순서, GROUP BY/DISTINCT 정확성 — 1:N JOIN 위의 카운팅은 중복 집계를 확인
+- JOIN 순서, GROUP BY/DISTINCT 정확성. 1:N JOIN 위의 카운팅은 중복 집계를 확인
 - 서브쿼리 vs JOIN 선택 근거
 - EXPLAIN 확인 필요한 복잡 쿼리 식별
 - ORM annotate ↔ dataclass 필드명, SELECT ↔ INSERT 컬럼 동기화

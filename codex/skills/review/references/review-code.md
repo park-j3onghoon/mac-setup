@@ -46,7 +46,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - **Dead code**: diff에서 추가된 코드 중 사용되지 않는 것.
 - **과도한 추상화**: 한 번만 쓰는 코드에 불필요한 패턴/레이어 적용.
 - **필드 명시적 나열**: 동적 탐색보다 하드코딩이 안전한 경우.
-- **호출 체인 내 중복 로직**: 호출부(caller)와 피호출부(callee)에서 동일한 검증/변환을 각각 수행하고 있으면, 한쪽에만 두고 다른 쪽을 제거 제안. 특히 caller가 값을 가공해서 넘기고 callee도 같은 가공을 하는 경우 — callee에 로직을 두는 것이 모든 호출 경로를 커버하므로 일반적으로 우선.
+- **호출 체인 내 중복 로직**: 호출부(caller)와 피호출부(callee)에서 동일한 검증/변환을 각각 수행하고 있으면, 한쪽에만 두고 다른 쪽을 제거 제안. 특히 caller가 값을 가공해서 넘기고 callee도 같은 가공을 하는 경우, callee에 로직을 두는 것이 모든 호출 경로를 커버하므로 일반적으로 우선.
 
 ## 6. 아키텍처 (Architecture)
 
@@ -65,7 +65,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 ## 7. 에러 핸들링 (Error Handling)
 
 - **에러 wrapping**: 레이어 경계에서 context 추가. `failed to` prefix 중복.
-- **에러 타입 선택**: None 반환 vs 예외 — 호출자가 디버깅하기 쉬운 쪽.
+- **에러 타입 선택**: None 반환 vs 예외. 호출자가 디버깅하기 쉬운 쪽.
 - **조건부 부작용**: if 안에서 외부 API 호출, DB 쓰기.
 - **except 블록 직접 return**: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`. 새 except 추가 시 변수 할당 누락으로 `UnboundLocalError` 발생 방지.
 - **내부 에러 메시지 노출 금지**: `except Exception`에서 `str(e)`를 클라이언트 응답에 포함하지 않는다. DB 에러, 스택 정보 등 내부 구현이 노출된다. `'Internal Server Error'` 같은 고정 문자열 사용.
@@ -103,6 +103,6 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 각 카테고리별로:
 ```
 ### [카테고리명]: [PASS / N건 발견]
-- [CRITICAL/INFO] file:line — 설명
+- [CRITICAL/INFO] file:line · 설명
 ```
 발견 없으면 `PASS` 한 줄.

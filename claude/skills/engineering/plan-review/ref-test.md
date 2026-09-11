@@ -4,7 +4,7 @@ TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스�
 
 ## Core Principles
 
-- **회귀 테스트 IRON RULE** — 기존 동작 변경 + 기존 테스트 미커버 = 회귀 테스트 필수 (non-negotiable).
+- **회귀 테스트 IRON RULE**: 기존 동작 변경 + 기존 테스트 미커버 = 회귀 테스트 필수 (non-negotiable).
 - 계획 단계에서 각 새 코드패스가 어느 등급까지 커버되는지 미리 못 박는다.
 
 ## Checklist

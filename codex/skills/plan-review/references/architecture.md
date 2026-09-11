@@ -2,10 +2,10 @@
 
 ## Core Principles
 
-- **단방향 의존성** — A→B이면 B→A 금지. 순환이 되면 분리한 의미가 없다. domain ← application ← infrastructure.
-- **SOLID** — SRP(변경 이유 1개), OCP(확장 열림, 수정 닫힘), DIP(구체가 아닌 추상에 의존). LSP/ISP는 위반 시에만 지적.
-- **KISS / YAGNI** — 예측이 아닌 현재 요구사항에 집중. 한 번만 쓰는 코드에 과도한 추상화 금지.
-- **상태는 resolve가 아니라 저장** — 이벤트 기반 동작은 다른 필드에서 계산 불가. 상태 전이 다이어그램과 종결 조건을 초기에 확정.
+- **단방향 의존성**: A→B이면 B→A 금지. 순환이 되면 분리한 의미가 없다. domain ← application ← infrastructure.
+- **SOLID**: SRP(변경 이유 1개), OCP(확장 열림, 수정 닫힘), DIP(구체가 아닌 추상에 의존). LSP/ISP는 위반 시에만 지적.
+- **KISS / YAGNI**: 예측이 아닌 현재 요구사항에 집중. 한 번만 쓰는 코드에 과도한 추상화 금지.
+- **상태는 resolve가 아니라 저장**: 이벤트 기반 동작은 다른 필드에서 계산 불가. 상태 전이 다이어그램과 종결 조건을 초기에 확정.
 
 ## Checklist
 
@@ -36,15 +36,15 @@
 
 ```python
 # 잘된 예시: 레이어 의존성이 올바른 구조
-# domain/ — 외부 의존 없음
+# domain/: 외부 의존 없음
 class Campaign:
     def can_activate(self) -> bool: ...
 
-# application/ — domain만 참조
+# application/: domain만 참조
 class ActivateCampaignUseCase:
     def __init__(self, repo: CampaignRepository): ...  # DIP: 추상에 의존
 
-# infrastructure/ — application, domain 참조
+# infrastructure/: application, domain 참조
 class DjangoCampaignRepository(CampaignRepository): ...
 ```
 

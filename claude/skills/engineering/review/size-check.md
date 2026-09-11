@@ -8,7 +8,7 @@ base 대비 **추가된 줄(insertions)** 로 PR 크기를 판정한다. 200줄 
 BASE=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)
 ```
 
-stacked PR이면 base는 master가 아니라 **직전 스택 브랜치**다 — master로 재면 앞 PR의 줄까지 합산돼 거짓 FAIL이 난다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
+stacked PR이면 base는 master가 아니라 **직전 스택 브랜치**다. master로 재면 앞 PR의 줄까지 합산돼 거짓 FAIL이 난다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
 
 ## 측정
 
@@ -41,4 +41,4 @@ PR Size Check: {PASS ✅ | WARNING ⚠️ | FAIL ❌}
 
 1. 파일별 additions를 많은 순 테이블로 보여준다.
 2. 논리적으로 독립적인 커밋·변경 그룹으로 2개 이상의 PR 안을 만든다. 각 PR은 구현·테스트·migration을 한 덩어리로 담고, 뒤 PR이 쓸 공용 코드를 앞 PR로 먼저 빼는 것도 유효한 분할이다.
-3. AskUserQuestion으로 고르게 한다 — A) 제안대로 분할 B) 하나의 PR로 진행(사유 입력) C) 사용자가 분할 방법 지정. B의 사유는 그대로 요약에 남겨 PR 본문·코멘트에 쓰이게 한다.
+3. AskUserQuestion으로 고르게 한다: A) 제안대로 분할 B) 하나의 PR로 진행(사유 입력) C) 사용자가 분할 방법 지정. B의 사유는 그대로 요약에 남겨 PR 본문·코멘트에 쓰이게 한다.

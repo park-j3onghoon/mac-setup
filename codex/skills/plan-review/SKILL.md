@@ -3,7 +3,7 @@ name: plan-review
 description: 계획 완성 후 구현 전에 6개 서브에이전트로 체계적 리뷰. Step 0 스코프 챌린지 후 6개 agent 동시 병렬 실행. 리뷰 완료 후 계획 저장 + 구현 여부 확인.
 ---
 
-# Plan Review v3 — 6-Agent Parallel Orchestrator
+# Plan Review v3: 6-Agent Parallel Orchestrator
 
 계획을 구현 전에 리뷰한다. 코드 변경 절대 금지.
 
@@ -14,14 +14,14 @@ description: 계획 완성 후 구현 전에 6개 서브에이전트로 체계�
 - 과잉도 부족도 안 됨
 
 ## 인지 패턴
-1. **Blast radius** — 최악의 경우 영향 범위
-2. **Boring by default** — 검증된 기술 우선
-3. **Incremental > revolutionary** — 빅뱅 금지
-4. **Systems over heroes** — 새벽 3시 안전 운영
-5. **Reversibility** — 실패 비용 낮게
+1. **Blast radius**: 최악의 경우 영향 범위
+2. **Boring by default**: 검증된 기술 우선
+3. **Incremental > revolutionary**: 빅뱅 금지
+4. **Systems over heroes**: 새벽 3시 안전 운영
+5. **Reversibility**: 실패 비용 낮게
 6. **Essential vs accidental complexity**
 7. **Make the change easy, then make the easy change**
-8. **Two-week smell test** — 2주 안에 기능 못 붙이면 아키텍처 문제
+8. **Two-week smell test**: 2주 안에 기능 못 붙이면 아키텍처 문제
 
 ## Step 0: 스코프 챌린지
 
@@ -36,9 +36,9 @@ description: 계획 완성 후 구현 전에 6개 서브에이전트로 체계�
 4. 완전한 버전인가 숏컷인가? AI 보조라면 완전한 구현 권장.
 
 3가지 옵션:
-- **A) SCOPE REDUCTION** — 최소 버전 제안 후 리뷰
-- **B) BIG CHANGE** — 6개 agent 동시 병렬 리뷰 (차원당 최대 4개 이슈)
-- **C) SMALL CHANGE** — 인라인 압축 리뷰 (차원당 1개 이슈)
+- **A) SCOPE REDUCTION**: 최소 버전 제안 후 리뷰
+- **B) BIG CHANGE**: 6개 agent 동시 병렬 리뷰 (차원당 최대 4개 이슈)
+- **C) SMALL CHANGE**: 인라인 압축 리뷰 (차원당 1개 이슈)
 
 ## Step 0.5: 차원 관련성 판단
 
@@ -53,7 +53,7 @@ description: 계획 완성 후 구현 전에 6개 서브에이전트로 체계�
 
 ## Step 1: 리뷰 실행
 
-### BIG CHANGE — 6 agent 동시 병렬
+### BIG CHANGE: 6 agent 동시 병렬
 
 ACTIVE인 차원마다 sub-agent를 동시에 스폰한다 (`agents.max_threads = 6`).
 
@@ -67,14 +67,14 @@ ACTIVE인 차원마다 sub-agent를 동시에 스폰한다 (`agents.max_threads 
 이슈 형식:
 ```
 [Issue {N}] {문제 요약}
-  - Option A: {내용} — 노력: 낮음, 리스크: 낮음
-  - Option B: {내용} — 노력: 중간, 리스크: 낮음
+  - Option A: {내용} (노력: 낮음, 리스크: 낮음)
+  - Option B: {내용} (노력: 중간, 리스크: 낮음)
   → B 추천. 이유: {인지 패턴 연결}
 ```
 
 6 agent 결과 통합 후 사용자에게 제시. 확인 1회.
 
-### SMALL CHANGE — 인라인
+### SMALL CHANGE: 인라인
 
 agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이슈만 번호 매긴 리스트. 확인 1회.
 
@@ -105,7 +105,7 @@ agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이�
 
 ## Step 3: 계획 저장
 
-리뷰 반영 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 저장한다. repo 내부(`docs/`)에 커밋하지 않는다 — plan은 개인 작업 문서이며 PR diff를 부풀리지 않아야 한다. repo이름은 현재 git top-level 디렉토리 이름(`basename $(git rev-parse --show-toplevel)`).
+리뷰 반영 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 저장한다. repo 내부(`docs/`)에 커밋하지 않는다. plan은 개인 작업 문서이며 PR diff를 부풀리지 않아야 한다. repo이름은 현재 git top-level 디렉토리 이름(`basename $(git rev-parse --show-toplevel)`).
 
 ## Step 4: 구현 시작 확인
 
@@ -119,10 +119,10 @@ agent 스폰 없이 직접 references/ 읽고, ACTIVE 차원당 핵심 1개 이�
 다음 단계로 넘어가기 전에 학습 내용을 반영한다.
 
 ### 업데이트 대상
-1. **references/*.md** — 새로운 패턴/위반이 참조 문서에 없으면 추가
-2. **coding-rules.md** (`~/.claude/coding-rules.md`) — 확정된 새 코딩 규칙
-3. **이 스킬 자체** — 워크플로우 개선점 (드물게, 명확한 경우만)
-4. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)** — 페어 한쪽을 수정하면 **양쪽을 동시에 같은 내용으로** 업데이트하고 `diff -q`로 분기 섹션(assignee 등) 외 차이가 없는지 점검한다. 페어 위치·규칙은 AGENTS.md "CLAUDE.md/AGENTS.md 페어 업데이트" 참조.
+1. **references/*.md**: 새로운 패턴/위반이 참조 문서에 없으면 추가
+2. **coding-rules.md** (`~/.claude/coding-rules.md`): 확정된 새 코딩 규칙
+3. **이 스킬 자체**: 워크플로우 개선점 (드물게, 명확한 경우만)
+4. **CLAUDE.md/AGENTS.md 페어 (CRITICAL)**: 페어 한쪽을 수정하면 **양쪽을 동시에 같은 내용으로** 업데이트하고 `diff -q`로 분기 섹션(assignee 등) 외 차이가 없는지 점검한다. 페어 위치·규칙은 AGENTS.md "CLAUDE.md/AGENTS.md 페어 업데이트" 참조.
 
 ### 판단 기준
 - 반영: 2회+ 반복 이슈 패턴, 사용자 명시적 교정, 참조 문서에 없는 체크리스트

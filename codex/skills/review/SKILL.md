@@ -3,7 +3,7 @@ name: review
 description: PR 랜딩 전 코드 리뷰. 3개 서브에이전트를 병렬 실행하여 코드 공통/언어별/전문 관점으로 빠짐없이 검증한다. "리뷰해줘", "PR 리뷰", "코드 리뷰" 등으로 트리거.
 ---
 
-# /review — Pre-Landing PR 리뷰
+# /review: Pre-Landing PR 리뷰
 
 3개 서브에이전트를 병렬 실행하여 빠짐없이 검증한다.
 
