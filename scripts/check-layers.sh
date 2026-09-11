@@ -54,8 +54,10 @@ def scan(path, is_skill, self_name=None):
         for no, ln in hits:
             violations.append(("하위 모듈이 스킬을 호출/언급", path, no, ln.strip()))
         first = text.split("\n", 1)[0]
-        if first.startswith("#") and re.search(r"[(（][^)）]*·[^)）]*[)）]", first):
-            violations.append(("하위 모듈 제목에 소비자 목록", path, 1, first.strip()))
+        if first.startswith("#"):
+            paren = re.search(r"[(（]([^)）]*)[)）]", first)
+            if paren and any(n in paren.group(1) for n in skills):
+                violations.append(("하위 모듈 제목에 소비자 목록", path, 1, first.strip()))
 
 for root in SKILL_ROOTS:
     for f in root.rglob("*.md"):
