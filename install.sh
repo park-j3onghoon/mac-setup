@@ -110,7 +110,13 @@ for lib_entry in "$REPO_DIR/claude/lib"/*; do
   link_file "$lib_entry" "$HOME/.claude/lib/$(basename "$lib_entry")"
 done
 
-prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib"
+mkdir -p "$HOME/.claude/hooks"
+for hook in "$REPO_DIR/claude/hooks"/*; do
+  [ -e "$hook" ] || continue
+  link_file "$hook" "$HOME/.claude/hooks/$(basename "$hook")"
+done
+
+prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib" "$HOME/.claude/hooks"
 
 # ---- 5. Codex 설정 ----
 log "~/.codex/ 설정 symlink"

@@ -19,7 +19,7 @@
 | 구현 외 세션에 안전장치가 필요할 때 | `guard`, 해제는 `guard off` |
 | 개발 착수 전 맥락 조사 | `research` (`~/example/.codex/skills/research`) |
 
-Claude Code 전용 스킬(`implement` `investigate` `pr-review-report` `explain-html` `daily-todo` `meeting-prep` `rfc-write` `linear-card`)은 Codex에 없다. 그 작업이 필요하면 Claude Code 사용을 권한다.
+Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `explain-html` `daily-todo` `meeting-prep` `rfc-write` `linear-card`)은 Codex에 없다. 그 작업이 필요하면 Claude Code 사용을 권한다.
 
 # 안전 하드룰
 
