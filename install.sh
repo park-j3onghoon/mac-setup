@@ -124,29 +124,26 @@ done
 prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib" "$HOME/.claude/hooks"
 
 # ---- 4b. 회사 전용 설정 (git 미추적, 있을 때만) ----
+# 전부 유저 레벨(~/.claude)로만 배포한다. 프로젝트 레벨 .claude 는 쓰지 않는다.
 if [ -d "$REPO_DIR/example" ]; then
   log "회사 전용 설정 symlink"
+  for f in "$REPO_DIR"/example/claude/*.md; do
+    [ -e "$f" ] || continue
+    link_file "$f" "$HOME/.claude/$(basename "$f")"
+  done
   for skill_dir in "$REPO_DIR/example/claude/skills"/*/; do
     [ -d "$skill_dir" ] || continue
     link_file "${skill_dir%/}" "$HOME/.claude/skills/$(basename "${skill_dir%/}")"
+  done
+  for lib_entry in "$REPO_DIR/example/claude/lib"/*; do
+    [ -e "$lib_entry" ] || continue
+    link_file "$lib_entry" "$HOME/.claude/lib/$(basename "$lib_entry")"
   done
   for hook in "$REPO_DIR/example/claude/hooks"/*; do
     [ -e "$hook" ] || continue
     link_file "$hook" "$HOME/.claude/hooks/$(basename "$hook")"
   done
   link_file "$REPO_DIR/example/claude/instructions" "$HOME/.claude/instructions"
-
-  # 워크스페이스(~/example)
-  if [ -d "$HOME/example" ]; then
-    mkdir -p "$HOME/example/.claude"
-    link_file "$REPO_DIR/example/workspace/CLAUDE.md" "$HOME/example/CLAUDE.md"
-    link_file "$REPO_DIR/example/workspace/AGENTS.md" "$HOME/example/AGENTS.md"
-    for entry in "$REPO_DIR/example/workspace/claude"/*; do
-      [ -e "$entry" ] || continue
-      link_file "$entry" "$HOME/example/.claude/$(basename "$entry")"
-    done
-    prune_dangling "$HOME/example/.claude"
-  fi
 else
   warn "example/ 없음: 회사 전용 설정은 건너뜁니다 (새 맥이면 별도로 복사해야 합니다)"
 fi

@@ -22,8 +22,6 @@ check() {
 }
 
 check "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"
-check "$HOME/example/CLAUDE.md" "$HOME/example/AGENTS.md"
-check "$HOME/example_analysis/CLAUDE.md" "$HOME/example_analysis/AGENTS.md"
 
 [ "$fail" -eq 0 ] && { echo "PASS"; exit 0; }
 echo "FAIL"; exit 1

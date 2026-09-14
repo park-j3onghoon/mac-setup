@@ -36,6 +36,6 @@ DEBUG REPORT
 ════════════════════════════════════════
 ```
 
-보고서까지가 이 스킬의 범위다. 이후 커밋·PR·push는 CLAUDE.md 워크플로우를 따른다.
+보고서까지가 이 스킬의 범위다. 고치기로 했으면 `/implement`, 고친 뒤 push 전 점검은 `/review`다.
 
 원인 구조가 복잡해 그림이 있어야 전달되면 `~/.claude/lib/explain-html.md`를 Read해 같은 내용을 HTML 해설서로 낸다.

@@ -22,7 +22,7 @@ while IFS= read -r f; do
   grep -q '^disable-model-invocation: true' <<<"$head" || { note "disable-model-invocation 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }
-done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/.claude/skills" "$HOME/example/.claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
+done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/git/mac-setup/example/claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"
 missing=0
@@ -32,7 +32,7 @@ while IFS= read -r f; do
     exp="${p/#\~/$HOME}"
     [ -e "$exp" ] || { note "MISSING $exp  ($f)"; missing=$((missing+1)); fail=1; }
   done < <(grep -oE '`(~/|/Users/teddy\.park/)[^`]*`' "$f" | tr -d '`' | sort -u)
-done < <(find "$HOME/git/mac-setup/claude" "$HOME/.claude/skills" "$HOME/example/.claude" -name '*.md' 2>/dev/null | grep -vE '/plans/|/commands/')
+done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/example" -name '*.md' 2>/dev/null | grep -vE '/plans/|/commands/')
 [ "$missing" -eq 0 ] && note "모두 존재"
 
 echo "== 4. JSON 유효성"
@@ -55,7 +55,7 @@ else
 fi
 
 echo "== 7. 항상 로드되는 파일 크기"
-for f in "$HOME/.claude/CLAUDE.md" "$HOME/example/CLAUDE.md"; do
+for f in "$HOME/.claude/CLAUDE.md"; do
   [ -e "$f" ] && note "$(wc -c <"$f" | tr -d ' ') bytes  $f"
 done
 

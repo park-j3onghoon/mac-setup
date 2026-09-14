@@ -91,6 +91,8 @@ codex login
 
 ## 설치 방식: symlink
 
+`bash install.sh`는 멱등입니다. 레포의 `claude/*.md`·`claude/*.sh`·`settings.json`·`claude/lib/*`·`claude/hooks/*`와 버킷 안 스킬을 각각 symlink하고, 대상이 사라진 symlink는 지웁니다. 파일을 새로 추가할 때 `install.sh`를 고칠 필요는 없고, 버킷이나 최상위 디렉토리를 새로 만들 때만 고칩니다.
+
 레포 파일이 `~/.claude/CLAUDE.md`, `~/.zshrc` 등으로 symlink 됩니다. 실 파일을 에디팅하면 레포가 자동으로 바뀌므로 git으로 변경 추적이 바로 됩니다. 로그·캐시(`~/.claude/sessions/`, `~/.codex/history.jsonl` 등)는 `~/.claude`·`~/.codex` 내에 실물 디렉토리로 남아 레포에는 섞이지 않습니다.
 
 ## 반영 범위
