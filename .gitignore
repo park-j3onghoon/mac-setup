@@ -23,3 +23,13 @@ installation_id
 # 이 트리는 install.sh 가 심링크로 배포하고, git 은 전혀 추적하지 않는다.
 # 나중에 백업이 필요하면 이 디렉토리에서 git init 후 private 리모트만 붙이면 된다.
 /example/
+
+# 회사 정보가 본문에 들어간 개별 파일 (제자리 유지, 추적만 차단).
+# example/ 로 옮기지 않는 이유: ~/.claude/lib/review 와 ~/.claude/payments-api-rules.md 가
+# 이 경로들을 가리키는 심링크라, 옮기면 install.sh 의 배포 구조를 함께 고쳐야 한다.
+#
+# team.md: 실명·GitHub username·직책과 사내 PR 리뷰에서 추출한 취약점 패턴이 들어 있다.
+#   익명화 사본은 codex/skills/review/references/review-team.md 쪽이 이미 공개돼 있다.
+/claude/lib/review/team.md
+# payments-api-rules.md: 특정 사내 서비스의 내부 도메인·DDL 규칙.
+/claude/payments-api-rules.md
