@@ -1,0 +1,9 @@
+# 출처: mattpocock/skills 의 skills/productivity/grill-me/agents/openai.yaml 원문 (user-invoked 예시).
+# Codex 스킬 피커에 쓰이는 메타데이터다. model-invoked 스킬은 policy 블록 없이 interface 만 둔다.
+# 우리 Codex 스킬은 codex/skills/ 에 별도 사본으로 있어 현재 이 파일을 쓰지 않는다.
+
+interface:
+  display_name: "Grill Me"
+  short_description: "Sharpen a plan through interview"
+policy:
+  allow_implicit_invocation: false

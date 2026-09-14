@@ -55,6 +55,7 @@ mac-setup/
 | 스킬 | 하는 일 |
 |---|---|
 | [`/explain-html`](claude/skills/productivity/explain-html/SKILL.md) | 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다. |
+| [`/skill-review`](claude/skills/productivity/skill-review/SKILL.md) | 스킬이 구조 규약과 문서 기준을 지키는지 점검하고, 어긋난 곳을 고칠 안을 낸다. |
 
 ### 공용 하위 모듈
 

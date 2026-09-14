@@ -19,7 +19,7 @@
 
 ## 스킬을 추가·개명·제거할 때 같이 고칠 것
 
-1. 최상위 `README.md`의 스킬 목록. 각 항목은 스킬 이름을 그 `SKILL.md`로 링크한다. 전역 `claude/CLAUDE.md`가 비어 있어 에이전트는 스킬 목록을 갖지 않으므로, 이 목록이 사람이 보는 유일한 라우터다.
+1. 버킷 `README.md`(`claude/skills/{engineering,productivity}/README.md`)와 최상위 `README.md`의 스킬 목록. 각 항목은 스킬 이름을 그 `SKILL.md`로 링크한다. 전역 `claude/CLAUDE.md`가 비어 있어 에이전트는 스킬 목록을 갖지 않으므로, 이 목록이 사람이 보는 유일한 라우터다.
 2. 페어인 `codex/AGENTS.md`. Codex에 없는 스킬이면 "Claude Code 전용" 목록에 넣는다.
 3. `bash scripts/verify.sh`·`bash scripts/check-layers.sh`·`bash scripts/check-pair.sh`. 셋 다 PASS여야 한다.
 
