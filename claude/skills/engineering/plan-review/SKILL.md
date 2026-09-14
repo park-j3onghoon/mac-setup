@@ -93,7 +93,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 �
 
 ## Step 3: 계획 저장
 
-리뷰를 반영한 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 쓴다. `repo이름`은 `basename $(git rev-parse --show-toplevel)`. plan.md는 repo 밖 이 경로에만 둔다(근거: CLAUDE.md "작업 방식"의 작업 문서 경로 규칙).
+리뷰를 반영한 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 쓴다. `repo이름`은 `basename $(git rev-parse --show-toplevel)`. plan.md는 repo 밖 이 경로에만 둔다. repo 안에 두면 PR diff와 리뷰 부담이 커진다.
 
 **완료 기준**: 그 경로에 파일이 있다.
 
