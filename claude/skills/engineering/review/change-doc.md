@@ -14,7 +14,7 @@
    → get_full_report()
      → get_report()
        → StatsProvider.list_creatives()
-         → orders-api gRPC ListCreatives
+         → stats service gRPC ListCreatives
            → views.list_creatives()  ← 수정
              → DjangoJobRepository.list_creatives()
                → _list_creatives_query_new2()  ← 수정: Sum(alternative_conversion) 추가

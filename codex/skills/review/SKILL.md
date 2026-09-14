@@ -77,10 +77,11 @@ Python/Go/Java/Kotlin/Frontend 관용구, 타입 안전성, 플랫폼 특화
 
 PR이 CLAUDE.md 또는 AGENTS.md를 변경했다면 페어 파일도 같이 변경되었는지 확인.
 
+전역 페어는 고정이고, 워크스페이스 페어 목록은 그 워크스페이스의 CLAUDE.md 가 들고 있다.
+
 ```bash
 diff -q ~/.claude/CLAUDE.md ~/.codex/AGENTS.md
-diff -q ~/example/CLAUDE.md ~/example/AGENTS.md
-diff -q ~/example_analysis/CLAUDE.md ~/example_analysis/AGENTS.md
+# 워크스페이스 페어: <워크스페이스>/CLAUDE.md ↔ <워크스페이스>/AGENTS.md
 ```
 
 도구별 분기 섹션 외에 차이가 있으면 `[CRITICAL] 페어 sync 누락` 이슈.
@@ -104,9 +105,8 @@ Remaining: V
 리뷰에서 발견한 새 패턴이 참조 문서에 없으면 추가.
 coding-rules.md에 "이렇게 써라" 형태로 변환하여 추가.
 
-**CLAUDE.md/AGENTS.md 페어 (CRITICAL)**: 글로벌 또는 Example scope에서 한쪽 파일이 수정되면 페어 파일도 동일하게 업데이트. 도구별 차이(assignee 등)만 분기 섹션으로.
+**CLAUDE.md/AGENTS.md 페어 (CRITICAL)**: 전역 또는 워크스페이스 scope에서 한쪽 파일이 수정되면 페어 파일도 동일하게 업데이트. 도구별 차이(assignee 등)만 분기 섹션으로.
 - `~/.claude/CLAUDE.md` ↔ `~/.codex/AGENTS.md`
-- `~/example/CLAUDE.md` ↔ `~/example/AGENTS.md`
-- `~/example_analysis/CLAUDE.md` ↔ `~/example_analysis/AGENTS.md`
+- 워크스페이스 페어: `<워크스페이스>/CLAUDE.md` ↔ `<워크스페이스>/AGENTS.md` (목록은 그 워크스페이스의 AGENTS.md에)
 
 신규 지식 없으면 스킵.

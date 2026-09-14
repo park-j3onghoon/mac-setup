@@ -95,10 +95,11 @@ diff가 바꾼 기능을 설명하는 문서가 그대로면 알린다: `[INFO] 
 
 diff가 CLAUDE.md나 AGENTS.md를 건드렸다면 페어 파일도 같이 바뀌었는지 확인한다.
 
+전역 페어는 고정이고, 워크스페이스 페어 목록은 그 워크스페이스의 CLAUDE.md 가 들고 있다.
+
 ```bash
 diff -q ~/.claude/CLAUDE.md ~/.codex/AGENTS.md
-diff -q ~/example/CLAUDE.md ~/example/AGENTS.md
-diff -q ~/example_analysis/CLAUDE.md ~/example_analysis/AGENTS.md
+# 워크스페이스 페어: <워크스페이스>/CLAUDE.md ↔ <워크스페이스>/AGENTS.md
 ```
 
 도구별 분기 섹션(assignee 등) 외에 차이가 있으면 `[CRITICAL] 페어 sync 누락: {파일}`로 잡고 반대쪽에도 같은 변경을 적용한다.
@@ -125,7 +126,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V
 ! cd {작업 디렉토리 절대경로} && git push
 ```
 
-push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 `~/example/.claude/pr-rules.md`를 읽고 그대로 따른다(제목의 Linear ID·assignee·본문 형식).
+push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 그 워크스페이스의 CLAUDE.md 가 가리키는 PR 규칙 문서를 읽고 그대로 따른다(제목의 이슈 ID·assignee·본문 형식).
 
 **완료**: 크기 판정과 절대경로가 든 push 명령을 사용자에게 전달했다.
 
