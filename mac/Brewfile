@@ -62,7 +62,7 @@ vscode "dbaeumer.vscode-eslint"
 vscode "esbenp.prettier-vscode"
 vscode "bradlc.vscode-tailwindcss"
 vscode "yoavbls.pretty-ts-errors"
-vscode "Vue.volar"                    # Vue 공식 — dash(Vue 2.7) / admin-center(Vue 3)
+vscode "Vue.volar"                    # Vue 공식 — Vue 2.7 / Vue 3 프로젝트 양쪽
 vscode "dsznajder.es7-react-js-snippets"
 # Python (Ruff 린트/포맷)
 vscode "charliermarsh.ruff"

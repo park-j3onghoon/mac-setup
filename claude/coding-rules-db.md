@@ -1,6 +1,6 @@
 # Coding Rules: DB schema (MySQL)
 
-Applies when writing schema/migrations for example-style MySQL, together with `coding-rules.md` (core).
+Applies when writing schema/migrations for team-style MySQL, together with `coding-rules.md` (core).
 
 ## Types
 
@@ -30,4 +30,4 @@ Applies when writing schema/migrations for example-style MySQL, together with `c
 ## updated_at
 
 - **`ON UPDATE CURRENT_TIMESTAMP` is the DDL convention** for `updated_at`, applied by the DBA out-of-band; it is absent from repo migrations, so its absence in a grep is not a bug (ORM consequence: `coding-rules-python.md` "Never set updated_at by hand").
-- **Legacy tables may lack it** (payments-api `payout_organization`: `datetime(6)`, no ON UPDATE, `auto_now` only); verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.
+- **Legacy tables may lack it** (a legacy billing table `payout_organization`: `datetime(6)`, no ON UPDATE, `auto_now` only); verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.

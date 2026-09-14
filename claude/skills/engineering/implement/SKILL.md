@@ -26,8 +26,8 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 ## 3. 규칙 적재
 
 - `~/.claude/coding-rules.md`를 Read한다. diff가 닿을 스택에 따라 `coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read한다.
-- 레포가 payments-api면 `~/.claude/payments-api-rules.md`도 Read한다.
-- **API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면** `~/example/.claude/lib/api-aip/index.md`를 Read하고 그 문서의 트랙 판정부터 수행한다(파일이 없는 환경이면 건너뛴다).
+- 레포 전용 규칙 파일을 그 워크스페이스의 CLAUDE.md가 가리키면 그것도 Read한다.
+- **API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면** 그 워크스페이스의 API 규칙 모듈(`.claude/lib/api-aip/index.md`)을 Read하고 그 문서의 트랙 판정부터 수행한다(파일이 없는 환경이면 건너뛴다).
 
 → 완료: 이번 변경에 걸리는 규칙 섹션을 뽑아 뒀고, API 변경이면 트랙·컨벤션 4종(엔벨로프·페이지네이션·에러 shape·필드 케이스)이 확정됐다.
 

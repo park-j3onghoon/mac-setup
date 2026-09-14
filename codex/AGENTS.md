@@ -1,7 +1,7 @@
 # 작업 방식
 
 - 사고 강도는 난이도에 비례한다. 읽기·기계적 편집·짧은 질의는 즉답하고, 설계·디버깅·리팩토링·리뷰만 깊게 생각한다. `~/.codex/config.toml`의 `model_reasoning_effort = "xhigh"`는 리뷰·근본원인 진단 품질을 위해 유지한다.
-- 코드를 쓰거나 고치기 전에 `~/.claude/coding-rules.md`를 읽고, 건드리는 스택의 `coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`도 읽는다. payments-api 작업은 `~/.claude/payments-api-rules.md`를 함께 읽는다.
+- 코드를 쓰거나 고치기 전에 `~/.claude/coding-rules.md`를 읽고, 건드리는 스택의 `coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`도 읽는다. 특정 repo 전용 규칙은 그 워크스페이스의 AGENTS.md가 가리킨다.
 - 개념 설명·입문서·비교 문서·스터디 자료·HTML 설명을 쓰기 전에 `~/.claude/explain-style.md`를 읽는다.
 - plan·분석·change-summary 등 작업 문서는 repo 밖 `~/plans/{repo}/{작업명}/`에 둔다. repo 안에 두면 PR diff와 리뷰 부담이 커진다. 이미 repo에 커밋했다면 옮기고 삭제를 새 커밋으로 남긴다.
 - 여러 단계에 걸친 작업(구현·리팩토링·조사)을 마무리할 때는 요청이 없어도 다음 세션용 프롬프트를 코드 블록으로 제시한다: repo/디렉토리 · 현재 상태 · 계획 파일 경로 · 남은 단계 · 다음 액션. 단발 질답은 제외.
@@ -17,7 +17,7 @@
 | push·PR 생성 직전 (회사 repo) | `review`: 끝에서 PR 크기까지 검사 |
 | 인증·권한·시크릿·신규 엔드포인트·결제/민감 데이터를 건드렸을 때 | `cso --diff` |
 | 구현 외 세션에 안전장치가 필요할 때 | `guard`, 해제는 `guard off` |
-| 개발 착수 전 맥락 조사 | `research` (`~/example/.codex/skills/research`) |
+| 개발 착수 전 맥락 조사 | `research` (워크스페이스 전용 스킬. 위치는 그 워크스페이스의 AGENTS.md에) |
 
 Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `explain-html` `daily-todo` `meeting-prep` `rfc-write` `linear-card`)은 Codex에 없다. 그 작업이 필요하면 Claude Code 사용을 권한다.
 
@@ -27,8 +27,8 @@ Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `
 - 각 PR 브랜치는 자기 base 대비 변경만 담는다. 다른 PR 브랜치의 변경을 가져와야 하면(stacked 전파 등) 사용자 확인 후에 merge한다. PR 간 merge는 diff를 오염시킨다.
 - `git push`·`gh pr create`는 실행 전에 채팅으로 진행 여부를 묻고 동의 후에만 실행한다(`~/.codex/hooks.json`의 ask 프롬프트와 별개).
 - 개인 파일(`~/.claude/`, `~/.codex/`)은 자유롭게 고친다. git-tracked 팀 공유 파일(`{project}/CLAUDE.md`·`AGENTS.md`·`.claude/rules/**`·`.codex/**`)은 수정 전에 사용자에게 확인한다.
-- **개인 repo**(본인 GitHub 계정: mac-setup, linkcart 등)는 main에 직접 commit·push하고 `review`·브랜치 prefix·PR 규칙을 적용하지 않는다(큰 변경은 백업 브랜치만). **회사 repo**는 브랜치·커밋·PR 작업 전에 `~/example/.claude/pr-rules.md`를 읽고 전부 적용한다.
-- CLAUDE.md↔AGENTS.md 페어(`~/.claude`↔`~/.codex`, `~/example`, `~/example_analysis`)는 한쪽을 고치면 같은 작업에서 다른 쪽도 같은 내용으로 고친다(도구별 차이만 분기).
+- **개인 repo**(본인 GitHub 계정: mac-setup, linkcart 등)는 main에 직접 commit·push하고 `review`·브랜치 prefix·PR 규칙을 적용하지 않는다(큰 변경은 백업 브랜치만). **회사 repo**는 브랜치·커밋·PR 규칙을 전부 적용한다 — 규칙 위치는 그 워크스페이스의 AGENTS.md가 가리킨다.
+- CLAUDE.md↔AGENTS.md 페어(`~/.claude`↔`~/.codex`)는 한쪽을 고치면 같은 작업에서 다른 쪽도 같은 내용으로 고친다(도구별 차이만 분기). 워크스페이스 단위 페어도 같은 규칙이고, 목록은 그 워크스페이스의 AGENTS.md에 있다.
 - 외부 스킬·플러그인은 설치 전에 코드가 하는 일을 설명하고, 회사 기기에서는 격리 환경을 권한다.
 
 # 답변 스타일
@@ -44,5 +44,5 @@ Claude Code 전용 스킬(`grill` `implement` `investigate` `pr-review-report` `
 
 # 환경
 
-- 파일 검색·읽기는 전용 검색·읽기 도구로 한다. 셸이 꼭 필요하면 절대경로를 인자로 준다(`grep -rn foo /Users/teddy.park/example/x`). Claude Code의 관리형 deny 규칙 때문에 생긴 습관이지만 Codex에서도 그대로 유지한다. 빌드·테스트처럼 파일을 읽지 않는 명령의 `cd`는 해당 없음.
-- Athena·프로덕션 DB에 쿼리하기 전에 `~/example/.claude/query-guard.md`를 읽는다(훅이 못 잡는 `mysql>` REPL·Redash UI·저장 쿼리 경로 포함).
+- 파일 검색·읽기는 전용 검색·읽기 도구로 한다. 셸이 꼭 필요하면 절대경로를 인자로 준다(`grep -rn foo /Users/teddy.park/git/linkcart`). Claude Code의 관리형 deny 규칙 때문에 생긴 습관이지만 Codex에서도 그대로 유지한다. 빌드·테스트처럼 파일을 읽지 않는 명령의 `cd`는 해당 없음.
+- 프로덕션 DB·데이터 웨어하우스에 쿼리하기 전에 그 워크스페이스의 쿼리 가드 문서를 읽는다(훅이 못 잡는 대화형 REPL·웹 콘솔·저장 쿼리 경로 포함).
