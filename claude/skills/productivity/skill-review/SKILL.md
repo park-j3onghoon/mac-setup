@@ -14,8 +14,7 @@ argument-hint: "[스킬 이름 | 전체]"
 인자가 스킬 이름이면 그 하나, `전체`면 아래 세 곳의 모든 `SKILL.md`를 대상으로 한다. 인자가 없으면 최근에 만들었거나 고친 스킬을 `git log --oneline -20 -- claude/skills example/claude/skills` 로 찾아 제시하고 고르게 한다.
 
 - `~/git/mac-setup/claude/skills/{engineering,productivity}/` (공개, 버킷 있음)
-- `~/git/mac-setup/example/claude/skills/` (회사, git 미추적, 버킷 없음)
-- `~/example/.claude/skills/` (회사 워크스페이스)
+- 회사 스킬은 버킷 없이 `~/git/mac-setup/example/claude/skills/` 에 있고 `~/.claude/skills/` 로 링크된다
 
 → 완료: 점검할 `SKILL.md` 경로 목록이 확정됐다.
 
