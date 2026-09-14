@@ -14,7 +14,7 @@
    → get_full_lineitem_report()
      → get_lineitem_report()
        → StatsProvider.list_unit_creative()
-         → stats-api gRPC ListUnitCreatives
+         → stats service gRPC ListUnitCreatives
            → views.list_unit_creative()  ← 수정
              → DjangoJobRepository.list_unit_creative()
                → _list_unit_creative_query_new2()  ← 수정: Sum(alternative_conversion) 추가

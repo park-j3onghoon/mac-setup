@@ -1,6 +1,6 @@
 # Coding Rules: core (every language, every project)
 
-Read this file before writing or modifying code, then read the specifics file for the stack you touch: `coding-rules-python.md` (Python / Django / DRF / Pydantic / pytest), `coding-rules-frontend.md` (React / Vue / TS; Vue + Example main projects such as admin-center also read `coding-rules-vue.md`), `coding-rules-db.md` (MySQL schema). Tool and project know-how stays in memory (`reference_tool_{tool}.md`, `project_{name}.md`). Updated by `/review` Step 9 or by hand.
+Read this file before writing or modifying code, then read the specifics file for the stack you touch: `coding-rules-python.md` (Python / Django / DRF / Pydantic / pytest), `coding-rules-frontend.md` (React / Vue / TS; Vue + main projects such as an ads console also read `coding-rules-vue.md`), `coding-rules-db.md` (MySQL schema). Tool and project know-how stays in memory (`reference_tool_{tool}.md`, `project_{name}.md`). Updated by `/review` Step 9 or by hand.
 
 ## 0. Precedence
 
@@ -22,7 +22,7 @@ Read this file before writing or modifying code, then read the specifics file fo
   1. **Type/format → entrypoint** (DRF Serializer, View, Controller): "does raw input parse to the right type": `"abc"` → int fails with 400; (de)serialization lives here and the domain/service never sees JSON or HTTP.
   2. **Single-value invariant → value object constructor**: "is this one value valid": `Quantity(-5)` is rejected in `__post_init__`; this is the last line of defence, kept even when the entrypoint duplicates it (entrypoints multiply: HTTP, CLI, queue, batch, tests).
   3. **Relational rule → domain behaviour**: "given several objects' state, may this operation run": `line.qty > batch.available_quantity` in a `can_xxx()` query or guard raising a domain exception (`OutOfStock`) that the entrypoint translates to an HTTP status.
-  - Scope: apply when domain rules are rich; skip for simple CRUD or a thin gateway layer (payments-api gRPC gateway).
+  - Scope: apply when domain rules are rich; skip for simple CRUD or a thin gateway layer (a thin gRPC gateway service).
 - **State stored, not resolved**: persist an explicit state field instead of computing status from other fields; an event-driven action (send an email once) cannot be judged from resolve, and resolve gives a snapshot with no history.
 - **Transition diagram first**: fix the transition diagram and terminal conditions before any state design (states rarely change later) and require the diagram before reviewing one.
 - **State machine shape**: keep one transition map as the single source of truth, a shared `_transition_to` guard, and named `mark_*` methods carrying intent and per-state logic; expose the map for test reuse so adding a transition is one map line, and guard only transitions that can actually happen, since a guard for a system-impossible state is noise.
@@ -96,7 +96,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - **Positive predicates**: `can_*`/`is_*`/`has_*` over `blocks_*`/`*_unfinished` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
 - **Intention-revealing, searchable names** (canon): `remaining_budget` not `rb`, a named constant not a magic number, single letters only in comprehensions/lambdas.
 - **Enum naming**: model enum without suffix (`DisplayCampaignStatus`) vs domain enum with `Type` suffix (`DisplayCampaignStatusType`); infra converts via `ModelEnum(domain_enum.value)`.
-- **Enum zero value by direction**: a server-filled output/stored enum puts a real domain value at 0 (`STATUS_PLANNED=0`, `PAYOUT_EMAIL_STATUS_PENDING=0`, `PayoutStatus.DRAFT=0`), 1:1 with the DB default and with no UNSPECIFIED in the domain enum; a client-filled input discriminator/view selector keeps `_UNSPECIFIED=0` so an unset value is rejected (INVALID_ARGUMENT) or defaulted; when an enum flips input ↔ output, flip its 0 policy too (ISSUE-000 restored `ACTION_UNSPECIFIED=0`).
+- **Enum zero value by direction**: a server-filled output/stored enum puts a real domain value at 0 (`STATUS_PLANNED=0`, `PAYOUT_EMAIL_STATUS_PENDING=0`, `PayoutStatus.DRAFT=0`), 1:1 with the DB default and with no UNSPECIFIED in the domain enum; a client-filled input discriminator/view selector keeps `_UNSPECIFIED=0` so an unset value is rejected (INVALID_ARGUMENT) or defaulted; when an enum flips input ↔ output, flip its 0 policy too (a later card restored `ACTION_UNSPECIFIED=0`).
 
 ## 6. Errors
 
@@ -134,7 +134,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 
 - **Red / green / refactor** (canon): write the failing test as the contract first, the minimal code that passes, then refactor under green.
 - **Test at the seams** (canon): assert behaviour through the public interface (usecase `execute`, port, HTTP); a private helper or internal dict is exercised through what calls it.
-- **Naming and structure**: English method name (`test_rejects_invalid_status_type`), a Korean scenario docstring that is not a name tautology, and `# given` / `# when` / `# then` markers (`# when & then` when mixed; mobile-app uses uppercase with a short note, `# Given: 기본그룹 org + 배정그룹 org`); the deliberate opposite of the production docstring rule, because intent does not show from asserts.
+- **Naming and structure**: English method name (`test_rejects_invalid_status_type`), a Korean scenario docstring that is not a name tautology, and `# given` / `# when` / `# then` markers (`# when & then` when mixed; one legacy project uses uppercase with a short note, `# Given: 기본그룹 org + 배정그룹 org`); the deliberate opposite of the production docstring rule, because intent does not show from asserts.
 - **Markers beat file-local convention**: new tests carry the docstring and markers even when neighbouring tests do not, while lightly edited existing tests stay untouched; split `assert call().data...` into When (`response = call()`) and Then; a routing-smoke or exception test may combine `# When / Then`; the Then comment never echoes the docstring.
 - **Do not test**: ask "is this testing our code or the framework?" and check the sister module's test practice before copying a layer:
   - framework built-ins (field types, Enum, required/optional, Pydantic `Field(gt=0)`, frozenset membership, Django ORM basics)
@@ -147,7 +147,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - **Domain objects only in fixtures/factories** (Cosmic Python "keep all domain dependencies in fixture functions"): `make_batch()` / `FakeRepository.for_batch(...)`, never inline `Batch(...)`/`OrderLine(...)` in a test body, so a constructor change touches one place.
 - **Inject now**: time-dependent code takes `now` as an optional parameter down to usecase `execute` and tests pin it (mechanics: `coding-rules-python.md` "Time").
 - **No flaky tests (CRITICAL)**: remove every source of nondeterminism at the test boundary; self-check "same result over 1,000 runs and on a slow CI machine?":
-  1. background thread/executor: patch the submit function to run synchronously (autouse fixture when shared, as in payments-api `run_analysis_recalc_inline`), verify real threads only in a dedicated `threading.Event.wait(timeout)` test, wait on events/conditions never `sleep`
+  1. background thread/executor: patch the submit function to run synchronously (autouse fixture when shared, as in a billing service's `run_analysis_recalc_inline`), verify real threads only in a dedicated `threading.Event.wait(timeout)` test, wait on events/conditions never `sleep`
   2. time: inject `now`
   3. random/Faker: set every result-affecting value explicitly (Faker unique-constraint seed failures happened)
   4. shared state: no module-level mutables, leftover DB rows or order coupling
