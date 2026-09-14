@@ -126,7 +126,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V
 ! cd {작업 디렉토리 절대경로} && git push
 ```
 
-push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 그 워크스페이스의 CLAUDE.md 가 가리키는 PR 규칙 문서를 읽고 그대로 따른다(제목의 이슈 ID·assignee·본문 형식).
+push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 작업 중인 워크스페이스에 `.claude/pr-rules.md`가 있으면 그것을 읽고 그대로 따른다(제목의 이슈 ID·assignee·본문 형식).
 
 **완료**: 크기 판정과 절대경로가 든 push 명령을 사용자에게 전달했다.
 

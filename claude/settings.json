@@ -93,7 +93,7 @@
       "mcp__plugin_internal-plugin_redash__execute_query"
     ]
   },
-  "model": "fable",
+  "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
       {

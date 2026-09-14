@@ -1,7 +1,5 @@
 # mac-setup 레포 규칙
 
-이 레포를 고칠 때 지켜야 할 정합성 규칙이다. 이 레포가 배포하는 내용(전역 규칙·코드 규칙·스킬)은 `claude/CLAUDE.md`와 `claude/coding-rules*.md`에 있다.
-
 ## 스킬 구조
 
 스킬은 `claude/skills/` 아래 버킷 폴더로 정리한다.
@@ -10,8 +8,6 @@
 - `productivity/`: 일상적인 비(非)코드 워크플로 도구
 
 버킷은 이 레포 안에서만 쓴다. 하네스는 `~/.claude/skills/<이름>/SKILL.md` 한 단계만 탐색하므로 `install.sh`가 버킷을 순회해 **평평하게** 심링크한다.
-
-회사 전용 스킬은 `example/claude/skills/`에 둔다. 이 레포는 공개라 `/example/`을 `.gitignore`로 통째 제외하고, `install.sh`가 그 트리를 있을 때만 배포한다. 거기엔 버킷을 쓰지 않는다. `scripts/verify.sh`가 그 트리의 git 추적 여부를 검사한다.
 
 모든 `SKILL.md`는 사용자 호출이다(`disable-model-invocation: true`). 모델이 스스로 부르는 스킬은 두지 않는다. 프론트매터는 `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`·필요하면 `argument-hint`만 둔다. `version`·`context`·전역 허용과 겹치는 `allowed-tools`는 쓰지 않는다.
 
@@ -22,16 +18,6 @@
 1. 버킷 `README.md`(`claude/skills/{engineering,productivity}/README.md`)와 최상위 `README.md`의 스킬 목록. 각 항목은 스킬 이름을 그 `SKILL.md`로 링크한다. 전역 `claude/CLAUDE.md`가 비어 있어 에이전트는 스킬 목록을 갖지 않으므로, 이 목록이 사람이 보는 유일한 라우터다.
 2. 페어인 `codex/AGENTS.md`. Codex에 없는 스킬이면 "Claude Code 전용" 목록에 넣는다.
 3. `bash scripts/verify.sh`·`bash scripts/check-layers.sh`·`bash scripts/check-pair.sh`. 셋 다 PASS여야 한다.
-
-## 문장부호
-
-이 레포의 산문(`SKILL.md`, `claude/**/*.md`, `README.md`, 커밋 메시지)에는 em-dash(`—`)를 쓰지 않는다. 문장이 em-dash를 쓰려 하면 쉼표·콜론·마침표·괄호·접속사 중 그 문장이 실제로 원하는 것으로 다시 쓴다. 기계적인 문자 치환은 하지 않는다.
-
-예외는 외부 서식을 그대로 옮겨 적은 곳뿐이다(예: `~/example/.claude/skills/linear-card/SKILL.md`의 Linear 카드 제목·근거 표기 규격). 그건 우리 산문이 아니라 인용이다.
-
-## 회사 전용 트리
-
-`example/`은 git이 추적하지 않는 회사 설정이다(스킬 4개·훅 5개·워크스페이스 규칙). 구조와 복원 방법은 `example/README.md`에 있다. 시크릿(API 키, Grafana 쿠키)은 그 트리에도 두지 않고 로컬에만 둔다.
 
 ## 설치
 
