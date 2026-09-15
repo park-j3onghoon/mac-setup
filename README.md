@@ -102,7 +102,7 @@ codex login
 
 **제외**:
 - 시크릿(Linear API key, Redash config, 인증 토큰)
-- 회사/업무 특화 스킬(옵시디언·Linear 통합용 `save-document`·`daily-todo`)
+- 회사/업무 특화 스킬(옵시디언·Linear 통합용 `daily-todo`·`linear-card` 등)
 - 프로젝트별 메모리, 세션 로그, 히스토리, 캐시
 - 사용자 특정 프로젝트 경로(예: `~/.codex/config.toml`의 `[projects.*]` 엔트리)
 
