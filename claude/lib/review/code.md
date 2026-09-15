@@ -38,7 +38,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - 중복 로직 (Rule of Three): 같은 로직이 3회 이상 반복되면 함수 추출 제안. 2회는 보류 가능하다. 잘못된 추상화를 되돌리는 비용이 중복 제거 이득보다 클 수 있다. 팀 관행에 없는 공용 헬퍼/레이어 신설은 특히 신중(리뷰어 저항 가능).
 - 주석 미니멀리즘 (CRITICAL): 주석은 *코드로 안 드러나는 why/외부 맥락*만. 아래는 모두 제거/이동 대상으로 flag:
   - 코드/표준지식 재진술 (`# compare-and-set 으로 중복 방지`, `# in_progress 면 failed 로`, `# try/except 로 격리`). 코드 구조가 이미 보여줌.
-  - 다줄 설계 정당화(design essay): "왜 안전한가/왜 이 설계인가"를 문단으로 설명. 한 줄 외부사실로 줄이거나 PR 본문·plan 으로 이동.
+  - 다줄 design essay: "왜 안전한가/왜 이 설계인가"를 문단으로 설명. 한 줄 외부사실로 줄이거나 PR 본문·plan 으로 이동.
   - 다른 모듈/함수의 동작 설명: 이 코드 옆이 아니라 그 코드 옆에. 검증: "이 주석이 설명하는 동작이 *이 함수 안*에 있나?"
   - 남길 것: 외부 contract(타 브랜치/DBA/시스템 사실로 코드에 안 보이는 것), 채택 안 한 대안 이유, 비명시 알고리즘 트릭. 자기점검: "지우면 코드만 보고 의도를 놓치나? 아니오 → 삭제."
   - AUTO-FIX 가 주석을 늘리지 말 것: 리뷰 중 "주석 정합/보강"으로 설명을 *추가*하는 건 미니멀리즘 위반. 정합이 필요하면 *줄이는* 방향으로만.
@@ -53,7 +53,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - Dead code: diff에서 추가된 코드 중 사용되지 않는 것.
 - 과도한 추상화: 한 번만 쓰는 코드에 불필요한 패턴/레이어 적용.
 - 필드 명시적 나열: 동적 탐색보다 하드코딩이 안전한 경우.
-- 호출 체인 내 중복 로직: 호출부(caller)와 피호출부(callee)에서 동일한 검증/변환을 각각 수행하고 있으면, 한쪽에만 두고 다른 쪽을 제거 제안. 특히 caller가 값을 가공해서 넘기고 callee도 같은 가공을 하는 경우, callee에 로직을 두는 것이 모든 호출 경로를 커버하므로 일반적으로 우선.
+- 호출 체인 내 중복 로직: caller 와 callee 에서 동일한 검증/변환을 각각 수행하고 있으면, 한쪽에만 두고 다른 쪽을 제거 제안. 특히 caller가 값을 가공해서 넘기고 callee도 같은 가공을 하는 경우, callee에 로직을 두는 것이 모든 호출 경로를 커버하므로 일반적으로 우선.
 
 ## 6. 아키텍처 (Architecture)
 
@@ -65,7 +65,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - 레이어 배치 판단: 코드가 올바른 레이어에 있는지. 판단 기준:
   - 맥락 독립적 규칙(어떤 상황에서든 성립) → domain
   - 맥락 의존적 규칙(특정 플로우에서만 적용) → application
-  - DDD/Clean Architecture/Layered Architecture 기준: 의존성은 안쪽(domain)으로만 향하고, 바깥 레이어가 안쪽 레이어를 import. 역방향 금지.
+  - DDD/Clean Architecture/Layered Architecture 기준: 의존성은 domain 으로만 향하고, 바깥 레이어가 안쪽 레이어를 import. 역방향 금지.
 - OCP(개방-폐쇄 원칙): 요구사항 변경 시 기존 코드 수정 없이 새 코드 추가로 대응 가능한 구조인지. 의존성 방향이 뚜렷하고 레이어 경계가 분명한지.
 - 기존 패턴과 충돌 시: 이상적 구조(DDD, Clean Architecture, CQS, Hexagonal Architecture)를 먼저 제시하되, 기존 코드베이스 패턴을 Grep으로 확인하여 함께 보여준다. 판단은 사용자에게 위임.
 
@@ -77,8 +77,8 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - 조건부 부작용: if 안에서 외부 API 호출, DB 쓰기.
 - except 블록 직접 return: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`. 새 except 추가 시 변수 할당 누락으로 `UnboundLocalError` 발생 방지.
 - 내부 에러 메시지 노출 금지: `except Exception`에서 `str(e)`를 클라이언트 응답에 포함하지 않는다. DB 에러, 스택 정보 등 내부 구현이 노출된다. `'Internal Server Error'` 같은 고정 문자열 사용.
-- Unreachable 분기 처리 방식 맥락 분리: 순수 함수(pure function)의 도달 불가 분기는 "안전한 fallback + '정상 경로 도달 불가' 주석"이 자연스러움. async handler/이벤트 핸들러/mutation 콜백의 invariant 위반은 `throw new Error('unreachable: ...')`로 즉시 노출해 관측 파이프라인으로 잡히게 할 것. silent return은 사용자 피드백 없이 사일런트 실패하므로 지적.
-- except 범위 최소화 (silent 흡수 함정): `try` 블록이 "그 예외를 의도한 한 줄"보다 넓으면, 같은 블록의 다른 단계가 같은 예외 타입을 던질 때 의도치 않게 흡수된다. 특히 rollback/cleanup 경로에서 `try: cancel(); close() except NotFound: pass`는 cancel이 NotFound로 실패해도 "정리 성공"으로 둔갑시켜 좀비 리소스를 silent 방치한다. `except`가 흡수해도 되는 정확한 호출만 내부 try로 감싸고, 나머지 단계의 예외는 밖으로 전파(escalate)시켜야 한다. 검증: "이 except가 잡는 예외를 try 안의 *모든* 호출이 던질 수 있나? 그 중 흡수하면 안 되는 게 있나?"
+- Unreachable 분기 처리 방식 맥락 분리: pure function 의 도달 불가 분기는 "안전한 fallback + '정상 경로 도달 불가' 주석"이 자연스러움. async handler/이벤트 핸들러/mutation 콜백의 invariant 위반은 `throw new Error('unreachable: ...')`로 즉시 노출해 관측 파이프라인으로 잡히게 할 것. silent return은 사용자 피드백 없이 사일런트 실패하므로 지적.
+- except 범위 최소화 (silent 흡수 함정): `try` 블록이 "그 예외를 의도한 한 줄"보다 넓으면, 같은 블록의 다른 단계가 같은 예외 타입을 던질 때 의도치 않게 흡수된다. 특히 rollback/cleanup 경로에서 `try: cancel(); close() except NotFound: pass`는 cancel이 NotFound로 실패해도 "정리 성공"으로 둔갑시켜 좀비 리소스를 silent 방치한다. `except`가 흡수해도 되는 정확한 호출만 내부 try로 감싸고, 나머지 단계의 예외는 밖으로 escalate시켜야 한다. 검증: "이 except가 잡는 예외를 try 안의 *모든* 호출이 던질 수 있나? 그 중 흡수하면 안 되는 게 있나?"
 
 ## 8. 관측성 (Observability)
 
