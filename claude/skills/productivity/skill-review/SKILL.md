@@ -9,6 +9,8 @@ argument-hint: "[스킬 이름 | 전체]"
 
 스킬 하나 또는 전체를 구조 규약(어디에 있고 어디에 등록됐나)과 문서 기준(읽을 만한가)으로 점검한다. 고치는 것은 승인 후에만 한다.
 
+대상은 스킬 문서다. 코드 변경을 리뷰하는 것은 `/review`.
+
 ## 1. 대상 확정
 
 인자가 스킬 이름이면 그 하나, `전체`면 아래 세 곳의 모든 `SKILL.md`를 대상으로 한다. 인자가 없으면 최근에 만들었거나 고친 스킬을 `git log --oneline -20 -- claude/skills example/claude/skills` 로 찾아 제시하고 고르게 한다.
@@ -29,7 +31,7 @@ argument-hint: "[스킬 이름 | 전체]"
 - 회사 스킬은 버킷을 쓰지 않고 최상위 `README.md`에도 올리지 않는다(공개 레포다).
 
 호출 방식
-- 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터는 `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`·필요하면 `argument-hint`뿐이다. `version`·`context`·전역 허용과 겹치는 `allowed-tools`는 없다.
+- 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터에 두는 것은 `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`, 필요하면 `argument-hint`, 그리고 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`다. `version`·`context`는 두지 않고, 전역 allow와 겹치는 `allowed-tools`도 두지 않는다.
 - user-invoked 스킬은 다른 스킬을 실행하지 않는다. 하위 모듈만 포인터로 읽는다.
 
 하위 모듈
