@@ -4,7 +4,7 @@ TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스�
 
 ## Core Principles
 
-- **회귀 테스트 IRON RULE**: 기존 동작 변경 + 기존 테스트 미커버 = 회귀 테스트 필수 (non-negotiable).
+- 회귀 테스트 IRON RULE: 기존 동작 변경 + 기존 테스트 미커버 = 회귀 테스트 필수 (non-negotiable).
 - 계획 단계에서 각 새 코드패스가 어느 등급까지 커버되는지 미리 못 박는다.
 
 ## Checklist
@@ -40,8 +40,8 @@ TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스�
 ```
 
 ### Django REST 테스트 함정
-- **APIRequestFactory는 URL resolve를 거치지 않는다**: `api_rf.patch('/foo/1/bar', ...)` + `MyView.as_view()(request, ...)` 패턴은 view 함수를 직접 호출하므로 urls.py의 path 문자열 오타가 드러나지 않는다. URL 변경이 포함된 PR에서는 `from django.urls import resolve` + `resolve('/actual/url').func.view_class is MyView` 스모크 1줄로 URL path ↔ view binding을 잠근다.
-- **write(mutate) 경로 테스트는 응답이 아닌 DB 상태를 확인**: serializer 응답은 캐시·기본값·생략 필드 때문에 silent 미반영(예: Foreign Key가 해제됐는데 응답엔 옛 값)을 놓친다. mutate 후 DB row를 재조회해 실제 변경/유지(특히 FK null 해제 vs 미지정 유지, sentinel 변환 누락)를 assert 한다.
+- APIRequestFactory는 URL resolve를 거치지 않는다: `api_rf.patch('/foo/1/bar', ...)` + `MyView.as_view()(request, ...)` 패턴은 view 함수를 직접 호출하므로 urls.py의 path 문자열 오타가 드러나지 않는다. URL 변경이 포함된 PR에서는 `from django.urls import resolve` + `resolve('/actual/url').func.view_class is MyView` 스모크 1줄로 URL path ↔ view binding을 잠근다.
+- write(mutate) 경로 테스트는 응답이 아닌 DB 상태를 확인: serializer 응답은 캐시·기본값·생략 필드 때문에 silent 미반영(예: Foreign Key가 해제됐는데 응답엔 옛 값)을 놓친다. mutate 후 DB row를 재조회해 실제 변경/유지(특히 FK null 해제 vs 미지정 유지, sentinel 변환 누락)를 assert 한다.
 
 ## Examples
 
