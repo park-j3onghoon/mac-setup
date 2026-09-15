@@ -8,7 +8,7 @@ base 대비 추가된 `insertions` 로 PR 크기를 판정한다. 200줄 이하 
 BASE=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)
 ```
 
-stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. master로 재면 앞 PR의 줄까지 합산돼 거짓 FAIL이 난다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
+stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
 
 ## 측정
 
@@ -19,7 +19,6 @@ git diff origin/$BASE...HEAD --numstat | sort -rn   # 파일별 additions 내림
 
 - `--shortstat`의 insertions 값이 판정 대상이다.
 - `--numstat`의 첫 컬럼이 파일별 additions이고, 정렬 상위 파일이 곧 분할 후보다.
-- 3-dot(`...`)은 base가 그 뒤로 전진해도 PR 화면과 같은 범위를 잰다.
 
 ## 판정
 
