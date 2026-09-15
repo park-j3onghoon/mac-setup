@@ -124,7 +124,7 @@ node "$CODEX_SCRIPT" task --effort high --background "$PLAN_PATH 의 설계 선�
 계획에 대응하는 git diff가 이미 있으면 `adversarial-review --background "<같은 focus 문구>"`를 대신 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙은 `~/.claude/lib/codex-adversarial.md`를 Read하고 따른다.
 
 Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
-- A) 제기된 이슈를 전부 plan.md에 반영(Edit) → Step 4
+- A) 제기된 이슈를 전부 Edit 로 plan.md 에 반영 → Step 4
 - B) 사용자가 지정한 일부만 반영 → Step 4
 - C) 원안대로 진행 → Step 4
 - D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
