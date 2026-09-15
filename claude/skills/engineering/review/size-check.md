@@ -1,6 +1,6 @@
 # PR 크기 검사
 
-base 대비 **추가된 줄(insertions)** 로 PR 크기를 판정한다. 200줄 이하 최선, 300줄 이하 양호, 400줄 상한.
+base 대비 추가된 줄(insertions) 로 PR 크기를 판정한다. 200줄 이하 최선, 300줄 이하 양호, 400줄 상한.
 
 ## base 확정
 
@@ -8,7 +8,7 @@ base 대비 **추가된 줄(insertions)** 로 PR 크기를 판정한다. 200줄 
 BASE=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)
 ```
 
-stacked PR이면 base는 master가 아니라 **직전 스택 브랜치**다. master로 재면 앞 PR의 줄까지 합산돼 거짓 FAIL이 난다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
+stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. master로 재면 앞 PR의 줄까지 합산돼 거짓 FAIL이 난다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
 
 ## 측정
 

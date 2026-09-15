@@ -17,7 +17,7 @@ Bash로 아래 패턴을 실행하기 전에 사용자에게 먼저 경고하고
 | `kubectl delete` | `kubectl delete pod` | 프로덕션 영향 |
 | `docker system prune` | `docker system prune -a` | 컨테이너/이미지 손실 |
 
-**안전 예외**: 재생성 가능한 산출물 삭제는 경고 없이 실행한다: `rm -rf node_modules` / `.next` / `dist` / `__pycache__` / `.cache` / `build` / `coverage`.
+안전 예외: 재생성 가능한 산출물 삭제는 경고 없이 실행한다: `rm -rf node_modules` / `.next` / `dist` / `__pycache__` / `.cache` / `build` / `coverage`.
 
 경고는 금지를 풀지 않는다. force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 PreToolUse 훅(`~/.claude/hooks/block-dangerous-git.sh`)이 deny로 막는다. 경고 대상이 아니라 실행 대상이 아니다.
 

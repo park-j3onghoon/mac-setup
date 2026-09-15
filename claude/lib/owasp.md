@@ -2,11 +2,11 @@
 
 공격자 관점으로 취약점 자체를 보는 모듈이다. 사내 기준 준수(고시·지침·진단 유형)는 `~/.claude/lib/security/`가 본다.
 
-항목마다 **발견 / PASS / 해당 없음**을 구분해 판정한다. 살펴봤는데 없으면 PASS, 대상 코드와 무관하면 해당 없음이다.
+항목마다 발견 / PASS / 해당 없음을 구분해 판정한다. 살펴봤는데 없으면 PASS, 대상 코드와 무관하면 해당 없음이다.
 
 ## 증명 방식
 
-패턴이 걸렸다는 이유만으로 발견을 올리지 않는다. **source**(외부에서 들어오는 값: 요청 파라미터·바디·헤더·업로드·외부 API 응답)에서 **sink**(권한 판정·쿼리·명령 실행·URL 구성·템플릿 출력)까지 코드로 이어지는 경로를 보인다.
+패턴이 걸렸다는 이유만으로 발견을 올리지 않는다. source(외부에서 들어오는 값: 요청 파라미터·바디·헤더·업로드·외부 API 응답)에서 sink(권한 판정·쿼리·명령 실행·URL 구성·템플릿 출력)까지 코드로 이어지는 경로를 보인다.
 
 - 경로를 코드로 이었으면 `VERIFIED`
 - 패턴 매칭까지만 했으면 `UNVERIFIED`
@@ -23,10 +23,10 @@
 
 ## A03 인젝션
 
-- **SQL**: 문자열 포매팅·f-string·concat으로 만든 쿼리, `raw(`·`extra(`·`cursor.execute`에 변수가 섞이는 곳.
-- **명령**: `subprocess`·`os.system`·`shell=True`에 입력이 들어가는 곳.
-- **템플릿·XSS**: `mark_safe`·`|safe`·`v-html`·`innerHTML`·`dangerouslySetInnerHTML`.
-- **역직렬화**: `pickle`·`yaml.load`(Loader 미지정)·`eval`·`exec`.
+- SQL: 문자열 포매팅·f-string·concat으로 만든 쿼리, `raw(`·`extra(`·`cursor.execute`에 변수가 섞이는 곳.
+- 명령: `subprocess`·`os.system`·`shell=True`에 입력이 들어가는 곳.
+- 템플릿·XSS: `mark_safe`·`|safe`·`v-html`·`innerHTML`·`dangerouslySetInnerHTML`.
+- 역직렬화: `pickle`·`yaml.load`(Loader 미지정)·`eval`·`exec`.
 
 ## A05 보안 설정 오류
 
