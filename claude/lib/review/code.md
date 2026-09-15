@@ -4,8 +4,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 
 ## 1. 보안 (Security)
 
-- **SQL 인젝션**: raw SQL에 문자열 보간(`f"..."`, `%s` 아닌 `.format()`) 사용 여부
-- **Race condition**: 공유 상태 동시 접근, 락 누락, non-idempotent 연산의 이중 실행
+`~/.claude/lib/review/security-gate.md`를 Read하고 그 여섯 항목을 판정한다. diff에 트리거가 없으면 `해당 없음` 한 줄로 끝낸다. 그 이상은 보안 서브에이전트 몫이라 여기서 파고들지 않는다.
 
 ## 2. 정확성 (Correctness)
 
