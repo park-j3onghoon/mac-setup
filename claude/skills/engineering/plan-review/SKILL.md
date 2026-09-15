@@ -4,7 +4,7 @@ description: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 
 disable-model-invocation: true
 ---
 
-구현 계획이 완성된 뒤 코드를 건드리기 전의 plan gate. 이 스킬이 쓰는 파일은 `~/plans/{repo이름}/{작업명}/plan.md` 하나이고, 나머지 코드·문서는 읽기만 한다.
+구현 계획이 완성된 뒤 코드를 건드리기 전의 plan gate. 이 스킬이 쓰는 파일은 `plan.md` 하나이고, 나머지 코드·문서는 읽기만 한다.
 
 계획에 아직 안 정해진 갈림길이 있으면 `/grill`이 먼저다. 통과한 계획을 실제로 만드는 것은 `/implement`.
 
@@ -105,7 +105,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 �
 
 ## Step 3: 계획 저장
 
-리뷰를 반영한 최종 계획을 `~/plans/{repo이름}/{작업명}/plan.md`에 쓴다. `repo이름`은 `basename $(git rev-parse --show-toplevel)`. plan.md는 repo 밖 이 경로에만 둔다. repo 안에 두면 PR diff와 리뷰 부담이 커진다.
+리뷰를 반영한 최종 계획을 `plan.md`에 쓴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다. repo 안에는 두지 않는다. PR diff와 리뷰 부담이 커진다.
 
 완료 기준: 그 경로에 파일이 있다.
 
@@ -116,7 +116,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 �
 ```bash
 CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
 REPO=$(basename $(git rev-parse --show-toplevel))
-PLAN_PATH=~/plans/$REPO/{작업명}/plan.md   # plan이 repo 밖이라 절대경로로 넘긴다
+PLAN_PATH=~/plans/{작업명}/$REPO/plan.md   # plan이 repo 밖이라 절대경로로 넘긴다
 
 node "$CODEX_SCRIPT" task --effort high --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라. git diff는 무시하라."
 ```
@@ -137,7 +137,7 @@ Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
 
 AskUserQuestion:
 ```
-계획이 ~/plans/{repo}/{작업명}/plan.md에 저장되었습니다.
+계획이 {저장한 절대경로}에 저장되었습니다.
 - A) 구현 시작
 - B) 계획 수정 필요
 - C) 지금은 구현하지 않음

@@ -42,4 +42,4 @@ SECURITY FINDINGS
 1   CRIT   9/10   VERIFIED   Secrets    git 이력에 AWS 키        .env:3
 ```
 
-심각도는 CRIT/HIGH/MED/LOW, 신뢰도는 `n/10`. 발견마다 공격 시나리오 · 영향 · 권장 조치(구체적 수정 + 예시)를 붙인다. 보고서는 채팅으로 내고, 파일로 남길 때만 `~/plans/{repo}/{작업명}/security-report.md`에 쓴다.
+심각도는 CRIT/HIGH/MED/LOW, 신뢰도는 `n/10`. 발견마다 공격 시나리오 · 영향 · 권장 조치(구체적 수정 + 예시)를 붙인다. 보고서는 채팅으로 내고, 파일로 남길 때만 `security-report.md`로 남긴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 따른다.
