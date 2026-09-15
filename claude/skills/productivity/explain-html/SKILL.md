@@ -11,7 +11,7 @@ argument-hint: <주제> [저장 경로]
 
 ## 1. 스타일 규칙 로드
 
-`~/.claude/lib/answer-style.md`와 `~/.claude/explain-style.md`를 Read한다. 후자는 **ELI5**(비유 → 정의 → 실제 맥락 예시), why-first, 예상 후속 질문 흡수, 약어 풀네임, 혼동 쌍은 표로. 테이블·필드를 다루는 문서면 `~/.claude/lib/data-notation.md` 가 있으면 Read해 그 표기를 따른다.
+`~/.claude/lib/answer-style.md`와 `~/.claude/explain-style.md`를 Read하고 그 규칙대로 쓴다. 테이블·필드를 다루는 문서면 `~/.claude/lib/data-notation.md` 가 있으면 Read해 그 표기를 따른다.
 
 → 완료: 읽은 규칙에서 이번 주제에 걸리는 항목을 뽑아 뒀다.
 
