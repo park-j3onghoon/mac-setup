@@ -1,8 +1,8 @@
 ---
 name: review
-description: 브랜치 변경을 서브에이전트 3개로 병렬 리뷰하고, 수정을 적용한 뒤 PR 크기 검사와 push 안내까지 끝낸다.
+description: 브랜치 변경을 서브에이전트 3개(보안 트리거가 있으면 4개)로 병렬 리뷰하고, 수정을 적용한 뒤 PR 크기 검사와 push 안내까지 끝낸다.
 disable-model-invocation: true
-argument-hint: "[PR URL]"
+argument-hint: "[PR URL] [--sec N]"
 ---
 
 # /review
@@ -41,9 +41,11 @@ Scope Check: [CLEAN / DRIFT / MISSING]
 
 **완료**: diff 전문과 Scope Check 3줄이 나왔다.
 
-## 3. 서브에이전트 3개 병렬 리뷰
+## 3. 서브에이전트 병렬 리뷰 (3개 + 조건부 보안 1개)
 
-Agent tool로 **세 개를 동시에** 띄운다. 각 프롬프트에 아래를 모두 넣는다.
+먼저 보안 레벨을 정한다. `~/.claude/lib/security/index.md`가 있으면 그 「레벨 판정」절차를 2단계의 diff에 적용하고, 인자에 `--sec N`이 있으면 그 값을 쓴다. 파일이 없으면 레벨 1이다. 한 줄로 남긴다: `Security level: N (트리거: ...)`.
+
+Agent tool로 **세 개를 동시에** 띄우고, 레벨이 2 이상이면 보안 서브에이전트를 같은 배치에 넷째로 띄운다. 각 프롬프트에 아래를 모두 넣는다.
 
 1. diff 전문(너무 길면 파일별 요약 + 핵심 변경부).
 2. 담당 기준 파일 경로. 서브에이전트가 직접 Read한다.
@@ -57,8 +59,9 @@ Agent tool로 **세 개를 동시에** 띄운다. 각 프롬프트에 아래를 
 | 코드 공통 | `~/.claude/lib/review/code.md` | 보안·정확성·계약 일관성·반환 타입·클린코드·YAGNI·아키텍처·에러 핸들링·관측성·성능·테스팅·운영 안전성 |
 | 언어별 | `~/.claude/lib/review/language.md` | diff에 포함된 언어(Python·Go·Java·프론트엔드)의 관용구·타입 안전성·플랫폼 특화 이슈 |
 | 팀 리뷰어 | `~/.claude/lib/review/team.md` | 리뷰어 카탈로그(R1~R24 매핑표)별 관점. 매핑표의 도메인 컬럼으로 diff에 해당하는 리뷰어를 골라 점검 |
+| 보안 (레벨 2 이상) | `~/.claude/lib/security/index.md`의 레벨표가 정한 모듈 전부 | 사내 기준(고시·정보보호지침·진단 유형) 준수. 출력 형식·값 미기재·주장 검증은 index.md를 따른다 |
 
-**완료**: 세 결과가 모두 돌아왔다.
+**완료**: `Security level` 한 줄이 기록됐고, 세(레벨 2 이상이면 네) 결과가 모두 돌아왔다.
 
 ## 4. Codex 교차 검증 (선택)
 
@@ -74,7 +77,7 @@ B·C면 `~/.claude/lib/codex-adversarial.md`를 Read하고 그대로 실행·회
 
 ## 5. 결과 통합
 
-같은 이슈를 여러 리뷰어가 잡았으면 하나로 합치고 출처를 표시한다(`(코드+팀+codex)`). CRITICAL을 위, INFO를 아래로 정렬한다. Codex 결과는 요약·paraphrase 없이 별도 블록에 원문 그대로 붙인다.
+같은 이슈를 여러 리뷰어가 잡았으면 하나로 합치고 출처를 표시한다(`(코드+팀+보안+codex)`). CRITICAL을 위, INFO를 아래로 정렬한다. Codex 결과는 요약·paraphrase 없이 별도 블록에 원문 그대로 붙인다.
 
 **완료**: 중복이 합쳐지고 심각도순으로 정렬된 단일 리포트가 있다.
 
@@ -111,7 +114,7 @@ diff가 이 레포의 CLAUDE.md나 AGENTS.md를 건드렸다면 같은 레포의
 ```
 Review: N 이슈 (CRITICAL X · INFO Y)
 Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V
-리뷰어별: 코드 A · 언어 B · 팀 C · Codex D · Codex adversarial E
+리뷰어별: 코드 A · 언어 B · 팀 C · 보안 S · Codex D · Codex adversarial E
 
 /review 완료. 아래 명령으로 push해주세요:
 
