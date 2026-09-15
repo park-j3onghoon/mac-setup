@@ -37,9 +37,7 @@ while IFS= read -r f; do
   [ "$n" -gt 0 ] && { note "$n 건  ${f#$HOME/git/mac-setup/}"; em=$((em+n)); fail=1; }
 done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/example" \
            \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.html' \) 2>/dev/null \
-         | grep -vE '/commands/|reference/invocation\.md|lib/answer-style\.md|skills/linear-card/SKILL\.md|skills/daily-todo/SKILL\.md')
-# linear-card·daily-todo 는 Linear·옵시디언에 이미 쌓인 산출물 서식을 들고 있다.
-# 근거는 answer-style.md 「문장부호」의 예외 절.
+         | grep -vE '/commands/|reference/invocation\.md|lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"

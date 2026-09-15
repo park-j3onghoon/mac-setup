@@ -51,5 +51,3 @@
 | `security-review.md` | `/sec-review` |
 | `explain.html` | `/explain-html` |
 | RFC 초안 | `/rfc-write` |
-
-2026-09-15 이전에 만들어진 `~/plans/{레포}/{작업명}/`은 그대로 둔다. 새로 만드는 것만 이 규칙을 따른다.
