@@ -16,7 +16,7 @@ argument-hint: "[스킬 이름 | 전체]"
 인자가 스킬 이름이면 그 하나, `전체`면 아래 세 곳의 모든 `SKILL.md`를 대상으로 한다. 인자가 없으면 최근에 만들었거나 고친 스킬을 `git log --oneline -20 -- claude/skills example/claude/skills` 로 찾아 제시하고 고르게 한다.
 
 - `~/git/mac-setup/claude/skills/{engineering,productivity}/` (공개, 버킷 있음)
-- 회사 스킬은 버킷 없이 `~/git/mac-setup/example/claude/skills/` 에 있고 `~/.claude/skills/` 로 링크된다
+- 회사 스킬은 `~/git/mac-setup/example/claude/skills/` 바로 아래에 있고 `~/.claude/skills/` 로 링크된다
 
 → 완료: 점검할 `SKILL.md` 경로 목록이 확정됐다.
 
@@ -28,15 +28,15 @@ argument-hint: "[스킬 이름 | 전체]"
 - 공개 레포 스킬은 `engineering/`(일상적인 코드 작업) 또는 `productivity/`(일상적인 비코드 업무 도구) 아래에 있다. 버킷은 레포 안에서만 쓴다. 하네스는 `~/.claude/skills/<이름>/SKILL.md` 한 단계만 탐색하므로 `install.sh`가 버킷을 순회해 평평하게 심링크한다.
 - 버킷에 있는 모든 스킬은 최상위 `README.md`에 항목이 있고, 스킬 이름이 그 `SKILL.md`로 링크돼 있다.
 - 각 버킷 폴더에 `README.md`가 있고, 그 버킷의 모든 스킬을 한 줄 설명과 함께 나열하며, 스킬 이름이 `SKILL.md`로 링크돼 있다.
-- 회사 스킬은 버킷을 쓰지 않고 최상위 `README.md`에도 올리지 않는다(공개 레포다).
+- 회사 스킬은 `example/claude/skills/` 바로 아래에 두고 목록도 그 트리 안에서만 관리한다(공개 레포다).
 
 호출 방식
-- 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터에 두는 것은 `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`, 필요하면 `argument-hint`, 그리고 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`다. `version`·`context`는 두지 않고, 전역 allow와 겹치는 `allowed-tools`도 두지 않는다.
-- user-invoked 스킬은 다른 스킬을 실행하지 않는다. 하위 모듈만 포인터로 읽는다.
+- 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터에 두는 것은 이 다섯뿐이다: `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`, 필요하면 `argument-hint`, 그리고 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`.
+- user-invoked 스킬은 하위 모듈만 포인터로 읽는다. 스킬을 부르는 것은 사람뿐이다.
 
 하위 모듈
 - `SKILL.md`가 아닌 `.md`는 스킬 디렉토리 안(그 스킬 전용) 또는 `claude/lib/`·`~/.claude/lib/`(둘 이상이 공유)에 있다.
-- 하위 모듈은 스킬을 실행하지 않고, 자기를 읽는 스킬 목록도 갖지 않는다. 그 목록은 스킬이 바뀌는 순간 거짓이 되고, 소비자는 `grep -rl`로 찾으면 된다.
+- 하위 모듈은 내용만 담는다. 소비자는 `grep -rl`로 찾는다. 목록을 문서에 적어 두면 스킬이 바뀌는 순간 거짓이 된다.
 
 기계 검사 셋을 돌려 결과를 붙인다.
 
@@ -56,10 +56,10 @@ bash ~/git/mac-setup/scripts/check-pair.sh
 |---|---|
 | What it does | 한 문장 역할 + defining constraint(기본 동작과 달라지는 그 한 가지 사실) |
 | When to reach for it | 호출 방식 + 언제 손이 가나 + 헷갈리는 형제와의 경계 |
-| Common questions | 실제로 나온 질문. 지어낸 질문으로 채우지 않는다 |
+| Common questions | 실제로 나온 질문만. 없으면 비운다 |
 | It's working if | 잘 돌았을 때 눈에 보이는 것 |
 
-우리는 별도 문서 페이지를 두지 않는다(읽을 사이트가 없다). 대신 `SKILL.md`만 읽고 네 가지에 답할 수 있는지를 기준으로 본다. 답이 안 나오는 항목이 그 스킬의 구멍이다.
+문서는 `SKILL.md` 하나에 담는다(읽을 사이트가 없다). `SKILL.md`만 읽고 네 가지에 답할 수 있는지를 기준으로 본다. 답이 안 나오는 항목이 그 스킬의 구멍이다.
 
 → 완료: 스킬마다 네 항목이 답변 가능/불가로 판정됐고, 불가한 항목은 어느 문장을 더해야 하는지 적혔다.
 
@@ -67,7 +67,7 @@ bash ~/git/mac-setup/scripts/check-pair.sh
 
 - 트리거: description이 사람용 한 줄인가. 동의어 나열이 남았나.
 - 구조: 절차와 참고가 갈렸나. 특정 분기에서만 쓰는 참고가 본문에 남았나. 단계마다 완료 기준이 있나.
-- 유도: 모델이 이미 아는 단어(leading word)로 압축했나. 부정문이 긍정형 지시 없이 홀로 있나.
+- 유도: 모델이 이미 아는 단어(leading word)로 압축했나. 지시가 긍정형인가(부정문이면 짝이 되는 긍정형 지시가 붙어 있나).
 - 가지치기: 지워도 행동이 안 바뀌는 문장(무동작), 같은 말의 반복, 이제는 사실이 아닌 문장.
 - 문장부호: `~/.claude/lib/answer-style.md`의 「문장부호」를 Read하고 em-dash 사용 여부를 본다.
 
@@ -96,8 +96,8 @@ SKILL REVIEW: {스킬} ({N}줄)
 
 ## 상위 관례와 다른 점
 
-이 규약은 `mattpocock/skills`에서 가져왔다. 우리와 다른 셋은 적용하지 않는다. 판단 근거가 필요하면 `reference/invocation.md`(원문)와 `reference/openai.yaml`(Codex 메타데이터 예시)을 Read한다.
+이 규약은 `mattpocock/skills`에서 가져왔다. 아래 셋은 상위 레포에만 해당한다. 판단 근거가 필요하면 `reference/invocation.md`(원문)와 `reference/openai.yaml`(Codex 메타데이터 예시)을 Read한다.
 
-- `.claude-plugin/plugin.json`: 상위 레포는 스킬을 Claude Code 플러그인으로 배포해 promoted 스킬을 그 매니페스트에 등록한다. 우리는 심링크로 설치하므로 매니페스트가 없다.
-- User-invoked / Model-invoked 구분: 상위 레포는 둘을 섞어 쓰고 README를 그 둘로 나눈다. 우리는 전부 user-invoked라 나눌 축이 없다.
-- `agents/openai.yaml`: 상위 레포는 스킬마다 Codex용 메타데이터(`interface.display_name`·`short_description`, user-invoked면 `policy.allow_implicit_invocation: false`)를 둔다. 우리 Codex 스킬은 `codex/skills/`에 별도 사본으로 있어 이 파일을 쓰지 않는다. Codex 사본을 단일 출처로 합칠 때 다시 볼 관례다.
+- `.claude-plugin/plugin.json`: 상위 레포는 스킬을 Claude Code 플러그인으로 배포해 promoted 스킬을 그 매니페스트에 등록한다. 우리는 심링크로 설치한다.
+- User-invoked / Model-invoked 구분: 상위 레포는 둘을 섞어 쓰고 README를 그 둘로 나눈다. 우리는 전부 user-invoked라 README를 한 목록으로 둔다.
+- `agents/openai.yaml`: 상위 레포는 스킬마다 Codex용 메타데이터(`interface.display_name`·`short_description`, user-invoked면 `policy.allow_implicit_invocation: false`)를 둔다. 우리 Codex 스킬은 `codex/skills/`에 별도 사본으로 있다. Codex 사본을 단일 출처로 합칠 때 다시 볼 관례다.
