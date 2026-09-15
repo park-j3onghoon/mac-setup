@@ -9,7 +9,7 @@ argument-hint: [증상 또는 에러 메시지]
 
 verify-before-fix: 증거로 확인된 근본 원인이 나온 뒤에 코드를 고친다. 증상만 고치면 두더지 잡기가 된다.
 
-이미 난 문제의 원인을 좁히는 스킬이다. 작업 착수 전 배경·맥락을 모으는 것은 `/research`, 확정된 계획대로 만드는 것은 `/implement`.
+이미 난 문제의 원인을 좁힌다. 작업 착수 전 배경·맥락을 모으는 것은 `/research`.
 
 1. 증상 수집: 에러 메시지·스택 트레이스·재현 단계를 모은다. 맥락이 비면 AskUserQuestion으로 한 번에 하나씩 묻는다. 서버에서 난 장애라 로그·메트릭이 필요하면 `~/.claude/lib/grafana/index.md`(있을 때)를 Read해 Loki·Prometheus를 조회한다. → 무엇이 언제 어떻게 실패하는지 한 문장으로 쓸 수 있다.
 2. 역추적: 증상 지점에서 데이터 흐름을 거슬러 코드를 읽고 `git log --oneline -20 -- <affected-files>`로 최근 변경을 본다. 회귀면 근본 원인은 diff에 있다(구간이 넓으면 `git bisect`). 같은 파일에서 반복되는 버그는 아키텍처 문제의 신호(hotspot)다. → 의심 구간이 file:line 수준으로 좁혀졌다.
