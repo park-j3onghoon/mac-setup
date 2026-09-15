@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse(Bash) — 되돌릴 수 없는 git 명령을 에이전트가 실행하지 못하게 막는다.
+# PreToolUse(Bash): 되돌릴 수 없는 git 명령을 에이전트가 실행하지 못하게 막는다.
 # 사용자는 프롬프트에 `! <명령>` 으로 직접 실행할 수 있다. 차단 대상은 CLAUDE.md 안전 하드룰과 같다.
 
 set -uo pipefail
