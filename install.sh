@@ -158,9 +158,16 @@ done
 
 link_file "$REPO_DIR/codex/rules/default.rules" "$HOME/.codex/rules/default.rules"
 
-for skill_dir in "$REPO_DIR/codex/skills"/*/; do
-  skill_name="$(basename "$skill_dir")"
-  link_file "$REPO_DIR/codex/skills/$skill_name" "$HOME/.codex/skills/$skill_name"
+# Codex 는 Claude 와 같은 SKILL.md 를 본다. 사본을 두지 않는다.
+CODEX_SKILLS="cso guard plan-review review"
+for skill_name in $CODEX_SKILLS; do
+  src=$(find "$REPO_DIR/claude/skills" "$REPO_DIR/example/claude/skills" \
+          -maxdepth 2 -type d -name "$skill_name" 2>/dev/null | head -1)
+  if [ -n "$src" ]; then
+    link_file "$src" "$HOME/.codex/skills/$skill_name"
+  else
+    warn "Codex 스킬 원본 없음: $skill_name"
+  fi
 done
 
 prune_dangling "$HOME/.codex" "$HOME/.codex/skills"

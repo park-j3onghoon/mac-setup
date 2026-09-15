@@ -9,8 +9,6 @@ argument-hint: <주제> [저장 경로]
 
 인자로 받은 주제를 조사해 단일 HTML 파일 하나로 설명한다.
 
-산출물은 그림이 든 해설서 하나다. 출처가 붙은 조사 문서가 필요하면 `/research`.
-
 ## 1. 스타일 규칙 로드
 
 `~/.claude/lib/answer-style.md`와 `~/.claude/explain-style.md`를 Read하고 그 규칙대로 쓴다. 테이블·필드를 다루는 문서면 `~/.claude/lib/data-notation.md` 가 있으면 Read해 그 표기를 따른다.
