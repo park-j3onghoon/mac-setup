@@ -26,7 +26,7 @@
 ~/plans/set-253-payout-rounding/payments-api/plan.md
 ```
 
-여러 레포에 걸치는 작업. 계획은 쪼개지 않는다. 배포 순서가 계획의 핵심인데 파일을 나누면 그 순서가 사라진다.
+여러 레포에 걸치는 작업. 계획은 쪼개지 않는다.
 
 ```
 ~/plans/plb-22-payout-automation/notes/plan.md           전체 계획

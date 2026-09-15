@@ -44,7 +44,7 @@ FE가 돈을 움직이거나 발송하는 비동기 서버 잡(202 Accepted)을 
 - 상태 머신 표시: `{total,completed}`만으로 부족하다. PENDING/IN_PROGRESS/SUCCESS/FAILED/PARTIAL/SKIPPED, "메일 실패-발행 성공" 같은 분기를 UI에 노출. 202 생명주기 필드(runStatus/startedAt/finishedAt/refreshError).
 - Blast-radius 모달: 확인 모달에 대상 범위(scope/건수/금액/이미 처리된 항목)를 노출. 확인 모달은 마지막 방어선이 아니다.
 - 진행 필드는 소스가 채운 값만 중계한다: BFF/relay가 하위 시스템의 `{total,completed}`를 노출할 때, 하위가 `total`을 세팅하지 않는 경로(예: 잡 종류별로 total 산정 시점이 다름)면 `0`이 아니라 `null`(미정)로 노출한다. `0`은 FE에서 "할 일 없음/완료" 또는 0-나눗셈으로 오독된다. relay는 하위 카운트를 재계산(도메인 규칙 복제)하지 말고 미정은 미정으로 정직하게 전달.
-- create-코호트 = consume-코호트 일치: 트리거(BFF)가 레코드를 만들고 별도 배치/워커가 그걸 enumerate해 처리하면 양쪽 코호트 산정 술어가 정확히 같아야 한다. BFF가 배치가 보지 않을 레코드를 만들면 orphan(미처리→reap/FAILED, 머니패스면 누락 발송). 같은 술어를 두 곳에 복제하지 말고(단일 출처) 최소한 "BFF 코호트 쿼리 인자 == 배치 술어"를 테스트로 고정.
+- create-코호트 = consume-코호트 일치: BFF 트리거가 레코드를 만들고 별도 배치/워커가 그걸 enumerate해 처리하면 양쪽 코호트 산정 술어가 정확히 같아야 한다. BFF가 배치가 보지 않을 레코드를 만들면 orphan(미처리→reap/FAILED, 머니패스면 누락 발송). 같은 술어를 두 곳에 복제하지 말고(단일 출처) 최소한 "BFF 코호트 쿼리 인자 == 배치 술어"를 테스트로 고정.
 - Contract drift는 path 한 줄이 아니다: request/response/status/error/permission/idempotency를 각각 확정·미확정으로 추적하고, 미확정은 type+transform+fixture 한 곳에 격리. mock test는 FE 기대만 고정(BE가 발산해도 초록) → fixture를 proto/OpenAPI 샘플에서 생성하거나 staging contract smoke를 merge blocker로.
 - 미검증 BE 위 live 화면은 feature flag 뒤 새 컴포넌트로 만든다: API mismatch(404/403/500)는 graceful 에러 상태로 받아 화면 자체가 깨지지 않게 하고, 구 컴포넌트를 보존해 롤백이 git revert에 의존하지 않게 한다.
 - "생략/빈 컬렉션 = 전체 스코프" 직렬화는 UI 경로 제거 시 repo 계층에서 non-empty 강제로 반전한다: UI가 "전체 실행" 경로를 없앴다면 클라이언트 repo도 빈 배열→키 생략(전체 확대) 직렬화를 throw로 바꾼다(illegal state 표현 불가). 가드를 view 한 곳에만 두면 후속 리팩터·직접 호출·테스트 헬퍼가 우회한다.

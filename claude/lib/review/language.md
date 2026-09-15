@@ -61,7 +61,7 @@ diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안�
 - `*int32` vs `int32`, `optional` proto field로 nil/zero-value 명확 구분
 - 컴파일 타임 인터페이스 검증: `var _ Interface = (*Impl)(nil)`
 - 방어 코드 제거: 빌드타임에 보장되는 nil 체크·생성자가 보장하는 invariant·도달 불가 경로의 방어 코드는 잉여 → 제거. (cf. SKILL 5a: 방어 코드 *추가* 는 ASK, *제거* 는 품질 개선. `sync.Once`+`init()` 동시 사용도 중복 방어)
-- `&slice[i]` 등 슬라이스 원소 직접 참조(aliasing) 지양. append/재할당 시 stale 포인터.
+- `&slice[i]` 등 슬라이스 원소 aliasing 지양. append/재할당 시 stale 포인터.
 
 ### 관용구
 - context 기반 logger 사용
