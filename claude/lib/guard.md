@@ -19,11 +19,11 @@ Bash로 아래 패턴을 실행하기 전에 사용자에게 먼저 경고하고
 
 안전 예외: 재생성 가능한 산출물 삭제는 경고 없이 실행한다: `rm -rf node_modules` / `.next` / `dist` / `__pycache__` / `.cache` / `build` / `coverage`.
 
-경고는 금지를 풀지 않는다. force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 PreToolUse 훅(`~/.claude/hooks/block-dangerous-git.sh`)이 deny로 막는다. 경고 대상이 아니라 실행 대상이 아니다.
+force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 PreToolUse 훅(`~/.claude/hooks/block-dangerous-git.sh`)이 deny로 막는다. 이 다섯은 경고가 아니라 차단 대상이다.
 
 ## freeze: 디렉토리 편집 제한
 
-제한 디렉토리 목록은 끝에 `/`를 붙여 기억한다. `/src/`로 두면 `/src-old/`가 안쪽으로 오인되지 않는다.
+제한 디렉토리 목록은 끝에 `/`를 붙여 기억한다.
 
 그 밖의 파일을 Edit/Write 해야 하면 먼저 확인을 받는다. "이 파일은 제한 디렉토리 외부입니다: [path]. 수정하시겠습니까?" 승인 후 편집한다.
 

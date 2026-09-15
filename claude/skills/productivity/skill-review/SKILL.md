@@ -67,7 +67,6 @@ bash ~/git/mac-setup/scripts/check-pair.sh
 - 구조: 절차와 참고가 갈렸나. 특정 분기에서만 쓰는 참고가 본문에 남았나. 단계마다 완료 기준이 있나.
 - 유도: 모델이 이미 아는 단어로 압축했나. 지시가 긍정형인가(부정문이면 짝이 되는 긍정형 지시가 붙어 있나).
 - 가지치기: 지워도 행동이 안 바뀌는 문장(무동작), 같은 말의 반복, 이제는 사실이 아닌 문장. 줄번호·커밋 해시·수치처럼 코드가 바뀌면 틀려지는 것이 박혀 있으면 파일 경로까지로 줄인다(쓸 때 확인해 적는다).
-- 문장부호: `~/.claude/lib/answer-style.md`의 「문장부호」를 Read하고 em-dash 사용 여부를 본다.
 
 → 완료: 네 항목마다 지적 또는 "해당 없음"이 적혔다.
 
@@ -86,7 +85,7 @@ SKILL REVIEW: {스킬} ({N}줄)
 
 스킬을 추가·개명·제거하는 수정이면 아래도 같이 처리한다.
 
-1. 버킷 `README.md`(`claude/skills/{engineering,productivity}/README.md`)와 최상위 `README.md`의 스킬 목록. 각 항목은 스킬 이름을 그 `SKILL.md`로 링크한다. 전역 `~/.claude/CLAUDE.md`가 비어 있어 에이전트는 스킬 목록을 갖지 않으므로, 이 목록이 사람이 보는 유일한 라우터다.
+1. 버킷 `README.md`(`claude/skills/{engineering,productivity}/README.md`)와 최상위 `README.md`의 스킬 목록. 각 항목은 스킬 이름을 그 `SKILL.md`로 링크한다.
 2. Codex에도 둘 스킬이면 `install.sh`의 Codex 절에 이름을 넣는다. 사본을 만들지 않고 같은 `SKILL.md`를 링크한다.
 3. 기계 검사 셋이 다시 PASS인지.
 
@@ -98,4 +97,4 @@ SKILL REVIEW: {스킬} ({N}줄)
 
 - `.claude-plugin/plugin.json`: 상위 레포는 스킬을 Claude Code 플러그인으로 배포해 promoted 스킬을 그 매니페스트에 등록한다. 우리는 심링크로 설치한다.
 - User-invoked / Model-invoked 구분: 상위 레포는 둘을 섞어 쓰고 README를 그 둘로 나눈다. 우리는 전부 user-invoked라 README를 한 목록으로 둔다.
-- `agents/openai.yaml`: 상위 레포는 스킬마다 Codex용 메타데이터(`interface.display_name`·`short_description`, user-invoked면 `policy.allow_implicit_invocation: false`)를 둔다. 우리 Codex 스킬은 `codex/skills/`에 별도 사본으로 있다. Codex 사본을 단일 출처로 합칠 때 다시 볼 관례다.
+- `agents/openai.yaml`: 상위 레포는 스킬마다 Codex용 메타데이터(`interface.display_name`·`short_description`, user-invoked면 `policy.allow_implicit_invocation: false`)를 둔다. 우리는 Codex가 같은 `SKILL.md`를 링크해서 보므로 이 파일이 없다. Codex 쪽 user-invoked 강제는 아직 확인하지 않았다.

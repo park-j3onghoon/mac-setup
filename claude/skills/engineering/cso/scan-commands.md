@@ -22,7 +22,7 @@ git log -p --all -G "sk-|ghp_|gho_|xoxb-|xoxp-" 2>/dev/null | head -20
 git ls-files '*.env' '.env.*' | grep -v '.example\|.sample'
 ```
 
-토큰 접두어 `AKIA`·`sk-`·`ghp_`·`gho_`·`xoxb-`·`xoxp-`가 이 스캔이 걸러내는 대상이다. 첫 명령은 새로 추가된 3개 확장자만 보고 `head -20`은 패치 앞부분만 보여주므로, 히트가 하나라도 나오면 그 커밋·파일을 직접 열어 범위를 넓힌다.
+첫 명령은 새로 추가된 3개 확장자만 보고 `head -20`은 패치 앞부분만 보여주므로, 히트가 하나라도 나오면 그 커밋·파일을 직접 열어 범위를 넓힌다.
 
 ## GitHub Actions 3종 점검
 

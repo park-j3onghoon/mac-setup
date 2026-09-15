@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## Step 0: 스코프 챌린지
 
-사전 검색 (Search Before Building): 프레임워크·라이브러리 빌트인으로 이미 되는 부분을 먼저 찾는다. 있으면 스코프 축소 기회다. `git log`에 이전 리뷰발 리팩토링·리버트 흔적이 있는 영역은 같은 자리를 더 공격적으로 본다.
+사전 검색 (Search Before Building): 프레임워크·라이브러리 빌트인으로 이미 되는 부분을 먼저 찾는다. 있으면 그만큼 스코프에서 뺀다. `git log`에 이전 리뷰발 리팩토링·리버트 흔적이 있는 영역은 같은 자리를 더 공격적으로 본다.
 
 스코프 질문
 1. 기존 코드로 이미 해결되는 부분은?
@@ -18,7 +18,7 @@ disable-model-invocation: true
 
 미결 갈림길 점검: 계획이 사용자가 골라야 할 결정을 조용히 가정하고 넘어간 자리를 찾는다. 신호는 셋이다. 근거 없이 단정한 방식 선택(왜 그것인지가 없음), 대안이 한 번도 언급되지 않은 분기점, "추후 결정"·"TBD"로 미룬 채 그 위에 후속 단계가 쌓인 곳.
 
-하나라도 있으면 아래로 보고하고 멈춘다. 미결 위에서 차원 리뷰를 돌리면 곧 뒤집힐 계획을 검증하게 된다.
+하나라도 있으면 아래로 보고하고 멈춘다.
 
 ```
 [미결] {결정 항목}: 계획은 {가정한 것}으로 전제하는데 근거가 없다. {이것이 정해져야 결정되는 후속}
@@ -103,7 +103,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 �
 
 ## Step 3: 계획 저장
 
-리뷰를 반영한 최종 계획을 `plan.md`에 쓴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다. repo 안에는 두지 않는다. PR diff와 리뷰 부담이 커진다.
+리뷰를 반영한 최종 계획을 `plan.md`에 쓴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다.
 
 완료 기준: 그 경로에 파일이 있다.
 
@@ -118,8 +118,6 @@ PLAN_PATH=~/plans/{작업명}/$REPO/plan.md   # plan이 repo 밖이라 절대경
 
 node "$CODEX_SCRIPT" task --effort high --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라. git diff는 무시하라."
 ```
-
-`task`는 `--background`가 있어야 detached job으로 떠서 job-id가 나오고 회수·취소가 가능하다(없으면 포그라운드로 돌아 셸과 함께 죽는다). 이어지는 블로킹 대기(`status --wait`)는 Bash `run_in_background: true`로 띄운다.
 
 계획에 대응하는 git diff가 이미 있으면 `adversarial-review --background "<같은 focus 문구>"`를 대신 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙은 `~/.claude/lib/codex-adversarial.md`를 Read하고 따른다.
 
