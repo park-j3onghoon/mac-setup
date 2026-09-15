@@ -18,7 +18,7 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 ## 실행과 회수
 
-블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다. Bash 도구 timeout(기본 120s)이 Codex 실행 길이를 자르지 않게 하려는 것이다.
+블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다.
 
 1. `task --background`는 detached worker로 큐잉되고 출력에 job-id를 찍는다(`started in the background as <id>`). `--background`를 빼면 포그라운드 자식 프로세스로 돌아 job-id 없이 결과만 나오고 호출한 셸이 끝나면 같이 죽는다(회수·취소 불가). `review`·`adversarial-review`는 `--background`를 인자로 받지만 1.0.4 기준 무시하고 포그라운드로 완주해 결과를 stdout에 찍으므로, 이 둘은 그 stdout으로 회수하고 job-id가 필요하면 `status --all`에서 찾는다.
 2. job-id가 있으면 반복 폴링 대신 블로킹 대기 한 줄로 완료를 기다린다.
@@ -41,7 +41,7 @@ WT=$(mktemp -d)/pr; git worktree add --detach "$WT" origin/<head>
 git worktree remove "$WT"
 ```
 
-프롬프트에 "코드 인용은 브랜치 X 기준(`git show X:path`)"을 명시하면 오탐이 줄고, Codex 지적은 대상 브랜치 코드로 사실 검증한 뒤 반영한다.
+프롬프트에 "코드 인용은 브랜치 X 기준(`git show X:path`)"을 명시한다. Codex 지적은 대상 브랜치 코드로 사실 검증한 뒤 반영한다.
 
 ## 결과 취급
 

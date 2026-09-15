@@ -4,14 +4,14 @@ description: Read-only 보안 감사. 시크릿·공급망·CI/CD·OWASP·STRIDE
 disable-model-invocation: true
 ---
 
-red-team 관점으로 파고들고 blue-team 관점으로 보고한다. Read-only 감사라 코드는 고치지 않고, 산출물은 보안 현황 보고서 하나다.
+red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드는 고치지 않는다. 산출물은 보안 현황 보고서 하나다.
 
 대상은 레포 전체이고 Phase 0-8을 전부 돈다. 브랜치 diff만 볼 때는 이 스킬이 아니라 `/review`(레벨 2 이상이면 보안 서브에이전트가 붙는다)나 `/sec-review`다.
 
 ## Phase
 
 0. 위협 모델: 대상 레포의 README와 주요 설정을 읽고 컴포넌트 연결, 신뢰 경계, 사용자 입력의 진입점·유출점을 적는다. 완료 = 세 항목이 각각 채워짐.
-1. 공격 표면 매핑: `~/.claude/skills/cso/scan-commands.md`를 Read하고(Phase 1·2·4·6이 쓰는 명령과 출력 템플릿이 들어 있다), 엔드포인트·인증 경계·외부 통합·웹훅 핸들러를 열거해 `ATTACK SURFACE MAP`을 채운다. 완료 = 찾은 라우트가 5칸 중 하나에 전부 배정됨.
+1. 공격 표면 매핑: `~/.claude/skills/cso/scan-commands.md`를 Read하고, 엔드포인트·인증 경계·외부 통합·웹훅 핸들러를 열거해 `ATTACK SURFACE MAP`을 채운다. 완료 = 찾은 라우트가 5칸 중 하나에 전부 배정됨.
 2. 시크릿 발굴: `scan-commands.md`의 git 3종 명령으로 이력과 추적 파일을 훑고, `.env`가 `.gitignore`에 있는지와 CI 설정에 인라인 시크릿이 있는지 본다. 완료 = 이력·추적 파일·CI 설정 3경로가 전부 스캔됨.
 3. 의존성 공급망: 패키지 매니저의 audit을 돌리고, 락파일이 있고 git에 추적되는지 본다. 완료 = audit 출력과 락파일 상태가 확인됨.
 4. CI/CD 파이프라인: `.github/workflows/`의 워크플로마다 `scan-commands.md`의 `GitHub Actions 3종 점검`을 적용한다. 완료 = 워크플로 파일 전부가 3종 점검을 거침.
