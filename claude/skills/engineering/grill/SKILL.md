@@ -53,7 +53,7 @@ frontier(선행 결정이 전부 끝난 노드) 중 환경에서 답이 나오�
 
 ## 5. 기록
 
-합의한 내용을 `~/plans/{repo}/{작업명}/decisions.md`에 쓴다. repo는 `basename $(git rev-parse --show-toplevel)`.
+합의한 내용을 `decisions.md`에 쓴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다.
 
 ```markdown
 # {주제} 결정 기록 ({날짜})
