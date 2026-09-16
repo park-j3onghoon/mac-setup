@@ -59,6 +59,11 @@ done
 ok "zsh 플러그인 준비"
 
 # ---- 3. Shell dotfile symlink ----
+# 회사 값이 든 실사용본은 private/ 에, 공개 레포에는 제거본을 둔다.
+pick_settings() {
+  if [ -f "$REPO_DIR/private/$1" ]; then echo "$REPO_DIR/private/$1"; else echo "$REPO_DIR/$1"; fi
+}
+
 link_file() {
   local src="$1"
   local dst="$2"
@@ -94,7 +99,9 @@ log "~/.claude/ 설정 symlink"
 mkdir -p "$HOME/.claude/skills" "$HOME/.claude/lib"
 
 # 규칙 문서·설정·스크립트: 레포에 있는 것을 전부 링크 (파일 추가 시 install.sh 수정 불필요)
-for f in "$REPO_DIR"/claude/*.md "$REPO_DIR"/claude/*.sh "$REPO_DIR"/claude/settings.json; do
+link_file "$(pick_settings claude/settings.json)" "$HOME/.claude/settings.json"
+
+for f in "$REPO_DIR"/claude/*.md "$REPO_DIR"/claude/*.sh; do
   [ -e "$f" ] || continue
   link_file "$f" "$HOME/.claude/$(basename "$f")"
 done
@@ -125,27 +132,27 @@ prune_dangling "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.claude/lib" "$HOME
 
 # ---- 4b. 회사 전용 설정 (git 미추적, 있을 때만) ----
 # 전부 유저 레벨(~/.claude)로만 배포한다. 프로젝트 레벨 .claude 는 쓰지 않는다.
-if [ -d "$REPO_DIR/example" ]; then
+if [ -d "$REPO_DIR/private" ]; then
   log "회사 전용 설정 symlink"
-  for f in "$REPO_DIR"/example/claude/*.md; do
+  for f in "$REPO_DIR"/private/claude/*.md; do
     [ -e "$f" ] || continue
     link_file "$f" "$HOME/.claude/$(basename "$f")"
   done
-  for skill_dir in "$REPO_DIR/example/claude/skills"/*/; do
+  for skill_dir in "$REPO_DIR/private/claude/skills"/*/; do
     [ -d "$skill_dir" ] || continue
     link_file "${skill_dir%/}" "$HOME/.claude/skills/$(basename "${skill_dir%/}")"
   done
-  for lib_entry in "$REPO_DIR/example/claude/lib"/*; do
+  for lib_entry in "$REPO_DIR/private/claude/lib"/*; do
     [ -e "$lib_entry" ] || continue
     link_file "$lib_entry" "$HOME/.claude/lib/$(basename "$lib_entry")"
   done
-  for hook in "$REPO_DIR/example/claude/hooks"/*; do
+  for hook in "$REPO_DIR/private/claude/hooks"/*; do
     [ -e "$hook" ] || continue
     link_file "$hook" "$HOME/.claude/hooks/$(basename "$hook")"
   done
-  link_file "$REPO_DIR/example/claude/instructions" "$HOME/.claude/instructions"
+  link_file "$REPO_DIR/private/claude/instructions" "$HOME/.claude/instructions"
 else
-  warn "example/ 없음: 회사 전용 설정은 건너뜁니다 (새 맥이면 별도로 복사해야 합니다)"
+  warn "private/ 없음: 회사 전용 설정은 건너뜁니다 (새 맥이면 별도로 복사해야 합니다)"
 fi
 
 # ---- 5. Codex 설정 ----
@@ -161,7 +168,7 @@ link_file "$REPO_DIR/codex/rules/default.rules" "$HOME/.codex/rules/default.rule
 # Codex 는 Claude 와 같은 SKILL.md 를 본다. 사본을 두지 않는다.
 CODEX_SKILLS="cso guard plan-review review"
 for skill_name in $CODEX_SKILLS; do
-  src=$(find "$REPO_DIR/claude/skills" "$REPO_DIR/example/claude/skills" \
+  src=$(find "$REPO_DIR/claude/skills" "$REPO_DIR/private/claude/skills" \
           -maxdepth 2 -type d -name "$skill_name" 2>/dev/null | head -1)
   if [ -n "$src" ]; then
     link_file "$src" "$HOME/.codex/skills/$skill_name"
@@ -177,7 +184,7 @@ log "VSCode 설정 symlink"
 VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
 if [ -d "/Applications/Visual Studio Code.app" ] || command -v code >/dev/null 2>&1; then
   mkdir -p "$VSCODE_USER_DIR"
-  link_file "$REPO_DIR/vscode/settings.json"    "$VSCODE_USER_DIR/settings.json"
+  link_file "$(pick_settings vscode/settings.json)" "$VSCODE_USER_DIR/settings.json"
   link_file "$REPO_DIR/vscode/keybindings.json" "$VSCODE_USER_DIR/keybindings.json"
   ok "VSCode settings.json / keybindings.json symlink 완료"
   ok "확장은 Brewfile의 'vscode \"...\"' 라인으로 자동 설치됨"

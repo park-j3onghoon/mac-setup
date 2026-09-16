@@ -3,9 +3,6 @@ model_reasoning_effort = "xhigh"
 
 [features]
 codex_hooks = true
-[projects."/Users/teddy.park/example/ad-server"]
-trust_level = "trusted"
-
 [projects."/Users/teddy.park/git/mac-setup"]
 trust_level = "trusted"
 
@@ -15,13 +12,7 @@ trust_level = "trusted"
 [projects."/Users/teddy.park/git/screen-clicker"]
 trust_level = "trusted"
 
-[projects."/Users/teddy.park/example"]
-trust_level = "trusted"
-
 [projects."/Users/teddy.park/git/linkcart"]
-trust_level = "trusted"
-
-[projects."/Users/teddy.park/example/admin-center"]
 trust_level = "trusted"
 
 [tui]

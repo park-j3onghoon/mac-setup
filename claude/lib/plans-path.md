@@ -27,10 +27,10 @@
 여러 레포에 걸치는 작업. 계획은 쪼개지 않는다.
 
 ```
-~/plans/plb-22-payout-automation/notes/plan.md           전체 계획
-~/plans/plb-22-payout-automation/notes/decisions.md
-~/plans/plb-22-payout-automation/payments-api/grpc-servicer-plan.md
-~/plans/plb-22-payout-automation/mobile-app/bff-plan.md
+~/plans/payout-automation/notes/plan.md           전체 계획
+~/plans/payout-automation/notes/decisions.md
+~/plans/payout-automation/payments-api/grpc-servicer-plan.md
+~/plans/payout-automation/mobile-bff/bff-plan.md
 ```
 
 레포를 안 건드리는 작업

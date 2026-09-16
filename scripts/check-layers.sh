@@ -6,8 +6,8 @@ import re, sys
 from pathlib import Path
 
 HOME = Path.home()
-SKILL_ROOTS = [HOME/"git/mac-setup/claude/skills", HOME/"git/mac-setup/example/claude/skills"]
-LIB_ROOTS   = [HOME/"git/mac-setup/claude/lib", HOME/"git/mac-setup/example/claude/lib"]
+SKILL_ROOTS = [HOME/"git/mac-setup/claude/skills", HOME/"git/mac-setup/private/claude/skills"]
+LIB_ROOTS   = [HOME/"git/mac-setup/claude/lib", HOME/"git/mac-setup/private/claude/lib"]
 
 def frontmatter_name(p):
     try:

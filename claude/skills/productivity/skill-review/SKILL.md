@@ -14,7 +14,7 @@ argument-hint: "[스킬 이름 | 전체]"
 인자가 스킬 이름이면 그 하나, 그 외에는 아래 두 곳의 모든 `SKILL.md`를 대상으로 한다.
 
 - `~/git/mac-setup/claude/skills/{engineering,productivity}/` (공개, 버킷 있음)
-- 회사 스킬은 `~/git/mac-setup/example/claude/skills/` 바로 아래에 있고 `~/.claude/skills/` 로 링크된다
+- 회사 스킬은 `~/git/mac-setup/private/claude/skills/` 바로 아래에 있고 `~/.claude/skills/` 로 링크된다
 
 → 완료: 점검할 `SKILL.md` 경로 목록이 확정됐다.
 
@@ -26,7 +26,7 @@ argument-hint: "[스킬 이름 | 전체]"
 - 공개 레포 스킬은 `engineering/`(일상적인 코드 작업) 또는 `productivity/`(일상적인 비코드 업무 도구) 아래에 있다. 버킷은 레포 안에서만 쓴다. 하네스는 `~/.claude/skills/<이름>/SKILL.md` 한 단계만 탐색하므로 `install.sh`가 버킷을 순회해 평평하게 심링크한다.
 - 버킷에 있는 모든 스킬은 최상위 `README.md`에 항목이 있고, 스킬 이름이 그 `SKILL.md`로 링크돼 있다.
 - 각 버킷 폴더에 `README.md`가 있고, 그 버킷의 모든 스킬을 한 줄 설명과 함께 나열하며, 스킬 이름이 `SKILL.md`로 링크돼 있다.
-- 회사 스킬은 `example/claude/skills/` 바로 아래에 두고 목록도 그 트리 안에서만 관리한다(공개 레포다).
+- 회사 스킬은 `private/claude/skills/` 바로 아래에 두고 목록도 그 트리 안에서만 관리한다(공개 레포다).
 
 호출 방식
 - 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터에 두는 것은 이 다섯뿐이다: `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`, 필요하면 `argument-hint`, 그리고 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`.
