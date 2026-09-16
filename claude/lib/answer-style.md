@@ -3,7 +3,7 @@
 독자가 그 이름만 보고 찾아갈 수 있게 쓴다.
 
 - 약어는 첫 등장에 풀네임과 함께 쓴다: `역할 기반 접근 제어(Role-Based Access Control, RBAC)`. 두 번째부터는 약어만 쓴다.
-- 서비스·저장소·테이블·필드는 `~/.claude/lib/data-notation.md`(있을 때)를 Read하고 그 표기를 따른다. "ad-network 테이블"이 아니라 `prod_network-api.v_m1_ad-network_report_data_v002`처럼 이름 하나로 어디 것인지 드러나게 쓴다.
+- 서비스·저장소·테이블·필드는 `~/.claude/lib/data-notation.md`(있을 때)를 Read하고 그 표기를 따른다. "주문 테이블"이 아니라 `prod_orders.v_order_daily.amount`처럼 이름 하나로 어디 것인지 드러나게 쓴다.
 
 ## 정의에 실제 맥락 예시를 붙인다
 

@@ -14,26 +14,6 @@
       "WebSearch(*)",
       "Task(*)",
       "NotebookEdit(*)",
-      "mcp__plugin_internal-plugin_atlassian__getConfluencePage",
-      "mcp__plugin_internal-plugin_atlassian__getConfluencePageDescendants",
-      "mcp__plugin_internal-plugin_atlassian__getConfluencePageFooterComments",
-      "mcp__plugin_internal-plugin_atlassian__getConfluencePageInlineComments",
-      "mcp__plugin_internal-plugin_atlassian__getConfluenceCommentChildren",
-      "mcp__plugin_internal-plugin_atlassian__getConfluenceSpaces",
-      "mcp__plugin_internal-plugin_atlassian__getPagesInConfluenceSpace",
-      "mcp__plugin_internal-plugin_atlassian__searchConfluenceUsingCql",
-      "mcp__plugin_internal-plugin_atlassian__search",
-      "mcp__plugin_internal-plugin_atlassian__fetch",
-      "mcp__plugin_internal-plugin_atlassian__getAccessibleAtlassianResources",
-      "mcp__plugin_internal-plugin_atlassian__getJiraIssue",
-      "mcp__plugin_internal-plugin_atlassian__getJiraIssueRemoteIssueLinks",
-      "mcp__plugin_internal-plugin_atlassian__getJiraIssueTypeMetaWithFields",
-      "mcp__plugin_internal-plugin_atlassian__getJiraProjectIssueTypesMetadata",
-      "mcp__plugin_internal-plugin_atlassian__getTransitionsForJiraIssue",
-      "mcp__plugin_internal-plugin_atlassian__getVisibleJiraProjects",
-      "mcp__plugin_internal-plugin_atlassian__searchJiraIssuesUsingJql",
-      "mcp__plugin_internal-plugin_atlassian__atlassianUserInfo",
-      "mcp__plugin_internal-plugin_atlassian__lookupJiraAccountId",
       "mcp__plugin_slack_slack__slack_read_canvas",
       "mcp__plugin_slack_slack__slack_read_channel",
       "mcp__plugin_slack_slack__slack_read_thread",
@@ -82,15 +62,7 @@
       "mcp__plugin_sentry_sentry__search_issue_events",
       "mcp__plugin_sentry_sentry__search_issues",
       "mcp__plugin_sentry_sentry__whoami",
-      "mcp__Datadog__check_datadog_mcp_setup",
-      "mcp__plugin_internal-plugin_redash__list_data_sources",
-      "mcp__plugin_internal-plugin_redash__list_queries",
-      "mcp__plugin_internal-plugin_redash__list_dashboards",
-      "mcp__plugin_internal-plugin_redash__get_query",
-      "mcp__plugin_internal-plugin_redash__get_dashboard",
-      "mcp__plugin_internal-plugin_redash__get_visualization",
-      "mcp__plugin_internal-plugin_redash__execute_adhoc_query",
-      "mcp__plugin_internal-plugin_redash__execute_query"
+      "mcp__Datadog__check_datadog_mcp_setup"
     ]
   },
   "model": "opus[1m]",
@@ -123,30 +95,6 @@
             "statusMessage": "push/PR 사전 체크"
           }
         ]
-      },
-      {
-        "matcher": "mcp__plugin_internal-plugin_redash__execute_adhoc_query",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME\"/.claude/hooks/query-guard-hook.sh",
-            "timeout": 10,
-            "statusMessage": "쿼리 가드(Athena 파티션 ≤31일)"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME\"/.claude/hooks/jeong-chongmu-context.sh",
-            "timeout": 10,
-            "statusMessage": "#도메인봇 정산 모드"
-          }
-        ]
       }
     ]
   },
@@ -161,22 +109,13 @@
     "sentry@claude-plugins-official": true,
     "figma@claude-plugins-official": false,
     "pyright-lsp@claude-plugins-official": false,
-    "codex@openai-codex": true,
-    "internal-plugin@example-plugins": true,
-    "example-brand@example-plugins": true,
-    "example-dba@example-plugins": true
+    "codex@openai-codex": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
       "source": {
         "source": "github",
         "repo": "openai/codex-plugin-cc"
-      }
-    },
-    "example-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "example/example-plugins"
       }
     }
   },

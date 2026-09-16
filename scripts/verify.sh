@@ -28,14 +28,14 @@ while IFS= read -r f; do
       "$HOME/git/mac-setup/claude/settings.json" >/dev/null 2>&1 \
       && { note "allowed-tools 가 전역 allow 와 중복: $t  ($f)"; fail=1; }
   done < <(sed -n '/^allowed-tools:/,/^[a-z-]*:/p' <<<"$head" | grep -oE '^\s*-\s*\S+' | sed 's/^[[:space:]]*-[[:space:]]*//')
-done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/git/mac-setup/example/claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
+done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/git/mac-setup/private/claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
 
 echo "== 2b. em-dash (answer-style 「문장부호」)"
 em=0
 while IFS= read -r f; do
   n=$(grep -o '—' "$f" | wc -l | tr -d ' ')
   [ "$n" -gt 0 ] && { note "$n 건  ${f#$HOME/git/mac-setup/}"; em=$((em+n)); fail=1; }
-done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/example" \
+done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" \
            \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.html' \) 2>/dev/null \
          | grep -vE '/commands/|reference/invocation\.md|lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
@@ -48,7 +48,7 @@ while IFS= read -r f; do
     exp="${p/#\~/$HOME}"
     [ -e "$exp" ] || { note "MISSING $exp  ($f)"; missing=$((missing+1)); fail=1; }
   done < <(grep -oE '`(~/|/Users/teddy\.park/)[^`]*`' "$f" | tr -d '`' | sort -u)
-done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/example" -name '*.md' 2>/dev/null | grep -vE '/plans/|/commands/')
+done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" -name '*.md' 2>/dev/null | grep -vE '/plans/|/commands/')
 [ "$missing" -eq 0 ] && note "모두 존재"
 
 echo "== 4. JSON 유효성"
@@ -63,11 +63,11 @@ jq -e '.hooks.PreToolUse[] | select(.matcher=="ExitPlanMode")' "$HOME/git/mac-se
   && note "plan 훅 있음" || { note "plan 훅 없음"; fail=1; }
 
 echo "== 6. 회사 트리 git 미추적"
-tracked=$(git -C "$HOME/git/mac-setup" ls-files example | head -3)
+tracked=$(git -C "$HOME/git/mac-setup" ls-files private | head -3)
 if [ -n "$tracked" ]; then
-  note "example 트리가 git 에 추적되고 있습니다(공개 레포):"; echo "$tracked" | sed 's/^/    /'; fail=1
+  note "private 트리가 git 에 추적되고 있습니다(공개 레포):"; echo "$tracked" | sed 's/^/    /'; fail=1
 else
-  note "example/ 추적 0건"
+  note "private/ 추적 0건"
 fi
 
 echo "== 7. 항상 로드되는 파일 크기"
