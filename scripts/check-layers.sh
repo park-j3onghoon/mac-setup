@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 층위 규칙 검사: 하위 모듈(SKILL.md 가 아닌 .md)이 스킬을 호출하거나 소비자 목록을 갖지 않는지,
-# 상위 스킬이 다른 스킬을 단계로 실행하지 않는지 본다. 위반이 있으면 exit 1.
+# 상위 스킬이 다른 스킬을 단계로 실행하지 않는지, 스킬 디렉토리 안 모듈을 다른 스킬이 가리키지 않는지 본다.
+# 위반이 있으면 exit 1. lib/ 밖 최상위 모듈은 NOTICE로만 알린다.
 exec python3 - "$@" <<'PY'
 import re, sys
 from pathlib import Path
@@ -69,9 +70,38 @@ for root in LIB_ROOTS:
     for f in root.rglob("*.md"):
         scan(f, False)
 
+# 배치: 스킬 디렉토리 안의 모듈은 그 스킬만 읽는다. 다른 스킬이나 lib가 가리키면 lib/로 옮길 대상이다.
+MODULE_PTR = re.compile(r"~/\.claude/skills/([\w-]+)/([\w./-]+\.md)")
+# 권고: lib/ 밖 최상위 모듈(~/.claude/*.md)을 가리키면 lib/로 옮길 후보다. 실패로 치지 않는다.
+TOP_PTR = re.compile(r"~/\.claude/([\w.-]+\.md)")
+
+def owner_skill(path):
+    for parent in path.parents:
+        if (parent / "SKILL.md").exists():
+            return parent.name
+        if parent in SKILL_ROOTS or parent in LIB_ROOTS:
+            return None
+    return None
+
+notices = {}
+for root in SKILL_ROOTS + LIB_ROOTS:
+    for f in root.rglob("*.md"):
+        owner = owner_skill(f)
+        for no, ln in enumerate(f.read_text(encoding="utf-8").split("\n"), 1):
+            for m in MODULE_PTR.finditer(ln):
+                if m.group(2) != "SKILL.md" and m.group(1) != owner:
+                    violations.append(("다른 스킬 디렉토리의 모듈을 가리킴(lib/로 옮길 대상)", f, no, ln.strip()))
+            for m in TOP_PTR.finditer(ln):
+                if m.group(1) != "CLAUDE.md":
+                    notices.setdefault(m.group(1), []).append(f"{f}:{no}")
+
 for kind, path, no, line in violations:
     print(f"LAYER: {kind} — {path}:{no}")
     print(f"    {line[:160]}")
+for name, refs in sorted(notices.items()):
+    print(f"NOTICE: lib/ 밖 최상위 모듈 ~/.claude/{name}을 {len(refs)}곳이 가리킴(lib/로 옮길 후보)")
+    for r in refs:
+        print(f"    {r}")
 
 if violations:
     print(f"FAIL: 층위 위반 {len(violations)} 건"); sys.exit(1)
