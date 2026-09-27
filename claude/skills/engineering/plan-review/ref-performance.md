@@ -1,6 +1,6 @@
 # Performance Review Reference
 
-타임아웃·락 유지 범위·배치 실패 집계는 `~/.claude/coding-rules.md` §1 Architecture · §6 Errors에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+타임아웃·락 유지 범위·배치 실패 집계는 `~/.claude/lib/coding-rules.md` §1 Architecture · §6 Errors에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
 
 ## Core Principles
 

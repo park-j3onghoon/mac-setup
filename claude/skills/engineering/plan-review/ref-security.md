@@ -1,6 +1,6 @@
 # Security Review Reference
 
-`~/.claude/coding-rules.md`에는 보안 절이 없어 다른 `ref-*.md`와 달리 포인터가 없다. 아래가 이 차원의 유일한 출처다.
+`~/.claude/lib/coding-rules.md`에는 보안 절이 없어 다른 `ref-*.md`와 달리 포인터가 없다. 아래가 이 차원의 유일한 출처다.
 
 ## Core Principles
 

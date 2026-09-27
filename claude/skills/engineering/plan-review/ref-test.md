@@ -1,6 +1,6 @@
 # Test Coverage Review Reference
 
-TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스트 범위 밖인 대상, flaky 제거, fixture/`now` 주입은 `~/.claude/coding-rules.md` §8 Tests에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스트 범위 밖인 대상, flaky 제거, fixture/`now` 주입은 `~/.claude/lib/coding-rules.md` §8 Tests에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
 
 ## Core Principles
 

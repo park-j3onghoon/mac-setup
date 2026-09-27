@@ -33,7 +33,7 @@ tracer bullet: 진입점에서 저장소까지 관통하는 얇은 슬라이스�
 
 ## 3. 규칙 적재
 
-- `~/.claude/coding-rules.md`를 Read한다. diff가 닿을 스택에 따라 `coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read한다.
+- `~/.claude/lib/coding-rules.md`를 Read한다. diff가 닿을 스택에 따라 `coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read한다.
 - 작업 중인 레포에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그것도 Read한다.
 - API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면 API 규칙 모듈(`~/.claude/lib/api-aip/index.md`)을 Read하고 그 문서의 트랙 판정부터 수행한다(파일이 없는 환경이면 건너뛴다).
 

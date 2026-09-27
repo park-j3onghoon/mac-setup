@@ -1,6 +1,6 @@
 # Architecture Review Reference
 
-원칙(의존성 방향·SOLID·KISS/YAGNI·상태 저장·전이 다이어그램)은 `~/.claude/coding-rules.md` §1 Architecture · §2 Module · §3 Class/Object · §9 Simple Design에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+원칙(의존성 방향·SOLID·KISS/YAGNI·상태 저장·전이 다이어그램)은 `~/.claude/lib/coding-rules.md` §1 Architecture · §2 Module · §3 Class/Object · §9 Simple Design에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
 
 ## 의존성 방향
 
