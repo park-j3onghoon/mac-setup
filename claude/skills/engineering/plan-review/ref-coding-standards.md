@@ -1,6 +1,6 @@
 # Coding Standards Review Reference
 
-관용구·타입 안전·네이밍, import 위치, 불필요한 default, 컬렉션 파라미터, boolean 대신 enum(boolean trap), DRY와 Rule of Three는 `~/.claude/coding-rules.md` §2 Module · §3 Class/Object · §4 Function · §5 Naming · §9 Simple Design에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+관용구·타입 안전·네이밍, import 위치, 불필요한 default, 컬렉션 파라미터, boolean 대신 enum(boolean trap), DRY와 Rule of Three는 `~/.claude/lib/coding-rules.md` §2 Module · §3 Class/Object · §4 Function · §5 Naming · §9 Simple Design에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
 
 ## Checklist
 

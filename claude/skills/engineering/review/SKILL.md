@@ -49,7 +49,7 @@ Agent tool로 세 개를 동시에 띄우고, 레벨이 2 이상이면 보안 �
 
 1. diff 전문(너무 길면 파일별 요약 + 핵심 변경부).
 2. 담당 기준 파일 경로. 서브에이전트가 직접 Read한다.
-3. "`~/.claude/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 적용하라. diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read하라."
+3. "`~/.claude/lib/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 적용하라. diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read하라."
 4. "기준의 각 항목을 빠짐없이 판단한다. 살펴봤는데 발견이 없으면 `PASS`, 이 diff와 무관한 기준이면 `해당 없음`으로 구분해 쓴다."
 5. "발견은 `[CRITICAL|INFO] file:line · 설명` 형식으로 낸다."
 6. "코드베이스 확인이 필요한 것은 Grep/Read로 직접 검증한다" + 아래 [주장 검증](#주장-검증) 4줄.
@@ -121,7 +121,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V
 ! cd {작업 디렉토리 절대경로} && git push
 ```
 
-push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 `~/.claude/pr-rules.md` 가 있으면 그것을 읽고 그대로 따른다(제목의 이슈 ID·assignee·본문 형식).
+push는 사용자가 `!` 접두사로 직접 실행한다. Claude는 `git push`·`gh pr create`를 실행하지 않는다(PreToolUse 훅도 이 둘을 ask로 잡는다). 이어지는 PR 생성은 `~/.claude/lib/pr-rules.md` 가 있으면 그것을 읽고 그대로 따른다(제목의 이슈 ID·assignee·본문 형식).
 
 완료: 크기 판정과 절대경로가 든 push 명령을 사용자에게 전달했다.
 

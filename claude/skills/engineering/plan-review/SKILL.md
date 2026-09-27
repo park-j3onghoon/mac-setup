@@ -59,7 +59,7 @@ AskUserQuestion 1회, 3옵션:
 ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
 1. 계획 전문
 2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
-3. "`~/.claude/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
+3. "`~/.claude/lib/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
 4. "이슈 번호를 {N}부터 시작하라"
 5. "최대 4개 이슈. 없으면 `No issues found.` 반환"
 6. 아래 「리뷰 관점」의 엔지니어링 선호와 인지 패턴
@@ -76,7 +76,7 @@ ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. �
 
 ### C) SMALL CHANGE: 인라인
 
-Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/coding-rules.md`를 직접 Read하고, 차원당 핵심 1개 이슈만 같은 번호 범위로 매겨 한 번에 제시한다.
+Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/lib/coding-rules.md`를 직접 Read하고, 차원당 핵심 1개 이슈만 같은 번호 범위로 매겨 한 번에 제시한다.
 
 완료 기준: 통합 결과를 제시하고 AskUserQuestion 1회로 "어느 이슈를 계획에 반영할지"를 받았다.
 
@@ -145,7 +145,7 @@ AskUserQuestion:
 
 Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
 
-엔지니어링 선호: 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/coding-rules.md` §2 Module "Abstraction discipline" · §9 Simple Design) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+엔지니어링 선호: 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/lib/coding-rules.md` §2 Module "Abstraction discipline" · §9 Simple Design) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
 
 인지 패턴
 1. Blast radius: 최악의 경우 영향 범위
