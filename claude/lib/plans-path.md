@@ -24,7 +24,7 @@
 ~/plans/abc-123-payout-rounding/payments-api/plan.md
 ```
 
-여러 레포에 걸치는 작업. 계획은 쪼개지 않는다.
+여러 레포에 걸치는 작업
 
 ```
 ~/plans/payout-automation/notes/plan.md           전체 계획
@@ -38,14 +38,3 @@
 ```
 ~/plans/settlement-inquiry-stats/notes/analysis.md
 ```
-
-## 파일 이름
-
-| 파일 | 만드는 곳 |
-|---|---|
-| `decisions.md` | `/grill` |
-| `plan.md` | `/plan-review` |
-| `security-report.md` | `/cso` |
-| `security-review.md` | `/sec-review` |
-| `explain.html` | `/explain-html` |
-| RFC 초안 | `/rfc-write` |

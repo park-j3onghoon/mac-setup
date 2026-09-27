@@ -9,12 +9,11 @@ mac-setup/
 ├── install.sh            # 자동 셋업 스크립트 (symlink 기반)
 ├── claude/               # ~/.claude/ 로 symlink 대상
 │   ├── CLAUDE.md
-│   ├── coding-rules*.md
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── skills/           # plan-review, review, cso, guard, hygiene, investigate,
 │   │                     # explain-html, retro, session-review
-│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (review 브리프, codex 교차검증)
+│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, review 브리프, codex 교차검증)
 │   └── commands/sc/      # SuperClaude 명령(미사용이라 install.sh가 링크하지 않는다)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── private/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
@@ -63,7 +62,10 @@ mac-setup/
 
 | 모듈 | 내용 |
 |---|---|
-| [`lib/answer-style.md`](claude/lib/answer-style.md) | 답변·문서 작성 규칙 |
+| [`lib/answer-style.md`](claude/lib/answer-style.md) | 답변·문서 작성 규칙 (`~/.claude/CLAUDE.md`가 import해 모든 답변에 적용) |
+| [`lib/diagram.md`](claude/lib/diagram.md) | 도식 형식 고르기(코드블록 · markdown 표 · HTML) |
+| [`lib/explain-style.md`](claude/lib/explain-style.md) | 개념 설명 서술 방식(ELI5 · why-first · 혼동 쌍 비교 등) |
+| [`lib/coding-rules.md`](claude/lib/coding-rules.md) | 코드 규칙 코어. 스택별 `coding-rules-python`·`-frontend`·`-db`가 같은 폴더에 있다 |
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
 | [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
