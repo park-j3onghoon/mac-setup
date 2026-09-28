@@ -4,17 +4,18 @@ base 대비 추가된 `insertions` 로 PR 크기를 판정한다. 200줄 이하 
 
 ## base 확정
 
-```bash
-BASE=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null || gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)
-```
+이 브랜치의 PR이 있으면 그 `baseRefName`, 없으면 레포 기본 브랜치(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`)가 base다. stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
 
-stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
+```bash
+BASE={위에서 정한 base}
+git -C {작업 디렉토리} fetch origin $BASE --quiet
+```
 
 ## 측정
 
 ```bash
-git diff origin/$BASE...HEAD --shortstat            # "N files changed, A insertions(+), D deletions(-)"
-git diff origin/$BASE...HEAD --numstat | sort -rn   # 파일별 additions 내림차순
+git -C {작업 디렉토리} diff origin/$BASE...HEAD --shortstat            # "N files changed, A insertions(+), D deletions(-)"
+git -C {작업 디렉토리} diff origin/$BASE...HEAD --numstat | sort -rn   # 파일별 additions 내림차순
 ```
 
 - `--shortstat`의 insertions 값이 판정 대상이다.

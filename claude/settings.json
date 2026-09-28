@@ -90,7 +90,7 @@
           },
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command // empty' | grep -qE 'git push|gh pr create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"push 전에 /review 를 실행했나요? 인증·권한·시크릿·결제 변경이면 /cso --diff 도.\"}}'; true",
+            "command": "jq -r '.tool_input.command // empty' | grep -qE 'git push|gh pr create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"리뷰 전 Draft PR을 처음 올리는 push면 그대로 진행하세요. 리뷰 반영분 push면 /implement-review 를 마쳤나요? 인증·권한·시크릿·결제 변경이면 /cso 도.\"}}'; true",
             "timeout": 5,
             "statusMessage": "push/PR 사전 체크"
           }
