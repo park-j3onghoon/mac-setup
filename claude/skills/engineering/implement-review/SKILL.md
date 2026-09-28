@@ -73,8 +73,6 @@ git -C {클론} worktree remove {작업 디렉토리}
 git -C {T} branch -d review/{head}
 ```
 
-`{T}`가 없었으면 리뷰 worktree를 그대로 둔다. 사용자가 커밋을 미뤘으면 리뷰 worktree를 남기고 그 경로를 알린다.
-
-다음은 `/push-commit`이다: 반영분을 push하고 PR 본문을 코드에 맞춘다. 작업 디렉토리는 `{T}`이고, `{T}`가 없었으면 리뷰 worktree다.
+`{T}`가 없었거나 사용자가 커밋을 미뤘으면 리뷰 worktree를 그대로 두고 그 경로를 알린다.
 
 완료: 요약을 냈고, 반영분이 head에 들어갔거나(`{T}`가 있었으면 ff 반영과 리뷰 worktree 정리까지) 사용자가 커밋을 미뤘다.
