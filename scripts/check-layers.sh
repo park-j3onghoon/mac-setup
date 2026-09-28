@@ -58,11 +58,10 @@ def scan(path, is_skill, self_name=None):
     else:
         for no, ln in hits:
             violations.append(("하위 모듈이 스킬을 호출/언급", path, no, ln.strip()))
-        # 코드 스팬 안의 /스킬명도 본다. 경로 인용은 CALL의 앞뒤 조건이 이미 거른다. 작성 예시 문서는 제외한다.
-        if not str(path).endswith("skill-review/reference/docs-sections.md"):
-            for no, ln in enumerate(unfence(text).split("\n"), 1):
-                if any(CALL.search(s) for s in SPAN.findall(ln)):
-                    violations.append(("하위 모듈이 코드 스팬 안에서 스킬을 언급", path, no, ln.strip()))
+        # 코드 스팬 안의 /스킬명도 본다. 경로 인용은 CALL의 앞뒤 조건이 이미 거른다.
+        for no, ln in enumerate(unfence(text).split("\n"), 1):
+            if any(CALL.search(s) for s in SPAN.findall(ln)):
+                violations.append(("하위 모듈이 코드 스팬 안에서 스킬을 언급", path, no, ln.strip()))
         first = text.split("\n", 1)[0]
         if first.startswith("#"):
             paren = re.search(r"[(（]([^)）]*)[)）]", first)
