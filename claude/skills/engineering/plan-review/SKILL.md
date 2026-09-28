@@ -122,7 +122,7 @@ Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
 - C) 원안대로 진행 → Step 4
 - D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
 
-완료 기준: Codex 리포트(stall로 판단해 cancel 후 자체 적대 점검으로 대체했다면 그 고지)를 제시하고 A~D 중 하나를 받았다.
+완료 기준: Codex 리포트를 제시했고, 멈춘 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
 
 ## Step 4: 구현 시작 확인
 
