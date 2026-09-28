@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>흐름 지도</title>
+<style>
+  :root {
+    --ink: #1f2933; --sub: #52606d; --faint: #8a94a1; --line: #e4e7eb; --bg: #f6f5f1; --card: #ffffff;
+    --canvas: #fdfcfa; --grid: rgba(120, 110, 90, .07); --rule: #cfc6b8; --active: #2f6fdb;
+    --warn-bg: #fff6e8; --warn-line: #f2c78a; --warn-ink: #8a4b00;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, sans-serif; line-height: 1.55; }
+  main { max-width: 1600px; margin: 0 auto; padding: 26px 20px 48px; }
+  .top { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 26px; margin: 0; }
+  .asof { border: 1px solid var(--rule); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; color: var(--sub); background: var(--card); }
+  .lead { color: var(--sub); margin: 8px 0 14px; font-size: 14.5px; max-width: 100ch; }
+  .paths { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 0 0 14px; }
+  .paths .plabel { font-size: 13px; font-weight: 700; margin-right: 4px; }
+  .chip { border: 1px solid var(--line); border-left: 4px solid var(--pc); background: var(--card); border-radius: 999px; padding: 5px 14px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); display: inline-flex; gap: 8px; align-items: baseline; }
+  .chip code { font-family: var(--mono); font-size: 12px; color: var(--sub); }
+  .chip.on { box-shadow: 0 0 0 2px var(--ink) inset; }
+  .warn { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); border-radius: 10px; padding: 10px 14px; margin: 0 0 14px; font-size: 13.5px; }
+  .warn ul { margin: 4px 0 0; padding-left: 18px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+  .map, .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  .map { padding: 14px; min-width: 0; }
+  .map-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin: 0 0 10px; }
+  .how { margin: 0; font-size: 13px; color: var(--sub); }
+  .zoom { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+  .zoom button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; min-width: 32px; padding: 3px 9px; font: inherit; font-size: 13px; cursor: pointer; }
+  .zoom span { font-size: 13px; font-weight: 600; min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+  .viewport { overflow: auto; max-height: 78vh; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); }
+  .sizer { position: relative; }
+  .canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; background-color: var(--canvas); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 24px 24px; }
+  .canvas svg { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; }
+  .ghead { position: absolute; z-index: 1; font-size: 12.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--sub); border-bottom: 1.5px solid var(--rule); padding-bottom: 3px; }
+  .node { position: absolute; z-index: 2; text-align: left; border: 1.5px solid var(--c); border-left-width: 4px; background: var(--t); border-radius: 7px; padding: 9px 10px 5px; font: inherit; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,.1); transition: opacity .14s, border-color .14s; }
+  .node .tag { position: absolute; top: -9px; left: 8px; background: var(--canvas); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; font-size: 10.5px; font-weight: 600; color: var(--sub); line-height: 16px; white-space: nowrap; max-width: calc(100% - 70px); overflow: hidden; text-overflow: ellipsis; }
+  .node .st { position: absolute; top: -9px; right: 8px; border-radius: 999px; padding: 0 7px; font-size: 10.5px; font-weight: 700; line-height: 16px; background: var(--canvas); border: 1px solid currentColor; }
+  .node.s-added .st { color: #2e7d32; }
+  .node.s-removed .st { color: #c0392b; }
+  .node .ttl { font-family: var(--mono); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node .sub { font-size: 10.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node.s-removed { border-style: dashed; }
+  .node.s-removed .ttl { text-decoration: line-through; color: var(--sub); }
+  .edge { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .85; transition: opacity .14s, stroke-width .14s; }
+  .edge.dashed { stroke-dasharray: 7 5; }
+  .edge.s-removed { stroke-dasharray: 5 5; opacity: .55; }
+  .edge.s-added { stroke-width: 2.6; }
+  .halo { fill: none; stroke: var(--canvas); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; transition: opacity .14s; }
+  .map.selecting .node:not(.on) { opacity: .24; }
+  .map.selecting .node.on { border-color: var(--ink); border-left-color: var(--c); }
+  .map.selecting .edge:not(.on) { opacity: .08; }
+  .map.selecting .halo:not(.on) { opacity: .15; }
+  .map.selecting .edge.on { stroke: var(--active); stroke-width: 3.4; opacity: 1; marker-end: url(#arr-active); }
+  .map.selecting .halo.on { stroke-width: 10; }
+  .panel { padding: 18px; position: sticky; top: 12px; font-size: 13.5px; }
+  .panel h2 { font-size: 18px; margin: 0 0 8px; overflow-wrap: anywhere; }
+  .panel h2.mono { font-family: var(--mono); font-size: 15.5px; }
+  .panel h3 { font-size: 13px; margin: 16px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--sub); }
+  .panel p { margin: 0 0 8px; color: var(--sub); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+  .pill { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: 600; color: var(--sub); }
+  .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+  .kv dt { color: var(--sub); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li { padding: 3px 0; }
+  .go { border: 0; background: none; padding: 0; font: inherit; font-family: var(--mono); font-size: 12.5px; color: var(--ink); cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; overflow-wrap: anywhere; }
+  .muted { color: var(--faint); font-size: 12px; }
+  .lg { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .lg i { width: 14px; height: 12px; border-radius: 3px; border: 1.5px solid; border-left-width: 4px; flex-shrink: 0; }
+  .lg svg { flex-shrink: 0; }
+  footer { margin-top: 14px; font-size: 13px; color: var(--sub); }
+  footer a { color: var(--sub); }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } .panel { position: static; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1 id="title"></h1><span class="asof" id="asof" hidden></span></div>
+  <p class="lead" id="lead"></p>
+  <section class="paths" id="paths" hidden><span class="plabel">경로</span><span id="chips"></span></section>
+  <div class="warn" id="warn" hidden></div>
+  <div class="layout">
+    <section class="map" id="map">
+      <div class="map-bar">
+        <p class="how">화살표는 왼쪽 원천에서 오른쪽 결과로 흐른다. 경로를 누르면 그 경로만 남고, 노드를 누르면 오른쪽에 이전·다음 단계가 뜬다. 빈 곳을 누르거나 Esc를 누르면 풀린다.</p>
+        <div class="zoom"><button type="button" id="zout" aria-label="축소">-</button><span id="zval">100%</span><button type="button" id="zin" aria-label="확대">+</button><button type="button" id="zfit">맞춤</button></div>
+      </div>
+      <div class="viewport" id="viewport"><div class="sizer" id="sizer"><div class="canvas" id="canvas"></div></div></div>
+    </section>
+    <aside class="panel" id="panel"></aside>
+  </div>
+  <footer id="source"></footer>
+</main>
+
+<!-- 이 JSON만 바꾼다. 형식은 ~/.claude/lib/diagram/flow-map.md 참고 -->
+<script type="application/json" id="diagram-data">
+{
+  "title": "주문 데이터 파이프라인",
+  "asOf": "기준: 2026-09 배포분",
+  "lead": "주문·결제·쿠폰 원천이 데이터 레이크와 집계 서비스를 거쳐 대시보드와 청구서에 닿는 흐름이다. 쿠폰 비용은 개편 뒤 집계 DB 적재 단계를 건너뛴다.",
+  "groups": [
+    { "title": "원천", "from": 1, "span": 1 },
+    { "title": "데이터 레이크", "from": 2, "span": 2 },
+    { "title": "집계 서비스", "from": 4, "span": 2 },
+    { "title": "결과", "from": 6, "span": 1 }
+  ],
+  "kinds": {
+    "node": {
+      "log": { "label": "이벤트 로그", "color": "#c0392b" },
+      "table": { "label": "테이블", "color": "#2e7d32" },
+      "nosql": { "label": "NoSQL", "color": "#b7791f" },
+      "result": { "label": "결과물", "color": "#6b46c1" }
+    },
+    "edge": {
+      "copy": { "label": "적재·복사", "color": "#a79276" },
+      "transform": { "label": "같은 시스템 안 변환", "color": "#7d5ba6" },
+      "write": { "label": "다른 시스템에 쓰기", "color": "#c98a1a" },
+      "result": { "label": "최종 계산", "color": "#53616f", "dashed": true }
+    }
+  },
+  "nodes": [
+    { "id": "ev_view", "title": "events.page_view", "tag": "웹", "sub": "Kafka 토픽", "kind": "log", "col": 1, "row": 1 },
+    { "id": "ev_order", "title": "events.order_placed", "tag": "주문 서비스", "sub": "Kafka 토픽", "kind": "log", "col": 1, "row": 3 },
+    { "id": "payments", "title": "payments", "tag": "결제 DB", "sub": "MySQL 테이블", "kind": "table", "col": 1, "row": 4 },
+    { "id": "refunds", "title": "refunds", "tag": "결제 DB", "sub": "MySQL 테이블", "kind": "table", "col": 1, "row": 5 },
+    { "id": "coupon", "title": "coupon_usage", "tag": "쿠폰 서비스", "sub": "DynamoDB", "kind": "nosql", "col": 1, "row": 7 },
+    { "id": "raw_view", "title": "lake.raw_page_view", "tag": "레이크 원본", "sub": "Parquet · S3", "kind": "table", "col": 2, "row": 1 },
+    { "id": "raw_order", "title": "lake.raw_order_placed", "tag": "레이크 원본", "sub": "Parquet · S3", "kind": "table", "col": 2, "row": 3 },
+    { "id": "raw_pay", "title": "lake.payments", "tag": "레이크 원본", "sub": "Parquet · S3", "kind": "table", "col": 2, "row": 4 },
+    { "id": "raw_refund", "title": "lake.refunds", "tag": "레이크 원본", "sub": "Parquet · S3", "kind": "table", "col": 2, "row": 5 },
+    { "id": "raw_coupon", "title": "lake.coupon_usage", "tag": "레이크 원본", "sub": "Parquet · S3", "kind": "table", "col": 2, "row": 7 },
+    { "id": "visit_daily", "title": "lake.visit_daily", "tag": "레이크 가공", "sub": "Iceberg", "kind": "table", "col": 3, "row": 1 },
+    { "id": "order_daily", "title": "lake.order_daily", "tag": "레이크 가공", "sub": "Iceberg", "kind": "table", "col": 3, "row": 3,
+      "detail": { "갱신": "order_daily_build (매시 10분)", "코드": "https://example.com/repo/jobs/order_daily.sql" } },
+    { "id": "coupon_daily", "title": "lake.coupon_daily", "tag": "레이크 가공", "sub": "Iceberg", "kind": "table", "col": 3, "row": 7,
+      "detail": { "갱신": "coupon_daily_build (매시 20분)" } },
+    { "id": "rep_order", "title": "report.order_daily", "tag": "집계 DB", "sub": "MySQL 테이블", "kind": "table", "col": 4, "row": 3,
+      "detail": { "갱신": "import_order_daily (매일 01:00)" } },
+    { "id": "rep_refund", "title": "report.refund_daily", "tag": "집계 DB", "sub": "MySQL 테이블", "kind": "table", "col": 4, "row": 5 },
+    { "id": "rep_coupon", "title": "report.coupon_daily", "tag": "집계 DB", "sub": "MySQL 테이블", "kind": "table", "col": 4, "row": 7, "state": "removed",
+      "detail": { "비고": "개편 뒤 적재하지 않는다" } },
+    { "id": "revenue", "title": "report.revenue_summary", "tag": "집계 DB", "sub": "MySQL 테이블", "kind": "table", "col": 5, "row": 4,
+      "detail": { "갱신": "assemble_revenue (매일 02:00)", "비고": "환불과 쿠폰 할인을 빼고 합친다" } },
+    { "id": "cost", "title": "report.cost_summary", "tag": "집계 DB", "sub": "MySQL 테이블", "kind": "table", "col": 5, "row": 7 },
+    { "id": "dashboard", "title": "dashboard", "tag": "BI", "sub": "매출 대시보드", "kind": "result", "col": 6, "row": 1 },
+    { "id": "invoice", "title": "invoice", "tag": "청구", "sub": "월 청구서", "kind": "result", "col": 6, "row": 5 }
+  ],
+  "edges": [
+    { "from": "ev_view", "to": "raw_view", "kind": "copy", "label": "10분마다" },
+    { "from": "ev_order", "to": "raw_order", "kind": "copy", "label": "10분마다" },
+    { "from": "payments", "to": "raw_pay", "kind": "copy", "label": "매시 스냅샷" },
+    { "from": "refunds", "to": "raw_refund", "kind": "copy", "label": "매시 스냅샷" },
+    { "from": "coupon", "to": "raw_coupon", "kind": "copy", "label": "매시 내보내기" },
+    { "from": "raw_view", "to": "visit_daily", "kind": "transform" },
+    { "from": "raw_order", "to": "order_daily", "kind": "transform" },
+    { "from": "raw_pay", "to": "order_daily", "kind": "transform" },
+    { "from": "raw_coupon", "to": "coupon_daily", "kind": "transform" },
+    { "from": "order_daily", "to": "rep_order", "kind": "write" },
+    { "from": "raw_refund", "to": "rep_refund", "kind": "write" },
+    { "from": "coupon_daily", "to": "rep_coupon", "kind": "write", "state": "removed" },
+    { "from": "coupon_daily", "to": "cost", "kind": "write", "state": "added", "label": "개편 뒤 바로 쓰기" },
+    { "from": "coupon_daily", "to": "revenue", "kind": "write", "label": "쿠폰 할인액" },
+    { "from": "rep_order", "to": "revenue", "kind": "transform" },
+    { "from": "rep_refund", "to": "revenue", "kind": "transform" },
+    { "from": "rep_coupon", "to": "cost", "kind": "transform", "state": "removed" },
+    { "from": "visit_daily", "to": "dashboard", "kind": "result" },
+    { "from": "revenue", "to": "dashboard", "kind": "result" },
+    { "from": "revenue", "to": "invoice", "kind": "result" },
+    { "from": "cost", "to": "invoice", "kind": "result" }
+  ],
+  "paths": [
+    { "id": "sales", "title": "주문 매출", "target": "invoice", "nodes": ["ev_order", "payments", "raw_order", "raw_pay", "order_daily", "rep_order", "revenue", "invoice"],
+      "desc": "주문 이벤트와 결제 테이블을 합쳐 일 매출을 만들고 청구서에 싣는다." },
+    { "id": "refund", "title": "환불", "target": "invoice", "nodes": ["refunds", "raw_refund", "rep_refund", "revenue", "invoice"],
+      "desc": "환불은 레이크 가공 없이 집계 DB로 바로 쓰고 매출 요약에서 뺀다." },
+    { "id": "coupon_before", "title": "쿠폰 비용 (개편 전)", "target": "invoice", "when": "before", "nodes": ["coupon", "raw_coupon", "coupon_daily", "rep_coupon", "cost", "invoice"],
+      "desc": "레이크 가공 테이블을 집계 DB에 한 번 적재한 뒤 비용 요약을 만든다." },
+    { "id": "coupon_after", "title": "쿠폰 비용 (개편 후)", "target": "invoice", "when": "after", "nodes": ["coupon", "raw_coupon", "coupon_daily", "cost", "invoice"],
+      "desc": "report.coupon_daily 적재를 없애고 레이크 가공 테이블에서 비용 요약으로 바로 쓴다." }
+  ],
+  "source": { "label": "정본 문서: docs/order-pipeline.md", "href": "https://example.com/repo/docs/order-pipeline.md" }
+}
+</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById('diagram-data').textContent);
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const hex = v => (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v || '') ? v : null);
+  const rgb = h => { const v = h.replace('#', ''); const x = v.length === 3 ? v.split('').map(c => c + c).join('') : v; return [0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16)); };
+  const rgba = (h, a) => `rgba(${rgb(h).join(',')},${a})`;
+  const nodeKinds = (D.kinds && D.kinds.node) || {}, edgeKinds = (D.kinds && D.kinds.edge) || {};
+  const nodeColor = n => hex(nodeKinds[n.kind] && nodeKinds[n.kind].color) || '#6b7785';
+  const edgeColor = e => hex(edgeKinds[e.kind] && edgeKinds[e.kind].color) || '#8a94a1';
+  const CHIP_COLORS = ['#c0392b', '#2b6cb0', '#2e7d32', '#b7791f', '#6b46c1', '#53616f'];
+
+  const COL_W = D.colWidth || 230, GAP_X = D.gapX || 104, ROW_H = 56, GAP_Y = 18, PAD = 24, HEAD_H = 58;
+  const CORNER = 8, HOP_R = 5, HOP_M = 16;
+  const warnings = [];
+
+  const nodes = new Map();
+  (D.nodes || []).forEach(n => {
+    if (nodes.has(n.id)) warnings.push(`노드 id 중복: ${n.id}`);
+    nodes.set(n.id, { ...n, col: Number(n.col) || 1, row: Number(n.row) || 1, ins: [], outs: [] });
+  });
+  const occ = new Map();
+  nodes.forEach(n => {
+    const key = `${n.col}:${n.row}`;
+    if (occ.has(key)) warnings.push(`같은 칸에 노드 둘: ${occ.get(key)}, ${n.id} (열 ${n.col}, 줄 ${n.row})`);
+    occ.set(key, n.id);
+  });
+  const edges = (D.edges || []).filter(e => {
+    const a = nodes.get(e.from), b = nodes.get(e.to);
+    if (!a || !b) { warnings.push(`화살표 ${e.from} -> ${e.to}: 없는 노드`); return false; }
+    if (b.col <= a.col) { warnings.push(`화살표 ${e.from} -> ${e.to}: 오른쪽 열로만 갈 수 있다 (열 ${a.col} -> ${b.col})`); return false; }
+    return true;
+  }).map((e, i) => ({ ...e, i }));
+  edges.forEach(e => { nodes.get(e.from).outs.push(e); nodes.get(e.to).ins.push(e); });
+  const paths = new Map((D.paths || []).map((p, i) => [p.id, { ...p, color: hex(p.color) || CHIP_COLORS[i % CHIP_COLORS.length] }]));
+  const fitsWhen = (p, x) => !(p.when === 'before' && x.state === 'added') && !(p.when === 'after' && x.state === 'removed');
+  paths.forEach(p => {
+    (p.nodes || []).forEach(id => { if (!nodes.has(id)) warnings.push(`경로 ${p.title}: 없는 노드 ${id}`); });
+    if (p.target && !(p.nodes || []).includes(p.target)) warnings.push(`경로 ${p.title}: 도착 노드 ${p.target}가 nodes에 없다`);
+    const set = new Set((p.nodes || []).filter(id => nodes.has(id) && fitsWhen(p, nodes.get(id))));
+    set.forEach(id => {
+      if (id === p.target) return;
+      const next = nodes.get(id).outs.some(e => set.has(e.to) && fitsWhen(p, e));
+      if (!next) warnings.push(`경로 ${p.title}: ${nodes.get(id).title}에서 다음 노드로 이어지는 화살표가 없다`);
+    });
+  });
+
+  const C = Math.max(1, ...[...nodes.values()].map(n => n.col));
+  const R = Math.max(1, ...[...nodes.values()].map(n => n.row));
+  const colX = c => PAD + (c - 1) * (COL_W + GAP_X);
+  const rowY = r => HEAD_H + (r - 1) * (ROW_H + GAP_Y);
+  const W = PAD * 2 + C * COL_W + (C - 1) * GAP_X;
+  const H = HEAD_H + R * ROW_H + (R - 1) * GAP_Y + PAD + GAP_Y;
+  nodes.forEach(n => { n.x = colX(n.col); n.y = rowY(n.row); });
+
+  const clearRow = (row, c1, c2) => { for (let c = c1 + 1; c < c2; c++) if (occ.has(`${c}:${row}`)) return false; return true; };
+  edges.forEach(e => {
+    const a = nodes.get(e.from), b = nodes.get(e.to);
+    const clear = clearRow(a.row, a.col, b.col);
+    e.straight = a.row === b.row && clear;
+    e.detour = !e.straight && !clear;
+  });
+  const laneTargets = new Map();
+  edges.filter(e => !e.straight).forEach(e => {
+    const b = nodes.get(e.to);
+    if (!laneTargets.has(b.col)) laneTargets.set(b.col, new Map());
+    laneTargets.get(b.col).set(b.id, b);
+  });
+  const laneX = b => {
+    const list = [...laneTargets.get(b.col).values()].sort((p, q) => p.row - q.row);
+    const i = list.findIndex(n => n.id === b.id), k = list.length;
+    const step = Math.min(12, (GAP_X * 0.55) / Math.max(k - 1, 1));
+    return colX(b.col) - GAP_X / 2 + (i - (k - 1) / 2) * step;
+  };
+  const simplify = pts => {
+    const out = [];
+    for (const p of pts) {
+      const last = out[out.length - 1];
+      if (last && last[0] === p[0] && last[1] === p[1]) continue;
+      if (out.length >= 2) {
+        const q = out[out.length - 2];
+        if ((q[0] === last[0] && last[0] === p[0]) || (q[1] === last[1] && last[1] === p[1])) out.pop();
+      }
+      out.push(p);
+    }
+    return out;
+  };
+  edges.forEach(e => {
+    const a = nodes.get(e.from), b = nodes.get(e.to);
+    const sx = a.x + COL_W, sy = a.y + ROW_H / 2, ex = b.x, ey = b.y + ROW_H / 2;
+    if (e.straight) { e.pts = [[sx, sy], [ex, ey]]; return; }
+    const cx = laneX(b);
+    if (!e.detour) { e.pts = simplify([[sx, sy], [cx, sy], [cx, ey], [ex, ey]]); return; }
+    const gx = sx + 10, gy = a.y + ROW_H + GAP_Y / 2;
+    e.pts = simplify([[sx, sy], [gx, sy], [gx, gy], [cx, gy], [cx, ey], [ex, ey]]);
+  });
+
+  const segs = [];
+  edges.forEach(e => {
+    e.hops = {};
+    e.pts.forEach((p, i) => { if (i) { const q = e.pts[i - 1]; segs.push({ e, i: i - 1, x1: q[0], y1: q[1], x2: p[0], y2: p[1], h: q[1] === p[1] }); } });
+  });
+  for (const s of segs) {
+    if (!s.h) continue;
+    const hx1 = Math.min(s.x1, s.x2), hx2 = Math.max(s.x1, s.x2), y = s.y1;
+    for (const v of segs) {
+      if (v.h || v.e === s.e || v.e.to === s.e.to || v.e.from === s.e.from) continue;
+      const x = v.x1, vy1 = Math.min(v.y1, v.y2), vy2 = Math.max(v.y1, v.y2);
+      if (x > hx1 + HOP_M && x < hx2 - HOP_M && y > vy1 + 4 && y < vy2 - 4) {
+        const list = (s.e.hops[s.i] = s.e.hops[s.i] || []);
+        if (!list.some(h => Math.abs(h - x) < HOP_R * 2 + 2)) list.push(x);
+      }
+    }
+  }
+  const pathD = e => {
+    const pts = e.pts;
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [px, py] = pts[i - 1], [x, y] = pts[i];
+      const hops = e.hops[i - 1];
+      if (hops && py === y) {
+        const dir = Math.sign(x - px);
+        hops.slice().sort((a, b) => dir * (a - b)).forEach(hx => {
+          d += ` L${hx - dir * HOP_R},${y} A${HOP_R},${HOP_R} 0 0 ${dir > 0 ? 1 : 0} ${hx + dir * HOP_R},${y}`;
+        });
+      }
+      if (i < pts.length - 1) {
+        const [nx, ny] = pts[i + 1];
+        const r = Math.min(CORNER, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
+        d += ` L${x - Math.sign(x - px) * r},${y - Math.sign(y - py) * r} Q${x},${y} ${x + Math.sign(nx - x) * r},${y + Math.sign(ny - y) * r}`;
+      } else d += ` L${x},${y}`;
+    }
+    return d;
+  };
+
+  $('title').textContent = D.title || '';
+  document.title = D.title || document.title;
+  if (D.asOf) { $('asof').hidden = false; $('asof').textContent = D.asOf; }
+  $('lead').textContent = D.lead || '';
+  if (paths.size) {
+    $('paths').hidden = false;
+    $('chips').innerHTML = [...paths.values()].map(p => `<button type="button" class="chip" data-path="${esc(p.id)}" style="--pc:${p.color}"><b>${esc(p.title)}</b>${p.target && nodes.has(p.target) ? `<code>${esc(nodes.get(p.target).title)}</code>` : ''}</button>`).join(' ');
+  }
+  if (D.source) {
+    const list = Array.isArray(D.source) ? D.source : [D.source];
+    $('source').innerHTML = list.map(s => (s.href ? `<a href="${esc(s.href)}" target="_blank" rel="noopener">${esc(s.label || s.href)}</a>` : esc(s.label))).join(' · ');
+  }
+  if (warnings.length) {
+    $('warn').hidden = false;
+    $('warn').innerHTML = `<b>데이터 확인 필요</b><ul>${warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`;
+  }
+
+  const canvas = $('canvas');
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  let html = (D.groups || []).map(g => {
+    const x = colX(g.from), w = (g.span || 1) * COL_W + ((g.span || 1) - 1) * GAP_X;
+    return `<div class="ghead" style="left:${x}px;top:16px;width:${w}px">${esc(g.title)}</div>`;
+  }).join('');
+  const markers = Object.entries(edgeKinds).map(([k, v]) => [k, hex(v.color) || '#8a94a1']).concat([['default', '#8a94a1'], ['active', getComputedStyle(document.documentElement).getPropertyValue('--active').trim() || '#2f6fdb']]);
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><defs>${markers.map(([k, c]) => `<marker id="arr-${esc(k)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"></path></marker>`).join('')}</defs>`;
+  const order = [...edges].sort((p, q) => (p.state === 'removed' ? 0 : 1) - (q.state === 'removed' ? 0 : 1) || Object.keys(p.hops).length - Object.keys(q.hops).length);
+  for (const e of order) {
+    const d = pathD(e), k = edgeKinds[e.kind] || {};
+    const title = `${nodes.get(e.from).title} -> ${nodes.get(e.to).title}${k.label ? ' · ' + k.label : ''}${e.label ? ' · ' + e.label : ''}`;
+    svg += `<path class="halo" data-edge="${e.i}" d="${d}"></path>`;
+    svg += `<path class="edge${k.dashed ? ' dashed' : ''}${e.state ? ' s-' + esc(e.state) : ''}" data-edge="${e.i}" d="${d}" stroke="${edgeColor(e)}" marker-end="url(#arr-${edgeKinds[e.kind] ? esc(e.kind) : 'default'})"><title>${esc(title)}</title></path>`;
+  }
+  svg += '</svg>';
+  const ST = { added: '새로 생김', removed: '없어짐' };
+  nodes.forEach(n => {
+    const c = nodeColor(n);
+    html += `<button type="button" class="node${n.state ? ' s-' + esc(n.state) : ''}" data-node="${esc(n.id)}" title="${esc(n.title)}" style="left:${n.x}px;top:${n.y}px;width:${COL_W}px;height:${ROW_H}px;--c:${c};--t:${rgba(c, .06)}">`
+      + (n.tag ? `<span class="tag">${esc(n.tag)}</span>` : '')
+      + (ST[n.state] ? `<span class="st">${ST[n.state]}</span>` : '')
+      + `<span class="ttl">${esc(n.title)}</span>${n.sub ? `<span class="sub">${esc(n.sub)}</span>` : ''}</button>`;
+  });
+  canvas.innerHTML = svg + html;
+
+  const panel = $('panel'), map = $('map');
+  const lineSample = (c, dashed) => `<svg width="30" height="10" aria-hidden="true"><line x1="1" y1="5" x2="29" y2="5" stroke="${c}" stroke-width="2.4" ${dashed ? 'stroke-dasharray="6 4"' : ''}></line></svg>`;
+  const legend = () => {
+    const nk = Object.values(nodeKinds).map(k => `<div class="lg"><i style="border-color:${hex(k.color) || '#6b7785'};background:${rgba(hex(k.color) || '#6b7785', .06)}"></i>${esc(k.label)}</div>`).join('');
+    const ek = Object.values(edgeKinds).map(k => `<div class="lg">${lineSample(hex(k.color) || '#8a94a1', k.dashed)}${esc(k.label)}</div>`).join('');
+    const hasState = [...nodes.values(), ...edges].some(x => x.state);
+    const st = hasState ? `<div class="lg">${lineSample('#8a94a1', true)}없어지는 화살표·노드(점선)</div>` : '';
+    return `<h3>노드</h3>${nk}<h3>화살표</h3>${ek}<div class="lg">${lineSample(getComputedStyle(document.documentElement).getPropertyValue('--active').trim(), false)}선택한 경로</div>${st}`;
+  };
+  const nodeLink = (id, extra = '') => `<li><button type="button" class="go" data-go="${esc(id)}">${esc(nodes.get(id).title)}</button>${extra ? ` <span class="muted">${esc(extra)}</span>` : ''}</li>`;
+  const panelDefault = () => {
+    panel.innerHTML = `<h2>${esc(D.panelTitle || '읽는 법')}</h2><p>${esc(D.panelText || '노드는 테이블·토픽처럼 데이터가 머무는 곳이고, 화살표는 데이터가 옮겨 가는 단계다. 위의 경로를 고르면 그 경로만 강조된다.')}</p>${legend()}`;
+  };
+  const panelPath = p => {
+    const whenText = p.when === 'before' ? '변경 전' : p.when === 'after' ? '변경 후' : '';
+    panel.innerHTML = `<h2>${esc(p.title)}</h2><div class="pills">${p.target && nodes.has(p.target) ? `<span class="pill">도착: ${esc(nodes.get(p.target).title)}</span>` : ''}${whenText ? `<span class="pill">${whenText}</span>` : ''}</div>`
+      + (p.desc ? `<p>${esc(p.desc)}</p>` : '')
+      + `<h3>거치는 노드</h3><ul class="list">${(p.nodes || []).filter(id => nodes.has(id)).map(id => nodeLink(id)).join('')}</ul>`;
+  };
+  const panelNode = n => {
+    const kindLabel = nodeKinds[n.kind] && nodeKinds[n.kind].label;
+    const detail = n.detail ? `<h3>상세</h3><dl class="kv">${Object.entries(n.detail).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${/^https?:\/\//.test(String(v)) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</dd>`).join('')}</dl>` : '';
+    const edgeText = e => [edgeKinds[e.kind] && edgeKinds[e.kind].label, e.label, e.state && ST[e.state]].filter(Boolean).join(' · ');
+    panel.innerHTML = `<h2 class="mono">${esc(n.title)}</h2><div class="pills">${[n.tag, n.sub, kindLabel, ST[n.state]].filter(Boolean).map(t => `<span class="pill">${esc(t)}</span>`).join('')}</div>${detail}`
+      + `<h3>이전 단계</h3>${n.ins.length ? `<ul class="list">${n.ins.map(e => nodeLink(e.from, edgeText(e))).join('')}</ul>` : '<p class="muted">없음 (원천)</p>'}`
+      + `<h3>다음 단계</h3>${n.outs.length ? `<ul class="list">${n.outs.map(e => nodeLink(e.to, edgeText(e))).join('')}</ul>` : '<p class="muted">없음 (결과)</p>'}`;
+  };
+
+  let sel = null;
+  const select = s => {
+    sel = s && sel && s.type === sel.type && s.id === sel.id ? null : s;
+    map.classList.toggle('selecting', !!sel);
+    canvas.querySelectorAll('.on').forEach(el => el.classList.remove('on'));
+    document.querySelectorAll('.chip.on').forEach(el => el.classList.remove('on'));
+    if (!sel) { panelDefault(); return; }
+    const onNodes = new Set(), onEdges = new Set();
+    if (sel.type === 'path') {
+      const p = paths.get(sel.id), set = new Set(p.nodes || []);
+      nodes.forEach(n => { if (set.has(n.id) && fitsWhen(p, n)) onNodes.add(n.id); });
+      edges.forEach(e => { if (onNodes.has(e.from) && onNodes.has(e.to) && fitsWhen(p, e)) onEdges.add(e.i); });
+      document.querySelector(`.chip[data-path="${CSS.escape(p.id)}"]`).classList.add('on');
+      panelPath(p);
+    } else {
+      const n = nodes.get(sel.id);
+      onNodes.add(n.id);
+      n.ins.forEach(e => { onNodes.add(e.from); onEdges.add(e.i); });
+      n.outs.forEach(e => { onNodes.add(e.to); onEdges.add(e.i); });
+      panelNode(n);
+    }
+    onNodes.forEach(id => canvas.querySelector(`.node[data-node="${CSS.escape(id)}"]`).classList.add('on'));
+    onEdges.forEach(i => canvas.querySelectorAll(`[data-edge="${i}"]`).forEach(el => el.classList.add('on')));
+  };
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('.chip'), node = e.target.closest('.node'), go = e.target.closest('[data-go]');
+    if (chip) select({ type: 'path', id: chip.dataset.path });
+    else if (node) select({ type: 'node', id: node.dataset.node });
+    else if (go) { sel = null; select({ type: 'node', id: go.dataset.go }); }
+    else if (e.target.closest('#canvas')) { sel = null; select(null); }
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { sel = null; select(null); } });
+
+  const viewport = $('viewport'), sizer = $('sizer');
+  let z = 1;
+  const setZoom = (v, exact) => {
+    z = Math.min(1.6, Math.max(0.3, exact ? v : Math.round(v * 20) / 20));
+    canvas.style.transform = `scale(${z})`;
+    sizer.style.width = W * z + 'px';
+    sizer.style.height = H * z + 'px';
+    $('zval').textContent = Math.round(z * 100) + '%';
+  };
+  const fit = () => setZoom(Math.min(1, Math.floor((viewport.clientWidth - 2) / W * 100) / 100), true);
+  $('zin').addEventListener('click', () => setZoom(z + 0.1));
+  $('zout').addEventListener('click', () => setZoom(z - 0.1));
+  $('zfit').addEventListener('click', fit);
+  fit();
+  panelDefault();
+})();
+</script>
+</body>
+</html>
