@@ -18,7 +18,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - Domain event / message bus (canon): raise a cross-aggregate side effect (send the approval email, bump a counter on another aggregate) as a domain event on the aggregate and handle it after the unit of work commits, never inline from the first aggregate.
 - CQRS / CQS at the boundary: give a command its side effects and a minimal return (id/status) and a query no side effects; split read and write models when their shapes or paths diverge, and give an externally served query endpoint its own read model rather than a repository projection.
 - Bounded context (canon): keep each service/module's own terms and model and translate at the boundary (anti-corruption mapping in the adapter) instead of importing another context's entity or enum into the domain.
-- Validation ladder: place each check where its criterion lives (type → ①, single value → ②, relation → ③), because one place for everything (all in a DRF Serializer) ties the domain to one entrypoint and misses the next one:
+- Validation ladder: place each check where its criterion lives, because one place for everything (all in a DRF Serializer) ties the domain to one entrypoint and misses the next one:
   1. Type/format → entrypoint (DRF Serializer, View, Controller): "does raw input parse to the right type": `"abc"` → int fails with 400; (de)serialization lives here and the domain/service never sees JSON or HTTP.
   2. Single-value invariant → value object constructor: "is this one value valid": `Quantity(-5)` is rejected in `__post_init__`; this is the last line of defence, kept even when the entrypoint duplicates it (entrypoints multiply: HTTP, CLI, queue, batch, tests).
   3. Relational rule → domain behaviour: "given several objects' state, may this operation run": `line.qty > batch.available_quantity` in a `can_xxx()` query or guard raising a domain exception (`OutOfStock`) that the entrypoint translates to an HTTP status.
@@ -62,7 +62,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - LSP: make a Fake repository honour the real one's contract (update of a missing row raises `NotFound` in both) so tests and production agree.
 - ISP: expose narrow port methods (`count_by_status()`) instead of forcing a caller to take `find_all()` for a count.
 - DIP: a usecase depends on the port abstraction and infrastructure implements it, never the reverse.
-- Value object (canon): immutable, equal by value, invariants enforced in the constructor (Architecture "Validation ladder" ②).
+- Value object (canon): immutable, equal by value, invariants enforced in the constructor (Architecture "Validation ladder": single-value invariant).
 - Always-valid entity: check state transitions inside entity methods and raise a domain exception on an invalid one; never rely on caller checks, which scatter invariants and get missed.
 - Rich domain (canon): put behaviour that reads or changes an entity's state on the entity (`payout.approve(now)`), not as `if` chains over its fields in a usecase; an anemic entity is acceptable only for plain CRUD.
 - Tell, don't ask / Law of Demeter (canon): call `order.mark_paid(now)` instead of reading `order.status` and assigning from the usecase; a method talks to its own fields, its parameters and objects it creates, with no `a.b().c().d()` chains.
@@ -156,7 +156,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 
 ## 9. Simple Design & Refactoring
 
-- Four rules (Kent Beck, in priority order): ① tests pass ② reveals intention ③ no duplication ④ fewest elements.
+- Four rules (Kent Beck, in priority order): tests pass, reveals intention, no duplication, fewest elements.
 - DRY of knowledge only: give every fact/decision one source of truth, but leave code that merely looks alike and changes for different reasons (accidental duplication) apart (how much to extract: Module "Abstraction discipline").
 - YAGNI: build nothing not needed now; defensive logic without PRD/design basis (a cancel-confirmation modal) is left out unless it prevents irreversible user loss; pre-extracting shared code for a planned later PR is a planned split, not a YAGNI violation.
 - KISS: the simplest thing that works; remove accidental complexity before adding structure.
