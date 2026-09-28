@@ -112,17 +112,17 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/lib/coding-rules.md`�
 
 완료 기준: 그 경로에 파일이 있다.
 
-## Step 3.5: Codex 적대 검증 (모든 실행에서 필수)
+## Step 3.5: Codex 적대 검증
 
-Codex에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈춘 job의 대체, 결과 취급도 그 문서를 따른다.
+모든 실행에서 돈다. Codex에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈춘 job의 대체, 결과 취급도 그 문서를 따른다.
 
-Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
-- A) 제기된 이슈를 전부 Edit 로 plan.md 에 반영 → Step 4
+Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제 요약}`부터 번호를 이어 매긴다. 선택지와 추천은 Claude가 붙이고, Step 1에서 이미 다룬 이슈와 같으면 그 번호를 적는다. 그 목록을 보여 준 뒤 AskUserQuestion 1회:
+- A) 제기된 이슈를 전부 Edit로 plan.md에 반영 → Step 4
 - B) 사용자가 지정한 일부만 반영 → Step 4
 - C) 원안대로 진행 → Step 4
 - D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
 
-완료 기준: Codex 리포트를 제시했고, 멈춘 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
+완료 기준: Codex 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈춘 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
 
 ## Step 4: 구현 시작 확인
 
