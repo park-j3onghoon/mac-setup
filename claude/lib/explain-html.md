@@ -21,7 +21,7 @@
 
 단일 파일 · 무의존: 스타일·스크립트·SVG를 전부 인라인해 오프라인에서 파일 하나로 열리게 한다. 도식은 인라인 SVG·CSS·순수 JS로, 표는 HTML `<table>`로 그린다.
 
-- 시각화 선택: 아키텍처 · 플로우차트(`<line>`+`<marker>`) · 시퀀스(세로 라이프라인 + 가로 화살표) · 상태 전이(원 + 화살표) · 트리(`ul/li` 커넥터) · 타임라인(flex/grid + 수직선) → SVG/CSS · 비교·매핑 → `<table>` · AS-IS/TO-BE → CSS grid 2컬럼 · 선택적 상세 → `<details><summary>`.
+- 시각화 선택: 아키텍처 · 플로우차트(`<line>`+`<marker>`) · 시퀀스(세로 라이프라인 + 가로 화살표) · 상태 전이(원 + 화살표) · 트리(`ul/li` 커넥터) · 타임라인(flex/grid + 수직선) → SVG/CSS · 비교·매핑 → `<table>` · AS-IS/TO-BE → CSS grid 2컬럼 · 선택적 상세 → `<details><summary>`. 양이 분류 사이를 옮겨 가는 도식과 여러 단계를 거치는 흐름 지도는 `~/.claude/lib/diagram/index.md`가 고르는 틀로 그린다.
 - 팔레트는 CSS 변수로: 밝은 배경(흰/연회색) + 어두운 코드 배경, 블루/그린/오렌지/레드/퍼플 액센트, SVG 노드는 흰 배경 + 블루 테두리 + 회색 화살표, 의미색 success(연녹)·warning(연노랑)·error(연빨강)·info(연파랑) + highlight(강조 노랑).
 - flat: 배경은 단색, 그림자는 `0 1px 3px rgba(0,0,0,0.1)` 한 단계까지.
 - SVG: `viewBox` + `max-width: 100%`, 노드 간격 최소 40px, 화살표는 `<marker>`, 라벨은 `<text>`/`<foreignObject>`, colorblind-safe하게 색과 함께 패턴·아이콘으로도 구분.
