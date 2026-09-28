@@ -67,3 +67,15 @@ Brewfile로 대부분 설치되지만, GUI 앱 중 App Store 전용이거나 cas
 ```
 
 `~/.claude/settings.json`의 `enabledPlugins` 필드에 플러그인이 미리 명시되어 있으므로, 설치만 하면 자동 활성화된다.
+
+## 7. VSCode 로컬 확장
+
+`keybindings.json`의 Cmd+B가 쓰는 `gotoDeclarationOrUsages.run` 명령은 마켓플레이스에 없는 로컬 확장이라 Brewfile로 설치되지 않는다.
+
+```bash
+cd ~/git/mac-setup/vscode/extensions/goto-declaration-or-usages
+npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license -o /tmp/goto-declaration-or-usages.vsix
+code --install-extension /tmp/goto-declaration-or-usages.vsix --force
+```
+
+소스를 고쳤으면 `package.json`의 `version`을 올리고 같은 명령으로 다시 설치한 뒤 `Developer: Reload Window`.

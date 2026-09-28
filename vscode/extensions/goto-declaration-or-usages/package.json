@@ -1,0 +1,20 @@
+{
+  "name": "goto-declaration-or-usages",
+  "displayName": "Go to Declaration or Usages",
+  "description": "PyCharm Cmd+B: 사용처에서는 정의로, 정의에서는 사용처로 이동한다",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gotoDeclarationOrUsages.run",
+        "title": "Go to Declaration or Usages"
+      }
+    ]
+  }
+}
