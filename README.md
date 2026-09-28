@@ -12,7 +12,7 @@ mac-setup/
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
-│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, review 브리프, codex 교차검증)
+│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
 │   └── commands/sc/      # SuperClaude 명령(미사용이라 install.sh가 링크하지 않는다)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── private/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
@@ -70,7 +70,7 @@ mac-setup/
 | [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 |
-| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·팀 리뷰어·보안 게이트) · 리뷰 fan-out 공통 틀 · 주장 검증 |
+| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·팀 리뷰어·보안 게이트) · 문제 지점 찾기(리뷰 공통 절차) · 주장 검증 |
 
 ## 새 맥에서 사용법
 
