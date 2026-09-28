@@ -7,14 +7,14 @@ argument-hint: "[스킬 이름 | 전체]"
 
 # /skill-review: 스킬 점검
 
-스킬 하나 또는 전체를 구조 규약(어디에 있고 어디에 등록됐나)과 문서 기준(읽을 만한가)으로 점검한다. 고치는 것은 승인 후에만 한다.
+스킬 하나 또는 전체를 구조 규약(어디에 있고 어디에 등록됐나)과 문서 기준(읽을 만한가)으로 점검한다. 고치는 것은 승인 후에만 한다. 스킬을 새로 만들거나 고친 뒤, 또는 여러 스킬을 한꺼번에 정리할 때 쓴다.
 
 ## 1. 대상 확정
 
 인자가 스킬 이름이면 그 하나, 그 외에는 아래 두 곳의 모든 `SKILL.md`를 대상으로 한다.
 
 - `~/git/mac-setup/claude/skills/{engineering,productivity}/` (공개, 버킷 있음)
-- 회사 스킬은 `~/git/mac-setup/private/claude/skills/` 바로 아래에 있고 `~/.claude/skills/` 로 링크된다
+- `~/git/mac-setup/private/claude/skills/*/` (회사)
 
 → 완료: 점검할 `SKILL.md` 경로 목록이 확정됐다.
 
@@ -94,10 +94,6 @@ SKILL REVIEW: {스킬} ({N}줄)
 
 → 완료: 리포트를 냈고, 승인받은 항목만 반영됐으며, 반영 후 기계 검사 셋이 다시 PASS다.
 
-## 상위 관례와 다른 점
+## 참고
 
-아래 셋은 상위 레포에만 해당한다. 판단 근거가 필요하면 `reference/invocation.md`(원문)와 `reference/openai.yaml`(Codex 메타데이터 예시)을 Read한다.
-
-- `.claude-plugin/plugin.json`: 상위 레포는 스킬을 Claude Code 플러그인으로 배포해 promoted 스킬을 그 매니페스트에 등록한다. 우리는 심링크로 설치한다.
-- User-invoked / Model-invoked 구분: 상위 레포는 둘을 섞어 쓰고 README를 그 둘로 나눈다. 우리는 전부 user-invoked라 README를 한 목록으로 둔다.
-- `agents/openai.yaml`: 상위 레포는 스킬마다 Codex용 메타데이터(`interface.display_name`·`short_description`, user-invoked면 `policy.allow_implicit_invocation: false`)를 둔다. 우리는 Codex가 같은 `SKILL.md`를 링크해서 보므로 이 파일이 없다. Codex 쪽 user-invoked 강제는 아직 확인하지 않았다.
+상위 레포(`mattpocock/skills`) 관례와 다른 점은 `reference/upstream-diff.md`에 있다. 판단 근거가 필요할 때만 Read한다.

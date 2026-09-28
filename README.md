@@ -11,8 +11,7 @@ mac-setup/
 │   ├── CLAUDE.md
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
-│   ├── skills/           # plan-review, review, cso, guard, hygiene, investigate,
-│   │                     # explain-html, retro, session-review
+│   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
 │   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, review 브리프, codex 교차검증)
 │   └── commands/sc/      # SuperClaude 명령(미사용이라 install.sh가 링크하지 않는다)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
@@ -22,7 +21,7 @@ mac-setup/
 │   ├── config.toml
 │   ├── hooks.json
 │   ├── rules/default.rules
-│   └── skills/           # cso, guard, hygiene, plan-review, review, session-review
+│   └── skills/           # .system만 추적(install.sh가 링크하지 않음). Codex 스킬 4개는 claude/skills를 링크
 ├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
 │   └── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
@@ -35,7 +34,7 @@ mac-setup/
 
 ## 스킬
 
-전부 사용자 호출이다. `/이름`으로 실행한다. 회사 전용 스킬 6개는 git이 추적하지 않는 `private/` 트리에 있어 이 목록에 없다.
+전부 사용자 호출이다. `/이름`으로 실행한다. 회사 전용 스킬은 git이 추적하지 않는 `private/` 트리에 있어 이 목록에 없다.
 
 ### engineering
 
@@ -47,7 +46,7 @@ mac-setup/
 | [`/implement`](claude/skills/engineering/implement/SKILL.md) | 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만든다. |
 | [`/investigate`](claude/skills/engineering/investigate/SKILL.md) | 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. |
 | [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·Codex 적대 검증으로 통과시킨다. |
-| [`/review`](claude/skills/engineering/review/SKILL.md) | 브랜치 변경을 서브에이전트 3개로 병렬 리뷰하고, 수정을 적용한 뒤 PR 크기 검사와 push 안내까지 끝낸다. |
+| [`/review`](claude/skills/engineering/review/SKILL.md) | 브랜치 변경을 서브에이전트 3개(보안 트리거가 있으면 4개)로 병렬 리뷰하고, 수정을 적용한 뒤 PR 크기 검사와 push 안내까지 끝낸다. |
 
 ### productivity
 
@@ -71,7 +70,7 @@ mac-setup/
 | [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 |
-| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·팀 리뷰어·보안 게이트) |
+| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·팀 리뷰어·보안 게이트) · 리뷰 fan-out 공통 틀 · 주장 검증 |
 
 ## 새 맥에서 사용법
 

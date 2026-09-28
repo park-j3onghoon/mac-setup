@@ -1,5 +1,5 @@
 > 출처: `mattpocock/skills` 의 `.agents/invocation.md` 원문. 참고용으로 그대로 옮겼다.
-> 우리 설정과 다른 점(플러그인 매니페스트·model-invoked 혼용·per-skill openai.yaml)은 상위 `SKILL.md` 마지막 절에 적혀 있다.
+> 우리 설정과 다른 점(플러그인 매니페스트·model-invoked 혼용·per-skill openai.yaml)은 같은 폴더의 `upstream-diff.md`에 적혀 있다.
 
 # Model-invoked vs user-invoked
 
