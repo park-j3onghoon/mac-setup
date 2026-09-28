@@ -9,8 +9,8 @@
 독자가 그 이름만 보고 찾아갈 수 있게 쓴다.
 
 - 약어는 첫 등장에 풀네임과 함께 쓴다: `역할 기반 접근 제어(Role-Based Access Control, RBAC)`. 두 번째부터는 약어만 쓴다.
-- 서비스·저장소·테이블·필드는 `~/.claude/lib/data-notation.md`(있을 때)를 Read하고 그 표기를 따른다. "주문 테이블"이 아니라 `prod_orders.v_order_daily.amount`처럼 이름 하나로 어디 것인지 드러나게 쓴다.
-- 코드에 이름이 있는 개념은 번역하지 않고 코드의 단어를 그대로 쓴다. "발행"이 아니라 `publish`, "재계산"이 아니라 `recalculate`다. 번역어로는 코드를 검색할 수 없다. 뜻이 필요하면 첫 등장에 괄호로 푼다: `cancel`(Order의 status를 CANCELED로 바꾸는 메서드).
+- 서비스·저장소·테이블·필드는 `~/.claude/lib/data-notation.md`(있을 때)를 Read하고 그 표기를 따른다. `prod_orders.v_order_daily.amount`처럼 이름 하나로 어디 것인지 드러나게 쓴다.
+- 코드에 이름이 있는 개념은 문장 안에서도 코드의 단어를 그대로 쓴다: "Order를 `cancel`한다", "`refund`가 끝나면". 번역어로는 코드를 검색할 수 없다. 뜻이 필요하면 첫 등장에 괄호로 푼다: `cancel`(Order의 status를 CANCELED로 바꾸는 메서드).
 
 ## 정의에 실제 맥락 예시를 붙인다
 
