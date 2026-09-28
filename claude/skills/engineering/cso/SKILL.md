@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드는 고치지 않는다. 산출물은 보안 현황 보고서 하나다.
 
-대상은 레포 전체이고 Phase 0-8을 전부 돈다. 브랜치 diff만 볼 때는 이 스킬이 아니라 `/review`(레벨 2 이상이면 보안 서브에이전트가 붙는다)나 `/sec-review`다.
+대상은 레포 전체이고 Phase 0-8을 전부 돈다.
 
 ## Phase
 
