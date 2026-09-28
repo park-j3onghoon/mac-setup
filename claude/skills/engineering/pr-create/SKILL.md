@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 1. 대상 확정
 
-현재 작업 디렉토리의 브랜치로 PR을 만든다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`가 있으면 Read한다. 본문 구조와 제목·본문 언어는 그 문서를 따른다.
+현재 작업 디렉토리의 브랜치로 PR을 만든다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`를 Read한다. 본문 구조와 제목·본문 언어는 그 문서를 따른다.
 
 ```bash
 git -C {작업 디렉토리} fetch origin --quiet
@@ -31,7 +31,7 @@ gh pr list --head {브랜치} --json number,url
 
 제목은 `<type>: [<Linear ID>] <설명>`으로 쓴다. type은 Conventional Commits이고 scope는 쓰지 않는다(예: `fix: [ABC-123] 알림 메일 중복 발송 방어`). Linear ID는 브랜치명·커밋 메시지나 Linear API에서 찾고, 못 찾으면 사용자에게 카드 번호를 묻는다. "없음"이면 대괄호를 뺀다.
 
-본문은 pr-rules.md가 있으면 그 구조로, 없으면 이 PR이 왜 필요하고 무엇이 어떻게 바뀌는지 쓴다. 레포의 PR 템플릿(`.github/pull_request_template.md`)은 읽지 않는다.
+본문은 pr-rules.md의 구조로 쓴다. 레포의 PR 템플릿(`.github/pull_request_template.md`)은 읽지 않는다.
 
 제목·본문 초안을 보여 주고 승인받은 뒤 `gh pr create --draft --assignee @me`로 만든다. reviewer는 비워 두고 사용자가 직접 지정한다.
 
