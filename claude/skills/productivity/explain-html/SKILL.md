@@ -11,7 +11,7 @@ argument-hint: <주제> [저장 경로]
 
 ## 1. 스타일 규칙 로드
 
-`~/.claude/lib/answer-style.md`와 `~/.claude/lib/explain-style.md`를 Read하고 그 규칙대로 쓴다.
+`~/.claude/lib/answer-style.md`와 `~/.claude/lib/explain/index.md`를 Read하고 그 규칙대로 쓴다.
 
 → 완료: 읽은 규칙에서 이번 주제에 걸리는 항목을 뽑아 뒀다.
 

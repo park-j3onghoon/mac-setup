@@ -65,7 +65,7 @@ mac-setup/
 |---|---|
 | [`lib/answer-style.md`](claude/lib/answer-style.md) | 답변·문서 작성 규칙 (`~/.claude/CLAUDE.md`가 import해 모든 답변에 적용) |
 | [`lib/diagram.md`](claude/lib/diagram.md) | 도식 형식 고르기(코드블록 · markdown 표 · HTML) |
-| [`lib/explain-style.md`](claude/lib/explain-style.md) | 개념 설명 서술 방식(ELI5 · why-first · 혼동 쌍 비교 등) |
+| [`lib/explain/`](claude/lib/explain/) | 개념 설명 서술 방식(공통 규칙 `index.md` · 상황에 맞을 때만 더 읽는 코드 · 비교 · 문서 분할) |
 | [`lib/coding-rules.md`](claude/lib/coding-rules.md) | 코드 규칙 코어. 스택별 `coding-rules-python`·`-frontend`·`-db`가 같은 폴더에 있다 |
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
