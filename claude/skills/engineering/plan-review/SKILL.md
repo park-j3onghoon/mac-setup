@@ -109,17 +109,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/lib/coding-rules.md`�
 
 ## Step 3.5: Codex 적대 검증 (모든 실행에서 필수)
 
-이종 LLM(Codex/GPT 계열)에게 계획을 red-team 시킨다.
-
-```bash
-CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
-REPO=$(basename $(git rev-parse --show-toplevel))
-PLAN_PATH=~/plans/{작업명}/$REPO/plan.md   # plan이 repo 밖이라 절대경로로 넘긴다
-
-node "$CODEX_SCRIPT" task --effort high --background "$PLAN_PATH 의 설계 선택, 가정, 트레이드오프, 실패 모드를 공격적으로 검증하라. 이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라. git diff는 무시하라."
-```
-
-계획에 대응하는 git diff가 이미 있으면 `adversarial-review --background "<같은 focus 문구>"`를 대신 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙은 `~/.claude/lib/codex-adversarial.md`를 Read하고 따른다.
+이종 LLM(Codex/GPT 계열)에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 「diff가 없는 파일(계획서 등) 적대 검증」 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 같은 focus로 「diff 적대 검증」 행을 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙도 그 문서를 따른다.
 
 Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
 - A) 제기된 이슈를 전부 Edit 로 plan.md 에 반영 → Step 4
