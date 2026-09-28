@@ -26,7 +26,7 @@ disable-model-invocation: true
 
 미결을 보고한 뒤 AskUserQuestion 1회로 처리를 받는다.
 - A) 멈춘다 (Recommended): 사용자가 `/grill`로 결정을 닫고 다시 온다
-- B) 계속한다: 미결을 `plan.md` 「미결정」에 그대로 적고 리뷰를 이어간다
+- B) 계속한다: 미결을 `plan.md`의 미결정 항목에 그대로 적고 리뷰를 이어간다
 
 미결이 없으면 바로 스코프를 고른다.
 
@@ -66,7 +66,7 @@ ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. �
 3. "`~/.claude/lib/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
 4. "이슈 번호를 {N}부터 시작하라"
 5. "최대 4개 이슈. 없으면 `No issues found.` 반환"
-6. 아래 「리뷰 관점」의 엔지니어링 선호와 인지 패턴
+6. 아래 리뷰 관점 절의 엔지니어링 선호와 인지 패턴
 
 응답 형식:
 ```
@@ -114,7 +114,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과 `~/.claude/lib/coding-rules.md`�
 
 ## Step 3.5: Codex 적대 검증 (모든 실행에서 필수)
 
-이종 LLM(Codex/GPT 계열)에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 「diff가 없는 파일(계획서 등) 적대 검증」 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 같은 focus로 「diff 적대 검증」 행을 쓴다. 비동기 실행·대기·회수, 대상 브랜치 워크트리 기준, stall 시 대체, stdout verbatim 규칙도 그 문서를 따른다.
+Codex에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈춘 job의 대체, 결과 취급도 그 문서를 따른다.
 
 Codex stdout을 원본 그대로 붙인 뒤 AskUserQuestion 1회:
 - A) 제기된 이슈를 전부 Edit 로 plan.md 에 반영 → Step 4
