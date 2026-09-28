@@ -2,6 +2,8 @@
 
 diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해당 여부를 명시적으로 판단하고, 해당 시 파일:라인을 인용한다.
 
+`~/.claude/lib/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 이 기준에 더한다.
+
 ## 1. 보안 (Security)
 
 `~/.claude/lib/review/security-gate.md`를 Read하고 그 여섯 항목을 판정한다. diff에 트리거가 없으면 `해당 없음` 한 줄로 끝낸다. 그 이상은 보안 서브에이전트가 맡는다.
