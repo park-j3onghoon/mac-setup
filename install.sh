@@ -166,7 +166,7 @@ done
 link_file "$REPO_DIR/codex/rules/default.rules" "$HOME/.codex/rules/default.rules"
 
 # Codex 는 Claude 와 같은 SKILL.md 를 본다. 사본을 두지 않는다.
-CODEX_SKILLS="cso guard plan-review review"
+CODEX_SKILLS="cso guard plan-review implement-review"
 for skill_name in $CODEX_SKILLS; do
   src=$(find "$REPO_DIR/claude/skills" "$REPO_DIR/private/claude/skills" \
           -maxdepth 2 -type d -name "$skill_name" 2>/dev/null | head -1)

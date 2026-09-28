@@ -38,4 +38,4 @@ DEBUG REPORT
 
 원인 구조가 복잡해 그림이 있어야 전달되면 `~/.claude/lib/explain-html.md`를 Read해 같은 내용을 HTML 해설서로 낸다.
 
-수정이 계획을 세울 크기면(6단계의 5개 파일 이상) `/implement`로 넘기고, 고친 뒤 push 전 점검은 `/review`다.
+수정이 계획을 세울 크기면(6단계의 5개 파일 이상) `/implement`로 넘기고, 고친 뒤에는 `/pr-create`로 Draft PR을 만든 뒤 `/implement-review`로 점검한다.
