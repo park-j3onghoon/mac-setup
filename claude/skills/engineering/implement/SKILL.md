@@ -79,6 +79,6 @@ tracer bullet: 진입점에서 저장소까지 관통하는 얇은 슬라이스�
 미결정: {구현 중 판단을 미룬 것 또는 "없음"}
 ```
 
-커밋·리뷰·push는 이 스킬 밖이다. 다음은 `/push-commit`으로 커밋·push하고 `/pr-create`로 Draft PR을 만든 뒤 `/implement-review`다.
+커밋·리뷰·push는 이 스킬 밖이다. 다음은 `/push-commit`으로 커밋·push하고 `/pr-create`로 Draft PR을 만든 뒤 `/implement-review`이고, 리뷰 반영분은 다시 `/push-commit`으로 올린다.
 
 → 완료: 위 리포트를 출력했다.
