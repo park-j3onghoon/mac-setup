@@ -16,6 +16,14 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 `adversarial-review`는 git diff 리뷰어다. 대응 diff가 없거나 무관한 변경이 섞여 있으면 그 diff를 리뷰하므로, 계획서만 있을 때는 `task`를 쓴다. `--write`는 쓰지 않는다(읽기 전용). `--help`는 인자로 주면 focus text로 먹혀 실제 job이 뜬다.
 
+## 언제 무엇을 돌리나
+
+diff 리뷰에 Codex를 더할지는 아래 셋 중에서 고른다.
+
+- A) 건너뛰기: 변경 200줄 미만 + 루틴 수정
+- B) `codex review`: 200줄 이상 또는 도메인·애플리케이션 레이어 변경
+- C) `codex review` + `codex adversarial-review`: 새 추상화·레이어 도입, 마이그레이션 동반, 아키텍처 결정
+
 ## 실행과 회수
 
 블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다.
