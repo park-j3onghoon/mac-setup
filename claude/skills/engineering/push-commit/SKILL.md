@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 1. 대상 확정
 
-현재 작업 디렉토리의 브랜치를 올린다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`가 있으면 Read한다. 커밋·push 전 확인·본문 규칙은 그 문서를 따른다.
+현재 작업 디렉토리의 브랜치를 올린다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`를 Read한다. 커밋·push 전 확인·본문 규칙은 그 문서를 따른다.
 
 ```bash
 git -C {작업 디렉토리} branch --show-current
@@ -27,7 +27,7 @@ gh pr list --head {브랜치} --json number,url,author
 
 ## 3. push
 
-pr-rules.md에 push 전 확인이 있으면 먼저 한다. 그다음 사람 리뷰를 받은 PR인지 본다. 사람 리뷰는 PR 리뷰 가운데 계정 `type`이 `User`이고 PR 작성자가 아닌 리뷰다(봇 계정의 AI 리뷰, 작성자 자신의 답글 리뷰, PR 대화 코멘트는 세지 않는다).
+pr-rules.md의 push 전 확인(테스트·빌드)을 먼저 한다. 그다음 사람 리뷰를 받은 PR인지 본다. 사람 리뷰는 PR 리뷰 가운데 계정 `type`이 `User`이고 PR 작성자가 아닌 리뷰다(봇 계정의 AI 리뷰, 작성자 자신의 답글 리뷰, PR 대화 코멘트는 세지 않는다).
 
 ```bash
 gh api repos/{owner}/{repo}/pulls/{번호}/reviews --paginate \
