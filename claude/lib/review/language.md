@@ -61,7 +61,7 @@ diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-ru
 - 형변환 실패 시 panic 가능성
 - `*int32` vs `int32`, `optional` proto field로 nil/zero-value 명확 구분
 - 컴파일 타임 인터페이스 검증: `var _ Interface = (*Impl)(nil)`
-- 방어 코드 제거: 빌드타임에 보장되는 nil 체크·생성자가 보장하는 invariant·도달 불가 경로의 방어 코드는 잉여 → 제거. (cf. SKILL 5a: 방어 코드 *추가* 는 ASK, *제거* 는 품질 개선. `sync.Once`+`init()` 동시 사용도 중복 방어)
+- 방어 코드 제거: 빌드타임에 보장되는 nil 체크·생성자가 보장하는 invariant·도달 불가 경로의 방어 코드는 잉여 → 제거. (cf. SKILL 5a: 방어 코드 추가 는 ASK, 제거 는 품질 개선. `sync.Once`+`init()` 동시 사용도 중복 방어)
 - `&slice[i]` 등 슬라이스 원소 aliasing 지양. append/재할당 시 stale 포인터.
 
 ### 관용구
@@ -83,7 +83,7 @@ diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-ru
 - DynamoDB `Limit + FilterExpression`: Limit가 Filter 적용 전에 동작 → 빈 결과 가능
 - proto 하위호환성: gen-go 버전 불일치, 직렬화 번호 변경
 
-### 테스트 (Go)
+### 테스트
 - mock은 mockgen 생성물: hand-rolled stub 지양. 생성자 정식 경로(`NewXxx(..., dep)`)로 주입하고, 테스트에서 unexported 필드 직접 세팅 금지(생성자 우회는 미래 필드 변경 시 깨짐).
 - 테스트 상수/구조체는 alias 선언 + helper 로 생성: 프로덕션 상수를 테스트에서 직접 참조 금지. 테스트 전용 리터럴이라야 정책 변경 시 회귀를 독립적으로 감지.
 - `gomock.Any()` 남용 금지: 검증 대상 필드는 명시적으로 매칭.
