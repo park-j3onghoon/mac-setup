@@ -1,6 +1,6 @@
 # Coding Rules: core (every language, every project)
 
-Read this file before writing or modifying code, then read the specifics file for the stack you touch: `coding-rules-python.md` (Python / Django / DRF / Pydantic / pytest), `coding-rules-frontend.md` (React / Vue / TS; Vue + main projects such as an ads console also read `coding-rules-vue.md`), `coding-rules-db.md` (MySQL schema). Tool and project know-how stays in memory (`reference_tool_{tool}.md`, `project_{name}.md`). Updated by `/review` Step 9 or by hand.
+Read this file before writing or modifying code, then read the specifics file for the stack you touch: `coding-rules-python.md` (Python / Django / DRF / Pydantic / pytest), `coding-rules-frontend.md` (React / Vue / TS; Vue + main projects such as an ads console also read `coding-rules-vue.md`), `coding-rules-db.md` (MySQL schema). Tool and project know-how stays in memory (`reference_tool_{tool}.md`, `project_{name}.md`).
 
 ## 0. Precedence
 

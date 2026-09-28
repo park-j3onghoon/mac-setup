@@ -32,8 +32,12 @@ if not skills:
 # 코드 스팬·펜스를 지운 산문만 본다 (경로 인용은 위반이 아니다)
 FENCE = re.compile(r"```.*?```", re.S)
 SPAN  = re.compile(r"`[^`]*`")
+def unfence(text):
+    # 펜스를 같은 줄 수의 빈 줄로 바꿔 보고되는 줄 번호가 원문과 맞게 한다
+    return FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
 def prose(text):
-    return SPAN.sub(" ", FENCE.sub(" ", text))
+    return SPAN.sub(" ", unfence(text))
 
 names = "|".join(sorted(map(re.escape, skills), key=len, reverse=True))
 # 슬래시+스킬명. 뒤에 / 나 글자가 오면 경로의 일부이므로 제외한다.
@@ -54,6 +58,11 @@ def scan(path, is_skill, self_name=None):
     else:
         for no, ln in hits:
             violations.append(("하위 모듈이 스킬을 호출/언급", path, no, ln.strip()))
+        # 코드 스팬 안의 /스킬명도 본다. 경로 인용은 CALL의 앞뒤 조건이 이미 거른다. 작성 예시 문서는 제외한다.
+        if not str(path).endswith("skill-review/reference/docs-sections.md"):
+            for no, ln in enumerate(unfence(text).split("\n"), 1):
+                if any(CALL.search(s) for s in SPAN.findall(ln)):
+                    violations.append(("하위 모듈이 코드 스팬 안에서 스킬을 언급", path, no, ln.strip()))
         first = text.split("\n", 1)[0]
         if first.startswith("#"):
             paren = re.search(r"[(（]([^)）]*)[)）]", first)
