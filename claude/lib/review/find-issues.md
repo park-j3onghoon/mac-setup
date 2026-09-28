@@ -40,7 +40,6 @@ Codex(GPT 계열)로 한 번 더 볼지 AskUserQuestion 1회로 묻는다. 권�
 - 같은 이슈를 여러 리뷰어가 잡았으면 하나로 합치고 출처를 표시한다(`(코드+팀+보안+codex)`).
 - CRITICAL을 위, INFO를 아래로 정렬한다. Codex 결과는 요약 없이 별도 블록에 원문 그대로 붙인다.
 - diff가 바꾼 기능을 설명하는 문서가 그대로면 `[INFO] 문서가 오래됐을 수 있음: {파일}이 {기능}을 설명하지만 코드가 변경됨.`
-- diff가 CLAUDE.md·AGENTS.md 중 한쪽만 바꿨으면 `[CRITICAL] 페어 sync 누락: {파일}`. 도구별 분기 섹션(assignee 등) 외의 차이만 센다.
 - 모든 주장에 `~/.claude/lib/review/claims.md`를 적용한다.
 
 → 완료: `Security level` 한 줄, Scope Check, 먼저 볼 곳 목록, 중복이 합쳐지고 심각도순으로 정렬된 이슈 리포트가 있다.
