@@ -1,6 +1,6 @@
 # HTML 해설서 작성 규칙
 
-조사해서 알아낸 것을 self-contained 단일 HTML 파일 하나로 푼다. 처음 보는 사람이 이 파일만으로 이해할 수 있어야 한다. 내용 서술 방식은 `~/.claude/lib/explain/index.md`를 먼저 Read해 따른다.
+조사해서 알아낸 것을 HTML 파일 하나로 푼다. 처음 보는 사람이 이 파일만으로 이해할 수 있어야 한다. 내용 서술 방식은 `~/.claude/lib/explain/index.md`를 먼저 Read해 따른다.
 
 ## 1. 구조 설계
 

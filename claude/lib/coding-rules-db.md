@@ -6,7 +6,7 @@ Applies when writing schema/migrations for team-style MySQL, together with `codi
 
 - `user_id` is int.
 - Enum where possible: stored internally as an integer.
-- Integer columns carry no default: the implicit default is already 0.
+- Integer columns rely on the implicit default 0.
 - `timestamp`, not `datetime(6)`: microseconds are never needed.
 - varchar gets 20–30% headroom over the longest expected value.
 
@@ -21,11 +21,11 @@ Applies when writing schema/migrations for team-style MySQL, together with `codi
 
 ## Column order (top → bottom)
 
-- Relations first, facts next, wide values last: FK/relations to other tables → fact values → varchar/json.
+- FK/relations to other tables → fact values → varchar/json.
 
 ## Aggregate counters (cached fields)
 
-- Cache a counter when the aggregated rows reach 1,000 (DBA guide); a user hammering refresh makes per-read COUNT/SUM load scale with read frequency; update the counter at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
+- Cache a counter when the aggregated rows reach 1,000; a user hammering refresh makes per-read COUNT/SUM load scale with read frequency; update the counter at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
 
 ## updated_at
 
