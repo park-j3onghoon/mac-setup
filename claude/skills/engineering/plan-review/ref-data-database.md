@@ -1,12 +1,11 @@
 # Data/Database Review Reference
 
-MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)는 `~/.claude/lib/coding-rules-db.md`, 레이어·리포지토리 계약은 `~/.claude/lib/coding-rules.md` §1 Architecture에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)는 `~/.claude/lib/coding-rules-db.md`, 레이어·리포지토리 계약은 `~/.claude/lib/coding-rules.md` Architecture 절에 있다.
 
 ## Core Principles
 
 - 스키마는 비즈니스 규칙의 마지막 방어선: NOT NULL, UNIQUE, CHECK 제약으로 잘못된 데이터 진입 차단.
 - 마이그레이션은 별도 PR: 스키마 변경과 코드 변경의 롤백 독립성 확보.
-- 인덱스는 쿼리 패턴을 따른다: 잘못된 인덱스는 쓰기 성능 저하. 실제 WHERE/ORDER BY 기준으로 설계.
 
 ## Checklist
 
@@ -14,8 +13,7 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 - 정규화 수준 적절성 (과도한 정규화 → JOIN 폭발, 부족 → 갱신 이상)
 - 필드 타입 적절성 (금액 → Decimal, 수량 → PositiveIntegerField)
 - nullable 필드의 비즈니스 근거 (None = "미입력"인지 "해당없음"인지)
-- 모델 필드명 = DB 컬럼명 일치
-- DDD 엔티티(identity + lifecycle) vs 값 객체(equality by value) 구분
+- DDD 엔티티 vs 값 객체 구분
 
 ### 마이그레이션
 - 마이그레이션 파일 존재 여부

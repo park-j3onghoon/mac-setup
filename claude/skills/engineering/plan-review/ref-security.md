@@ -1,12 +1,10 @@
 # Security Review Reference
 
-`~/.claude/lib/coding-rules.md`에는 보안 절이 없어 다른 `ref-*.md`와 달리 포인터가 없다. 아래가 이 차원의 유일한 출처다.
-
 ## Core Principles
 
 - Defense in depth: 단일 보호 계층 실패 시 다음 계층이 방어. 인증 + 인가 + 입력 검증 + 출력 인코딩.
 - Least privilege: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
-- 공격자처럼 생각한다: 현실적 공격 경로가 있는 것만 지적한다(보안 극장 배제).
+- 공격자처럼 생각한다: 현실적 공격 경로가 있는 것만 지적한다.
 - 여기서는 계획 레벨 점검만 한다.
 
 ## Checklist
@@ -19,19 +17,17 @@
 - A10 SSRF: 사용자 입력으로 URL 구성하여 내부 서비스 호출.
 
 ### 인증/인가
-- 새 API 엔드포인트마다 인증 확인 (permission_classes, @login_required)
-- 역할 기반 접근 제어(Role-Based Access Control, RBAC) 일관성. 기존 패턴과 다르면 왜?
+- RBAC 일관성. 기존 패턴과 다르면 왜?
 - 토큰 만료/갱신 메커니즘 존재 여부
 
 ### 입력 검증
 - 사용자 입력 sanitization (HTML escape, SQL 파라미터 바인딩)
 - 파일 업로드 검증 (타입, 크기, 내용)
-- 사용자 입력으로 만든 경로는 정규화 후 base 디렉토리 안인지 확인 (path traversal)
+- 사용자 입력으로 만든 경로는 정규화 후 base 디렉토리 안인지 확인
 
 ### 시크릿 관리
 - 하드코딩된 시크릿, API 키 없는지
 - .env가 .gitignore에 포함되어 있는지
-- 클라이언트 에러 응답은 고정 문자열, 상세는 로그로 (`str(e)` 노출 대신)
 
 ## Examples
 

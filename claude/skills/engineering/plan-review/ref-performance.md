@@ -1,12 +1,11 @@
 # Performance Review Reference
 
-타임아웃·락 유지 범위·배치 실패 집계는 `~/.claude/lib/coding-rules.md` §1 Architecture · §6 Errors에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+타임아웃·락 유지 범위·배치 실패 집계는 `~/.claude/lib/coding-rules.md` Architecture·Errors 절에 있다.
 
 ## Core Principles
 
 - 최적화는 측정된 병목에만: N+1은 측정 없이도 잡는다.
 - 캐싱은 일관성 비용을 동반한다: stale data 버그, invalidation 복잡도를 사전에 식별.
-- O(n) 이하를 기본으로: O(n²) 이상은 데이터 증가 시 급격히 악화.
 
 ## Checklist
 
@@ -27,7 +26,7 @@
 
 ### 비동기/배치
 - 직렬 외부 API 호출 → asyncio.gather / 병렬화
-- 대량 직렬 처리 → 배치 처리 (chunk)
+- 대량 직렬 처리 → 배치 처리
 - 캐싱 기회 (반복 조회, 변경 빈도 낮은 데이터)
 
 ### 동시성
@@ -45,7 +44,7 @@
 ### React Query·TanStack Query 데이터 캐시
 - queryKey는 구조 보존 배열 사용. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함하면 React Query가 deep equality로 올바르게 구분.
 - `refetchOnMount: "always"`는 staleTime을 사실상 무력화. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)가 기본값으로 일관적.
-- mutation onSuccess invalidation은 "모든 편집 경로"를 커버해야 유효. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 고려.
+- mutation onSuccess invalidation은 모든 편집 경로를 커버해야 유효. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 고려.
 
 ## Examples
 
