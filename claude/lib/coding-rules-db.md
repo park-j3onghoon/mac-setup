@@ -7,7 +7,7 @@ Applies when writing schema/migrations for team-style MySQL, together with `codi
 - `user_id` is int.
 - Enum where possible: stored internally as an integer.
 - Integer columns rely on the implicit default 0.
-- `timestamp`, not `datetime(6)`: microseconds are never needed.
+- Time columns are `timestamp`.
 - varchar gets 20–30% headroom over the longest expected value.
 
 ## Enum columns

@@ -4,20 +4,17 @@
 
 Bash로 아래 패턴을 실행하기 전에 사용자에게 먼저 경고하고 승인을 받는다.
 
-| 패턴 | 예시 | 위험 |
-|---|---|---|
-| `rm -rf` / `rm -r` | `rm -rf /var/data` | 재귀 삭제 |
-| `DROP TABLE` / `DROP DATABASE` | `DROP TABLE users;` | 데이터 손실 |
-| `TRUNCATE` | `TRUNCATE orders;` | 데이터 손실 |
-| `git push --force` / `-f` | `git push -f origin main` | 이력 덮어쓰기 |
-| `git reset --hard` | `git reset --hard HEAD~3` | 커밋 안 된 작업 손실 |
-| `git checkout .` / `git restore .` | `git checkout .` | 변경 손실 |
-| `kubectl delete` | `kubectl delete pod` | 프로덕션 영향 |
-| `docker system prune` | `docker system prune -a` | 컨테이너/이미지 손실 |
+| 패턴 | 위험 |
+|---|---|
+| `rm -rf` / `rm -r` | 재귀 삭제 |
+| `DROP TABLE` / `DROP DATABASE` | 데이터 손실 |
+| `TRUNCATE` | 데이터 손실 |
+| `kubectl delete` | 프로덕션 영향 |
+| `docker system prune` | 컨테이너/이미지 손실 |
 
 안전 예외: 재생성 가능한 산출물 삭제는 경고 없이 실행한다: `rm -rf node_modules` / `.next` / `dist` / `__pycache__` / `.cache` / `build` / `coverage`.
 
-force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 PreToolUse 훅(`~/.claude/hooks/block-dangerous-git.sh`)이 deny로 막는다. 이 다섯은 경고가 아니라 차단 대상이다.
+force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 명령만 보여 주고, 실행은 사용자가 `! <명령>`으로 한다.
 
 ## freeze: 디렉토리 편집 제한
 

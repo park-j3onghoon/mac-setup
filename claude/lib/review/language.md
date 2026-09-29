@@ -24,10 +24,8 @@ diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-ru
 
 ### 리소스/안전성
 - cursor.close() 누락, context manager 오용
-- 에러 타입: None 반환 vs ValueError, 호출자 디버깅 용이성 기준
 - Redis cluster mode에서 서로 다른 slot 조회 불가 → hashtag 또는 단일 key
 - Redis TTL 설정 누락
-- 시간 계산 off-by-one: `floor`/`shift` 경계값 오류
 - async wrapping으로 commit blocking 방지
 
 ### Django 특화
@@ -119,23 +117,15 @@ diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-ru
 
 ### 안전성
 - sessionStorage/localStorage: SSR 환경에서 접근 가능한지
-- dateRange 검증: start_date/end_date 중 하나만 있을 때 엣지케이스
 - API 실패 시 UI 상태: finally 블록에서 서버 실패와 불일치 가능
 
 ### 컨벤션
 - 한 파일만 변경하면 UI 일관성이 깨지는 경우 별도 이슈 제안
 - 새 Vue 컴포넌트는 Composition API (script setup)
-- Zod 문자열 스키마: `z.string().min().max().refine()` 수동 체이닝 대신 `stringSchema()`/`urlSchema()`/`emailSchema()` 사용 여부 확인
-- form 훅 경량화: `useFooForm` 훅이 `return useAppForm(...)` 단일 반환인지 확인. mutation/업로드/에러 처리가 훅 내부에 있으면 지적
-- form hook Options 패턴: Options 타입은 `{ defaultValues?: Partial<Input>; onSubmit: (values: Values) => Promise<void> | void }` 형태 사용. 개별 필드를 각각 optional param으로 나열하지 않음
-- form 관련 상태는 form 내부에서 관리: UI 토글(일 예산 표시 여부 등)을 `useState`로 별도 관리하면 form 상태와 동기화가 깨질 수 있음. form 스키마에 boolean 필드(`showDailyBudget` 등)로 추가하여 form 내부에서 관리
-- 웹 스토리지는 SafeStorage 패턴 사용: `localStorage.getItem/setItem` 직접 사용 대신 `SafeStorage` config를 정의하고 `safeStorage.get/set`을 사용. 키 중앙 관리 + Zod 파싱 + 에러 핸들링
-- 내비게이션 가드는 취소 버튼 showConfirm: `beforeunload` 대신 취소 버튼 클릭 시 `useConfirm`으로 isDirty 체크. 추가적인 내비게이션 가드가 필요하면 라이브러리 도입 검토
 
 ### Import 경로
-- 절대 경로 우선: 프로젝트에 path alias가 있으면 상대 경로(`./`, `../`) 대신 절대 경로 사용
-- 파일 이동 시 상대 경로 깨짐 주의: diff에서 파일 이동(`rename`)이 감지되면, 해당 파일 내 상대 경로 import가 전부 유효한지 확인. 이동 후 경로가 바뀌면 즉시 빌드 실패 가능
-- 빌드 검증 필수: 파일 이동이나 import 경로 변경이 있으면 `npm run build`로 로컬 검증 후 push. 테스트만 통과하고 빌드 실패하는 경우 존재 (jest는 모듈 resolution이 관대)
+- 절대 경로 우선: 프로젝트에 path alias가 있으면 상대 경로 대신 alias 경로 사용
+- 파일 이동 시 상대 경로 깨짐 주의: diff에서 파일 이동(`rename`)이 감지되면, 해당 파일 내 상대 경로 import가 전부 유효한지 확인
 
 ---
 

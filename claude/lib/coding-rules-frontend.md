@@ -4,7 +4,7 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 
 ## URL query as the source of truth
 
-- Bare URL entry resolves: `/path` without a query (bookmark, refresh, external link) renders instead of `isValid=false`; default in the hook/param resolver: `const step = isValidStep(params.step) ? params.step : "settings";`.
+- Bare URL entry resolves: `/path` without a query (bookmark, refresh, external link) renders with a default set in the hook/param resolver: `const step = isValidStep(params.step) ? params.step : "settings";`.
 - URL-driven refactors keep the old initial state: a page moving from `useState("...")` to URL params reproduces that initial value at hook level.
 - Render-time correction + URL correction: on deep link/refresh into a URL step page, `useEffect` + `router.replace` alone shows one blank frame (no section matches on the first render); compute the corrected value for rendering, keep the effect only for the address bar, and comment the split of roles:
   ```tsx
@@ -29,13 +29,8 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
   }
   ```
 - `as unknown as T` is avoided by default and allowed only where a type predicate cannot express the relation (the Zod pre/post-transform round trip), inside that single helper.
-- Discriminated union for fields that travel with an action: the caller narrows on `action` instead of asserting `as number`:
+- Discriminated union for fields that travel with an action: the caller narrows on `action`:
   ```ts
-  // Before
-  type NextAction = "create" | "update" | "skip";
-  // caller: updateCampaign({ id: campaignId as number, ... })  ← assertion needed
-
-  // After
   type NextAction =
     | { action: "create" }
     | { action: "update"; campaignId: number }
@@ -58,7 +53,7 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 
 - Cross-check wording by global grep across 2–3 modules before writing user-facing copy ("다시 시도해 주세요" vs "다시 시도해주세요").
 - Single-sentence toast: `title="~에 실패했어요"` + `description="잠시 후 다시 시도해주세요"`; fold extra facts (already saved) into that one sentence.
-- One "save" in the user's mental model: the internal create/update branch never surfaces in copy ("수정 실패" is out).
+- One "save" in the user's mental model: the internal create/update branch never surfaces in copy.
 
 ## Component and form conventions
 
@@ -72,10 +67,10 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
   target_sex_type: CampaignTargetSexType = Field(...)
   ```
 - Form field subscription (TanStack Form): `form.state.values.showDailyBudget` read directly is not subscribed and the UI never updates; wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop.
-- Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`; a hardcoded `fill="currentColor"` ignores `<Icon color="red" />` (the 20+ existing icons follow this).
+- Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`.
 - bootstrap-vue `v-b-popover` takes the object form `{ content, html: true }` instead of the `.html` modifier; the modifier form spreads raw-HTML popovers with no single place to audit the escaping.
 - i18n keys ship with the rendering component: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n; planned pre-extraction applies to executable code only.
 
 ## Layout
 
-- Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain; an `auto` row grows without bound as content accumulates, and a missing `min-height: 0` breaks auto-scroll silently (`flex: 1; overflow-y: auto` alone is not enough).
+- Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain; an `auto` row grows without bound as content accumulates, and a missing `min-height: 0` breaks auto-scroll silently.
