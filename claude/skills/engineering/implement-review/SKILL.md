@@ -5,13 +5,20 @@ disable-model-invocation: true
 argument-hint: "[PR URL]"
 ---
 
-# /implement-review
-
 ## 1. 리뷰 준비
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수정 모드로 수행한다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 3단계의 리뷰 worktree는 아래처럼 만든다. 먼저 head가 체크아웃된 트리 `{T}`를 찾는다.
 
-완료: 그 문서의 완료 기준을 만족했다.
+```bash
+git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이 든 블록의 "worktree" 줄이 {T}다
+```
+
+- `{T}`가 있으면: `git -C {T} status --short`에 미커밋 변경이나 untracked 파일이 있을 때 목록을 보여 주고, 먼저 커밋해 리뷰에 넣을지 빼고 진행할지 묻는다. 그다음 `git -C {클론} worktree add -b review/{head} {작업 디렉토리} {head}`로 리뷰 브랜치를 올린다.
+- `{T}`가 없으면: `git -C {클론} worktree add {작업 디렉토리} {head}`로 head를 바로 올린다.
+
+작업 디렉토리나 `review/{head}` 브랜치가 이미 있으면, `review/{head}`가 없거나 `git -C {클론} merge-base --is-ancestor review/{head} {head}`가 참일 때만 `git -C {클론} worktree remove {작업 디렉토리}`와 `git -C {클론} branch -D review/{head}`로 지우고 다시 만든다. 그 밖의 경우나 remove가 거절하면 사용자에게 묻는다.
+
+완료: 그 문서의 완료 기준을 만족했고, `{T}` 유무가 정해졌다.
 
 ## 2. 문제 지점 찾기
 
