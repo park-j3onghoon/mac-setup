@@ -75,6 +75,6 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 미결정: {구현 중 판단을 미룬 것 또는 "없음"}
 ```
 
-커밋·리뷰·push는 이 스킬 밖이다. 다음은 `/push-commit`으로 커밋·push하고 `/pr-create`로 Draft PR을 만든 뒤 `/implement-review`이고, 리뷰 반영분은 다시 `/push-commit`으로 올린다.
+이 스킬은 변경을 작업 트리에 남기고 끝난다. 다음은 `/push-commit`으로 커밋·push하고 `/pr-create`로 Draft PR을 만든 뒤 `/implement-review`이고, 리뷰 반영분은 다시 `/push-commit`으로 올린다.
 
 → 완료: 위 리포트를 출력했다.

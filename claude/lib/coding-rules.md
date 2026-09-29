@@ -96,7 +96,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - Positive predicates: `can_*`/`is_*`/`has_*` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
 - Intention-revealing, searchable names: `remaining_budget`, a named constant not a magic number, single letters only in comprehensions/lambdas.
 - Enum naming: model enum without suffix (`CampaignStatus`) vs domain enum with `Type` suffix (`CampaignStatusType`); infra converts via `ModelEnum(domain_enum.value)`.
-- Enum zero value by direction: a server-filled output/stored enum puts a real domain value at 0 (`STATUS_PLANNED=0`, `EMAIL_STATUS_PENDING=0`, `OrderStatus.DRAFT=0`), 1:1 with the DB default and with no UNSPECIFIED in the domain enum; a client-filled input discriminator/view selector keeps `_UNSPECIFIED=0` so an unset value is rejected (INVALID_ARGUMENT) or defaulted; when an enum flips input ↔ output, flip its 0 policy too.
+- Enum zero value: a new proto enum reserves 0 for `{ENUM}_UNSPECIFIED` in requests and responses alike and starts real values at 1; the server always sends a real value, and a receiver treats UNSPECIFIED as an error (`INVALID_ARGUMENT` for a request, a server bug for a response); a domain enum keeps only real values and the proto ↔ domain mapping layer filters UNSPECIFIED; an already published enum keeps its numbering.
 
 ## 6. Errors
 
