@@ -25,8 +25,8 @@
 ## Determinism
 
 - Inject now: time-dependent code takes the current time as an optional parameter down to the use case entry, and tests pin it.
-- Deterministic tests: remove every source of nondeterminism at the test boundary so a test gives the same result in any order and on any machine:
+- Deterministic tests: remove every source of nondeterminism at the test boundary:
   1. background thread/executor: replace the submit function with a synchronous one (shared by the suite when several tests need it); verify real threads only in a dedicated test that waits on an event with a timeout; wait on events/conditions, never `sleep`
   2. time: inject now
   3. random/fake data: set every result-affecting value explicitly
-  4. shared state: keep every mutable value and DB row test-local
+  4. shared state: keep every mutable value and DB row test-local so tests pass in any order

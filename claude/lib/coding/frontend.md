@@ -44,7 +44,7 @@
 
 ## Async handlers and errors
 
-- No throw from an async handler chain (an unreachable branch is the one case that still throws): a throw in a Promise-returning `onClick`, overlay `onConfirm` or any "call the callback and drop the return" wrapper becomes an unhandled rejection. Grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, toast and return without rethrow (a rethrow adds monitoring noise and global-handler side effects).
+- No throw from an async handler chain (an unreachable branch is the one case that still throws, as `throw new Error('unreachable: ...')`): a throw in a Promise-returning `onClick`, overlay `onConfirm` or any "call the callback and drop the return" wrapper becomes an unhandled rejection. Grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, toast and return without rethrow (a rethrow adds monitoring noise and global-handler side effects).
 - Modals close on their own: never throw to keep a modal open; allow auto-close and route retry through the button; `catch {}` without a binding is fine for confirm-modal branching alongside "mutation errors are handled in `onError`".
 
 ## Copy and toasts

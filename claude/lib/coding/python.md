@@ -3,6 +3,7 @@
 ## Types
 
 - Collection default: `list[str] = []`.
+- Projection return type: a count/existence projection returns e.g. `list[int]`.
 - Constrained values get a constrained type: `list[EnumA | EnumB]`; pydantic validates by Enum matching, and the same Enum Union on payload and repo removes the `list` invariance issue; with `class X(str, Enum)` set `use_enum_values=True` so runtime stays `str` and Django `__in` filters keep working.
 - Falsy sentinel for absent scalars: `search_id: int = 0`, `search_name: str = ''` when falsy naturally means "no filter".
 - TYPE_CHECKING symbols stay in annotations: using one at runtime raises `NameError`, which mypy and the build pass and only pytest catches.
@@ -11,6 +12,9 @@
 ## Functions and classes
 
 - Spread then explicit: `Entity(**payload.dict(), explicit_field=value)`.
+- Inline length decides a nested call too: `return Payload(**repo.create(entity).dict())`.
+- Immutable copy: `dict(input)` + the modification.
+- A bare value such as `Decimal('0')` stays inline instead of becoming a module constant.
 - Late binding makes a module-level helper below its caller safe (step-down order).
 - Use case class structure: state-holding builders and UseCases are classes (`ReportTree`, `MonthlyReportUseCase`); pure orchestration/fetch helpers may be module functions (`resolve_statement_scope`, `build_statement_tree`, `summarize_statement`, `_statement_*`); externally called → public, internal → private instance method, public `@staticmethod` only for pure state-independent computation, never a private classmethod/staticmethod, and all private helpers of one class are one kind.
 
@@ -23,7 +27,8 @@
 ## Errors
 
 - `except Exception` handlers return the fixed string `"Internal Server Error"` and log the original.
-- Failure aggregation logs once after the loop: `logger.error('... %d failed: %s', n, {id: 메시지})`.
+- Failure aggregation logs once after the loop: `logger.error('... %d failed: %s', n, {id: 메시지})`; per-item `logger.exception` tracebacks are lost, hence the terminal state.
+- Message in an f-string: `raise NotFoundError(f'Campaign request not found: id={request_id}')`, `raise NotFoundError(f'Campaign creative not found: campaign_id={campaign_id}')`.
 
 ## pytest
 
