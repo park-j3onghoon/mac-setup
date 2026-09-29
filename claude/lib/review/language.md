@@ -2,7 +2,7 @@
 
 diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안전성, 플랫폼 특화 이슈를 검증한다.
 해당 언어 파일이 diff에 없으면 해당 섹션을 건너뛴다.
-diff에 Python·프론트엔드·DB 파일이 있으면 `~/.claude/lib/coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md` 중 해당 파일을 Read하고 이 기준에 더한다.
+diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/coding/python.md`·`~/.claude/lib/coding/frontend.md`·`~/.claude/lib/coding/db.md`·`~/.claude/lib/coding/proto.md` 중 해당 파일을 Read하고 이 기준에 더한다.
 
 ---
 

@@ -2,7 +2,7 @@
 
 diff를 아래 카테고리별로 빠짐없이 검증한다.
 
-`~/.claude/lib/coding-rules.md`를 Read하고 이 기준에 더한다.
+`~/.claude/lib/coding/index.md`를 Read하고 그 표에서 diff가 닿는 모듈을 Read해 이 기준에 더한다.
 
 ## 1. 보안
 
@@ -27,7 +27,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 
 ## 4. 클린 코드 / 네이밍
 
-- `coding-rules.md`의 Function·Naming·Comments 절과 Module 절의 중복 추출 규칙으로 판정한다.
+- `~/.claude/lib/coding/function.md`·`~/.claude/lib/coding/naming.md`·`~/.claude/lib/coding/comments.md`·`~/.claude/lib/coding/file-layout.md`와 `~/.claude/lib/coding/simple-design.md`의 Abstraction discipline으로 판정한다.
 
 ## 5. YAGNI / 명시성
 

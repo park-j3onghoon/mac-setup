@@ -1,6 +1,4 @@
-# Coding Rules: Frontend (React / Vue / TypeScript)
-
-Applies together with `coding-rules.md` (core); Vue + main projects (an ads console) also read `coding-rules-vue.md`. Test-only attributes such as `data-testid`: core Tests "Test-only attributes".
+# Frontend (React / Vue / TypeScript)
 
 ## URL query as the source of truth
 
@@ -46,7 +44,7 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 
 ## Async handlers and errors
 
-- No throw from an async handler chain (the invariant case is core Errors "Unreachable branch"): a throw in a Promise-returning `onClick`, overlay `onConfirm` or any "call the callback and drop the return" wrapper becomes an unhandled rejection. Grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, toast and return without rethrow (a rethrow adds monitoring noise and global-handler side effects).
+- No throw from an async handler chain (an unreachable branch is the one case that still throws): a throw in a Promise-returning `onClick`, overlay `onConfirm` or any "call the callback and drop the return" wrapper becomes an unhandled rejection. Grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, toast and return without rethrow (a rethrow adds monitoring noise and global-handler side effects).
 - Modals close on their own: never throw to keep a modal open; allow auto-close and route retry through the button; `catch {}` without a binding is fine for confirm-modal branching alongside "mutation errors are handled in `onError`".
 
 ## Copy and toasts
@@ -57,7 +55,7 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 
 ## Component and form conventions
 
-- UI defaults are FE responsibility: the initial radio/select value is a UX decision, so the BE payload declares the field required and only a business "omit is a meaningful state" default stays (`target_age_ranges_json={}` = no targeting, with its reason in a comment); a default that validation rejects anyway (`budget=0`) is removed; review question "is this default also defined in the UI?" → remove (core Function "No unnecessary defaults"):
+- UI defaults are FE responsibility: the initial radio/select value is a UX decision, so the BE payload declares the field required and only a business "omit is a meaningful state" default stays (`target_age_ranges_json={}` = no targeting, with its reason in a comment); a default that validation rejects anyway (`budget=0`) is removed; review question "is this default also defined in the UI?" → remove:
   ```python
   # Bad: the UI initial value duplicated in the BE
   revenue_type: DisplayCampaignRevenueType = Field(default=DisplayCampaignRevenueType.CPC)
@@ -74,3 +72,12 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 ## Layout
 
 - Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain; an `auto` row grows without bound as content accumulates, and a missing `min-height: 0` breaks auto-scroll silently.
+
+## Tests
+
+- Test-only attributes (`data-testid`) ship in the same PR as the test that queries them (`getByTestId`); otherwise defer the attribute.
+- Shared test helpers live in a vitest shared helper module.
+
+## Build
+
+- The build check after a move is `npm run build`: jest resolves imports leniently while vite/webpack do not; prefer absolute path aliases.

@@ -29,15 +29,15 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 
 ## 3. 규칙 적재
 
-- `~/.claude/lib/coding-rules.md`를 Read한다. diff가 닿을 스택에 따라 `coding-rules-python.md`·`-frontend.md`·`-db.md`도 Read한다.
+- `~/.claude/lib/coding/index.md`를 Read하고, 그 표에서 이번 변경이 닿는 모듈(스택 파일 포함)을 모두 Read한다.
 - 작업 중인 레포에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그것도 Read한다.
 - API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면 API 규칙 모듈(`~/.claude/lib/api-aip/index.md`)을 Read하고 그 문서의 트랙 판정부터 수행한다.
 
-→ 완료: 이번 변경에 걸리는 규칙 섹션을 뽑아 뒀고, coding-rules Change discipline 절의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
+→ 완료: 이번 변경에 걸리는 규칙을 모듈별로 뽑아 뒀고, `~/.claude/lib/coding/change-discipline.md`의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
 
 ## 4. 슬라이스 구현
 
-범위를 vertical slice로 나눠 하나씩 끝낸다. 각 슬라이스는 진입점 → usecase → repo → 저장소까지 관통하고, coding-rules Tests (TDD) 절을 따라 테스트를 먼저 쓰고 통과시킨다. 슬라이스 경계는 계획의 항목을 따른다.
+범위를 `~/.claude/lib/coding/simple-design.md`의 Tracer bullet대로 슬라이스로 나눠 하나씩 끝내고, 슬라이스마다 `~/.claude/lib/coding/tdd.md`를 따라 테스트를 먼저 쓰고 통과시킨다. 슬라이스 경계는 계획의 항목을 따른다.
 
 이 스킬은 변경을 작업 트리에 남기고 끝난다.
 
