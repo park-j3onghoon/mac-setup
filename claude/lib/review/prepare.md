@@ -10,7 +10,7 @@ gh pr view {링크} --json number,title,body,author,baseRefName,headRefName,addi
 
 ## 2. 클론
 
-클론은 `~/{owner 소문자}/{repo}`다(`github.com/Acme/api`면 `~/acme/api`). 없으면 `gh repo clone {owner}/{repo} ~/{owner 소문자}/{repo}`로 받는다. 그다음 base와 head를 받아 온다.
+클론은 `~/{owner 소문자}/{repo}`다. 없으면 `gh repo clone {owner}/{repo} ~/{owner 소문자}/{repo}`로 받는다. 그다음 base와 head를 받아 온다.
 
 ```bash
 git -C {클론} fetch origin {base} {head} --quiet
