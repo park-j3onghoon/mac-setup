@@ -134,6 +134,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 
 - Red / green / refactor: write the failing test as the contract first, the minimal code that passes, then refactor under green.
 - Test at the seams: assert behaviour through the public interface (usecase `execute`, port, HTTP); a private helper or internal dict is exercised through what calls it.
+- Cover the change: every behaviour the change adds or modifies gets a test at its public seam; the Do not test list below names the only exceptions.
 - Naming and structure: English method name (`test_rejects_invalid_status_type`), a Korean scenario docstring that is not a name tautology, and `# given` / `# when` / `# then` markers (`# when & then` when mixed; one legacy project uses uppercase with a short note, `# Given: 기본그룹 org + 배정그룹 org`); the deliberate opposite of the production docstring rule, because intent does not show from asserts.
 - Markers beat file-local convention: new tests carry the docstring and markers even when neighbouring tests do not, while lightly edited existing tests stay untouched; split `assert call().data...` into When (`response = call()`) and Then; a routing-smoke or exception test may combine `# When / Then`; the Then comment never echoes the docstring.
 - Do not test: ask "is this testing our code or the framework?" and check the sister module's test practice before copying a layer:
