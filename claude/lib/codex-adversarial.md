@@ -14,7 +14,7 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 | diff 적대 검증 | `node "$CODEX_SCRIPT" adversarial-review --background [--scope …] [focus text]` |
 | diff가 없는 파일(계획서 등) 적대 검증 | `node "$CODEX_SCRIPT" task --effort high --background "<절대경로>를 읽고 설계 선택·가정·트레이드오프·실패 모드를 공격적으로 검증하라. git diff는 무시하라."` |
 
-대응 diff가 없거나 무관한 변경이 섞여 있으면 `task`를 쓴다. Codex는 `--write` 없이 읽기 전용으로 부른다. `--help`는 인자로 주면 focus text로 먹혀 실제 job이 뜬다.
+대응 diff가 없거나 무관한 변경이 섞여 있으면 `task`를 쓴다. Codex는 `--write` 없이 읽기 전용으로 부른다. 사용법은 모드 표에서 찾는다: adversarial-review·task 뒤에 붙인 `--help`나 모르는 옵션은 리뷰 초점·작업 지시로 들어가 실제 job이 뜬다.
 
 ## 실행과 회수
 
