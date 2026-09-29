@@ -1,12 +1,12 @@
 # 코드 공통 리뷰 기준
 
-diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해당 여부를 명시적으로 판단하고, 해당 시 파일:라인을 인용한다.
+diff를 아래 카테고리별로 빠짐없이 검증한다.
 
-`~/.claude/lib/coding-rules.md`의 §0 Precedence·§1 Architecture·§2 Module·§3 Class/Object를 Read하고 이 기준에 더한다.
+`~/.claude/lib/coding-rules.md`의 Precedence·Architecture·Module·Class / Object 절을 Read하고 이 기준에 더한다.
 
 ## 1. 보안
 
-`~/.claude/lib/review/security-gate.md`를 Read하고 그 여섯 항목을 판정한다. diff에 트리거가 없으면 `해당 없음` 한 줄로 끝낸다. 그 이상은 보안 서브에이전트가 맡는다.
+`~/.claude/lib/review/security-gate.md`를 Read하고 그 여섯 항목을 판정한다.
 
 ## 2. 정확성
 
@@ -28,7 +28,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 
 ## 3-1. 반환 타입 정확성
 
-- update/delete에서 None 반환 금지: 존재해야 하는 데이터가 없으면 None이 아닌 도메인 예외(`NotFound`) 발생. None 반환은 "성공했는데 사라짐" vs "실패" 구분 불가, silent failure 위험.
+- update/delete에서 None 반환 금지: 존재해야 하는 데이터가 없으면 None이 아닌 도메인 예외(`NotFound`) 발생.
 - find/search에서 None 반환 허용: 없을 수 있는 조회는 None OK.
 - 구분 기준: 호출자가 "없을 수 있다"고 예상하면 None, "있어야 한다"가 전제면 예외.
 
@@ -43,13 +43,12 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
   - 다줄 design essay: "왜 안전한가/왜 이 설계인가"를 문단으로 설명. 한 줄 외부사실로 줄이거나 PR 본문·plan 으로 이동.
   - 다른 모듈/함수의 동작 설명: 이 코드 옆이 아니라 그 코드 옆에. 검증: "이 주석이 설명하는 동작이 이 함수 안에 있나?"
   - 남길 것: 외부 contract(타 브랜치/DBA/시스템 사실로 코드에 안 보이는 것), 채택 안 한 대안 이유, 비명시 알고리즘 트릭. 자기점검: "지우면 코드만 보고 의도를 놓치나? 아니오 → 삭제."
-  - AUTO-FIX 가 주석을 늘리지 말 것: 리뷰 중 "주석 정합/보강"으로 설명을 추가하는 건 미니멀리즘 위반. 정합이 필요하면 줄이는 방향으로만.
-- 인터페이스 메서드 순서 일관성: Repository/Port 인터페이스는 CRUD 순서(`save` → `findBy*`/`findAll*` → `countBy*` → `existsBy*` → `deleteBy*`/변경 동작)로 통일되어 있는지 확인. 같은 프로젝트 내 다른 Repository 파일과 비교해 순서가 다르면 지적. 특히 `save`가 어떤 파일은 맨 위, 다른 파일은 중간/아래에 있으면 일관성 위반.
-- step-down 함수 배치 (추상화 내림차순, 반복 지적 항목): 공개/entry 함수가 위, 그것이 호출하는 private helper 는 아래. 특히 공유 helper 를 추출할 때 호출자보다 위에 두는 'define-before-use' 습관을 flag한다. 호출자(들) 아래로 내려야 한다(여러 호출자가 공유하면 마지막 호출자 아래, 진짜 atomic 은 모듈 레벨). helper 를 신설/추출한 diff 는 반드시 배치를 확인한다. (Clean Code step-down rule)
+  - AUTO-FIX는 주석을 줄이거나 지우기만 한다.
+- step-down 함수 배치: 공개/entry 함수가 위, 그것이 호출하는 private helper 는 아래. 특히 공유 helper 를 추출할 때 호출자보다 위에 두는 define-before-use 습관을 flag한다. 호출자(들) 아래로 내려야 한다(여러 호출자가 공유하면 마지막 호출자 아래, 진짜 atomic 은 모듈 레벨). helper 를 신설/추출한 diff 는 반드시 배치를 확인한다.
 
 ## 5. YAGNI / 명시성
 
-- 최소 변경 (drive-by refactor 금지): 요청 범위 밖 주변 코드를 같은 PR에서 리팩토링/재포매팅하지 않는다. 스코프 확대는 diff 오염·리뷰 부담·회귀 위험을 키운다. 개선점은 별도 이슈/PR로 분리 제안.
+- 최소 변경: 요청 범위 밖 주변 코드를 같은 PR에서 리팩토링/재포매팅했으면 지적하고, 개선점은 별도 이슈/PR로 분리 제안.
 - 불필요한 default 값: 모든 callsite가 명시적으로 값을 전달하는데 default가 있으면 제거 제안.
 - 컬렉션 파라미터 nullable 여부: `list[str] | None = None`이면 "빈 리스트와 None을 구분하는 니즈가 있는가?" 확인. 없으면 `list[str] = []`로 non-nullable 제안. 스칼라(`int`, `str`)는 `None` 허용.
 - Dead code: diff에서 추가된 코드 중 사용되지 않는 것.
@@ -61,26 +60,20 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 
 - 에러 처리 계층: infra vs usecase 레이어 분리. 에러 반환 vs 값 기반 분기.
 - 설계 의도 일치: secondary write가 primary 성공과 무관하게 실행되어야 하는지 등.
-- usecase 단계 순서 (validation → write → response): update/create usecase에서 stats 집계, display_* 응답 필드, 추가 조회 등 response payload 조립은 repository가 반환한 updated/created 엔티티 기반으로 수행. 입력 merged 엔티티로 응답을 만들면 DB trim/default/timestamp/validation 결과가 반영 안 되어 응답 신뢰도가 떨어진다. 순서: (1) validation (2) update/create (3) response 집계.
+- usecase 단계 순서: update/create usecase에서 stats 집계, display_* 응답 필드, 추가 조회 등 response payload 조립은 repository가 반환한 updated/created 엔티티 기반으로 수행. 순서: validation → update/create → response 집계.
 - API 설계: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 - 패키지 구조: 순환참조, 코드 위치 적절성.
-- 레이어 배치 판단: 코드가 올바른 레이어에 있는지. 판단 기준:
-  - 맥락 독립적 규칙(어떤 상황에서든 성립) → domain
-  - 맥락 의존적 규칙(특정 플로우에서만 적용) → application
-  - DDD/Clean Architecture/Layered Architecture 기준: 의존성은 domain 으로만 향하고, 바깥 레이어가 안쪽 레이어를 import. 역방향 금지.
-- OCP(개방-폐쇄 원칙): 요구사항 변경 시 기존 코드 수정 없이 새 코드 추가로 대응 가능한 구조인지. 의존성 방향이 뚜렷하고 레이어 경계가 분명한지.
 - 기존 패턴과 충돌 시: 이상적 구조(DDD, Clean Architecture, CQS, Hexagonal Architecture)를 먼저 제시하되, 기존 코드베이스 패턴을 Grep으로 확인하여 함께 보여준다. 판단은 사용자에게 위임.
 
 ## 7. 에러 핸들링
 
-- 검증 위치 (경계에서만): 입력 검증은 시스템 경계(사용자 입력·외부 API 응답·역직렬화)에서 수행하고, 내부 코드는 검증된 값을 신뢰한다. 내부 함수마다 같은 값을 재검증하는 방어 코드는 잉여 → 경계로 끌어올린다. (cf. §5 호출 체인 내 중복 로직, review-language의 '방어 코드 제거')
+- 검증 위치 (경계에서만): 입력 검증은 시스템 경계(사용자 입력·외부 API 응답·역직렬화)에서 수행하고, 내부 코드는 검증된 값을 신뢰한다. 내부 함수마다 같은 값을 재검증하는 방어 코드는 잉여 → 경계로 끌어올린다.
 - 에러 wrapping: 레이어 경계에서 context 추가. `failed to` prefix 중복.
 - 에러 타입 선택: None 반환 vs 예외. 호출자가 디버깅하기 쉬운 쪽.
 - 조건부 부작용: if 안에서 외부 API 호출, DB 쓰기.
-- except 블록 직접 return: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`. 새 except 추가 시 변수 할당 누락으로 `UnboundLocalError` 발생 방지.
-- 내부 에러 메시지 노출 금지: `except Exception`에서 `str(e)`를 클라이언트 응답에 포함하지 않는다. DB 에러, 스택 정보 등 내부 구현이 노출된다. `'Internal Server Error'` 같은 고정 문자열 사용.
+- except 블록 직접 return: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`.
 - Unreachable 분기 처리 방식 맥락 분리: pure function 의 도달 불가 분기는 "안전한 fallback + '정상 경로 도달 불가' 주석"이 자연스러움. async handler/이벤트 핸들러/mutation 콜백의 invariant 위반은 `throw new Error('unreachable: ...')`로 즉시 노출해 관측 파이프라인으로 잡히게 할 것. silent return은 사용자 피드백 없이 사일런트 실패하므로 지적.
-- except 범위 최소화 (silent 흡수 함정): `try` 블록이 "그 예외를 의도한 한 줄"보다 넓으면, 같은 블록의 다른 단계가 같은 예외 타입을 던질 때 의도치 않게 흡수된다. 특히 rollback/cleanup 경로에서 `try: cancel(); close() except NotFound: pass`는 cancel이 NotFound로 실패해도 "정리 성공"으로 둔갑시켜 좀비 리소스를 silent 방치한다. `except`가 흡수해도 되는 정확한 호출만 내부 try로 감싸고, 나머지 단계의 예외는 밖으로 escalate시켜야 한다. 검증: "이 except가 잡는 예외를 try 안의 모든 호출이 던질 수 있나? 그 중 흡수하면 안 되는 게 있나?"
+- except 범위 최소화: `try` 블록이 "그 예외를 의도한 한 줄"보다 넓으면, 같은 블록의 다른 단계가 같은 예외 타입을 던질 때 의도치 않게 흡수된다. 특히 rollback/cleanup 경로에서 `try: cancel(); close() except NotFound: pass`는 cancel이 NotFound로 실패해도 "정리 성공"으로 둔갑시켜 좀비 리소스를 silent 방치한다. `except`가 흡수해도 되는 정확한 호출만 내부 try로 감싸고, 나머지 단계의 예외는 밖으로 escalate시켜야 한다. 검증: "이 except가 잡는 예외를 try 안의 모든 호출이 던질 수 있나? 그 중 흡수하면 안 되는 게 있나?"
 
 ## 8. 관측성
 
@@ -108,7 +101,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다. 각 항목에 해�
 - 배포 순서: 스키마 변경 → 코드 배포 순서. 하위 호환 배포.
 - 장애 전파: 일괄 적용 로직이 추후 문제 가능성.
 - 레플리카/마스터 분리: DB 쿼리가 올바른 DB 사용.
-- Merge 충돌 해결 후 코드 유실 확인: `--theirs`/`--ours`로 충돌 해결 시, 해결된 파일에서 상대 브랜치의 의도된 변경이 누락되지 않았는지 확인. 특히 stacked PR에서 중간 PR merge 시 하위 PR의 코드가 사라질 수 있다.
+- Merge 충돌 해결 후 코드 유실 확인: `--theirs`/`--ours`로 충돌 해결 시, 해결된 파일에서 상대 브랜치의 의도된 변경이 누락되지 않았는지 확인. stacked PR에서 중간 PR을 merge했으면 하위 PR 코드까지 확인한다.
 
 ## 출력 형식
 

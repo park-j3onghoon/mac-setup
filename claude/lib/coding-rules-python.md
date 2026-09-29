@@ -1,17 +1,17 @@
 # Coding Rules: Python / Django / DRF / Pydantic / pytest
 
-Applies together with `coding-rules.md` (core); every rule here is a stack-specific narrowing inside the core's scope, never an override.
+Applies together with `coding-rules.md` (core).
 
 ## Types
 
 - Collection default: `list[str] = []`, not `list[str] | None = None` (core Function "Collection params non-nullable").
 - Constrained values get a constrained type: `list[EnumA | EnumB]` over `list[str]` + validator + constant set; pydantic validates by Enum matching, and the same Enum Union on payload and repo removes the `list` invariance issue; with `class X(str, Enum)` set `use_enum_values=True` so runtime stays `str` and Django `__in` filters keep working.
-- Falsy sentinel for absent scalars: `search_id: int = 0`, `search_name: str = ''` instead of `int | None` when falsy naturally means "no filter"; collections stay non-nullable empty containers because "none = 0 items" is ambiguous.
+- Falsy sentinel for absent scalars: `search_id: int = 0`, `search_name: str = ''` instead of `int | None` when falsy naturally means "no filter".
 - TYPE_CHECKING symbols stay in annotations: using one at runtime raises `NameError`, which mypy and the build pass and only pytest catches (core Change discipline "Tests before push").
 
 ## Errors
 
-- `except Exception` handlers return the fixed string `"Internal Server Error"` and log the original; `str(e)` never reaches the client (core Errors "Catch-all handlers").
+- `except Exception` handlers return the fixed string `"Internal Server Error"` and log the original (core Errors "Catch-all handlers").
 
 ## pytest
 
@@ -23,10 +23,10 @@ Applies together with `coding-rules.md` (core); every rule here is a stack-speci
 
 ## Django / DRF style
 
-- `__init__.py` stays empty: no module docstring.
-- View shape (commerce `user_view.py`; core Architecture "Thin entrypoint"): build the UseCase with the repo → `_build_user_info(request)` → RequestPayload from `**request.query_params.dict()` / `**kwargs` → `use_case.execute(user_info, request_payload)` → `Response(data=response_payload.dict(), status=...)`.
-- PATCH DTO convention (commerce/display common): HTTP method `patch()`, every field `Optional[T] = None`, `Config.extra='forbid'`, partial merge with `exclude_unset=True`, a pre-validator `_reject_explicit_null` rejecting explicit null ("omit = no change, null = intentional clear"), and cross-field checks (dates/budget) limited to fields present in the partial so a name-only edit is not re-validated against old values.
-- OpenAPI spec with every endpoint change: an ad server repo's `docs/apis/paths/{console}/{module}/user.yaml|admin.yaml` (pattern: `collaborative/`, `commerce/`); a legacy project one yaml per endpoint under `docs/openapi/{app}/` registered by `$ref` in `docs/openapi/root.yaml` `paths:`; add it whenever a similar endpoint is documented; file = top-level `post:`/`get:` + summary/tags/operationId/requestBody·parameters/responses 200/202/400/401/403/500.
+- `__init__.py` stays empty.
+- View shape (core Architecture "Thin entrypoint"): build the UseCase with the repo → `_build_user_info(request)` → RequestPayload from `**request.query_params.dict()` / `**kwargs` → `use_case.execute(user_info, request_payload)` → `Response(data=response_payload.dict(), status=...)`.
+- PATCH DTO convention: HTTP method `patch()`, every field `Optional[T] = None`, `Config.extra='forbid'`, partial merge with `exclude_unset=True`, a pre-validator `_reject_explicit_null` rejecting explicit null ("omit = no change, null = intentional clear"), and cross-field checks (dates/budget) limited to fields present in the partial so a name-only edit is not re-validated against old values.
+- OpenAPI spec with every endpoint change: a repo's `docs/apis/paths/{console}/{module}/user.yaml|admin.yaml`; a legacy project one yaml per endpoint under `docs/openapi/{app}/` registered by `$ref` in `docs/openapi/root.yaml` `paths:`; add it whenever a similar endpoint is documented; file = top-level `post:`/`get:` + summary/tags/operationId/requestBody·parameters/responses 200/202/400/401/403/500.
 
 ## Time
 

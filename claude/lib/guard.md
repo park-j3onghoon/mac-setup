@@ -1,6 +1,4 @@
-# 안전 모드 규칙 (careful · freeze)
-
-세션에 걸어 두는 두 가지 보호 장치다. 한 번 걸면 세션이 끝날 때까지 유지한다.
+# 안전 모드 규칙
 
 ## careful: 위험 명령 경고
 
@@ -27,7 +25,7 @@ force push·`reset --hard`·`clean -f`·`checkout .`·`branch -D`는 PreToolUse 
 
 그 밖의 파일을 Edit/Write 해야 하면 먼저 확인을 받는다. "이 파일은 제한 디렉토리 외부입니다: [path]. 수정하시겠습니까?" 승인 후 편집한다.
 
-Read·Grep·Glob·Bash는 평소대로 쓴다. 확인이 필요한 것은 Edit/Write뿐이다.
+Read·Grep·Glob·Bash는 평소대로 쓴다.
 
 ## 활성화 메시지
 

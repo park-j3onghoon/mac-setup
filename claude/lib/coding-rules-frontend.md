@@ -22,7 +22,7 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 
 ## Types
 
-- Zod input vs values: `z.input` (pre-transform) and `z.infer` (post-transform) are different types: `defaultValues` takes Input, onSubmit yields Values, so storing Values in state and re-passing them as `defaultValues` is a Values → Input move that passes today only because the transform is "nullable → non-null + validation" and breaks at runtime once `string → Date` is added; encapsulate the move in one helper so TS catches drift there:
+- Zod input vs values: `z.input` and `z.infer` are different types: `defaultValues` takes Input, onSubmit yields Values, so storing Values in state and re-passing them as `defaultValues` is a Values → Input move that passes today only because the transform is "nullable → non-null + validation" and breaks at runtime once `string → Date` is added; encapsulate the move in one helper so TS catches drift there:
   ```ts
   function valuesToSettingsInput(v: Values): Partial<Input> {
     return v as unknown as Partial<Input>;
@@ -52,12 +52,12 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
 ## Async handlers and errors
 
 - No throw from an async handler chain (the invariant case is core Errors "Unreachable branch"): a throw in a Promise-returning `onClick`, overlay `onConfirm` or any "call the callback and drop the return" wrapper becomes an unhandled rejection. Grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, toast and return without rethrow (a rethrow adds monitoring noise and global-handler side effects).
-- Modals close on their own: never throw to keep a modal open; allow auto-close and route retry through the button (commerce practice); `catch {}` without a binding is fine for confirm-modal branching alongside "mutation errors are handled in `onError`".
+- Modals close on their own: never throw to keep a modal open; allow auto-close and route retry through the button; `catch {}` without a binding is fine for confirm-modal branching alongside "mutation errors are handled in `onError`".
 
 ## Copy and toasts
 
 - Cross-check wording by global grep across 2–3 modules before writing user-facing copy ("다시 시도해 주세요" vs "다시 시도해주세요").
-- Single-sentence toast: `title="~에 실패했어요"` + `description="잠시 후 다시 시도해주세요"`; fold extra facts (already saved) into that one sentence, never a second one.
+- Single-sentence toast: `title="~에 실패했어요"` + `description="잠시 후 다시 시도해주세요"`; fold extra facts (already saved) into that one sentence.
 - One "save" in the user's mental model: the internal create/update branch never surfaces in copy ("수정 실패" is out).
 
 ## Component and form conventions
@@ -71,10 +71,10 @@ Applies together with `coding-rules.md` (core); Vue + main projects (an ads cons
   revenue_type: CampaignRevenueType = Field(...)
   target_sex_type: CampaignTargetSexType = Field(...)
   ```
-- Form field subscription (TanStack Form): `form.state.values.showDailyBudget` read directly is not subscribed and the UI never updates; wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop (ad set `isAutoDailyBudget`).
+- Form field subscription (TanStack Form): `form.state.values.showDailyBudget` read directly is not subscribed and the UI never updates; wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop.
 - Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`; a hardcoded `fill="currentColor"` ignores `<Icon color="red" />` (the 20+ existing icons follow this).
 - bootstrap-vue `v-b-popover` takes the object form `{ content, html: true }` instead of the `.html` modifier; the modifier form spreads raw-HTML popovers with no single place to audit the escaping.
-- i18n keys ship with the rendering component: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n (one PR series, PR1: 3 reviewers flagged unused keys and 443 > 400 lines; moving them made PR2 382); planned pre-extraction applies to executable code only, not to unused keys.
+- i18n keys ship with the rendering component: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n; planned pre-extraction applies to executable code only.
 
 ## Layout
 
