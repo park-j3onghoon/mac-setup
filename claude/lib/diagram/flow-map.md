@@ -13,6 +13,8 @@
 - 변경 전후를 비교하면 없어지는 노드·화살표에 `state: "removed"`, 새로 생기는 것에 `"added"`를 주고, 경로에는 `when: "before"`나 `"after"`를 준다.
 - `asOf`에 기준 시점을, `source`에 흐름의 정본(코드·문서) 링크를 넣는다. 색은 `#` 16진수로 쓴다.
 
+→ 완료: 노드마다 `col`·`row`·`title`·`tag`·`kind`가, 화살표마다 `kind`가 채워졌고, `asOf`와 `source`가 들어갔다.
+
 ## 2. 저장하고 확인
 
 `~/.claude/lib/explain-html.md`의 저장 · 열기 절을 따라 저장하고 브라우저로 연다.

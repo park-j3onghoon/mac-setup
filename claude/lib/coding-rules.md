@@ -7,7 +7,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - Quality ladder: Architecture > Module > Class/Object > Function > Naming; when two rules conflict, apply the higher level (a Function rule such as "prefer inline" never justifies breaking the Module rule "no cross-usecase calls").
 - Cross-cutting sections (Errors, Comments, Tests, Simple Design & Refactoring, Change discipline) apply at every rung of the ladder.
 - Specifics files (`coding-rules-python.md`, `coding-rules-frontend.md`, `coding-rules-db.md`) add stack detail inside their own scope and never override a rule here; a narrowing is allowed (Python's falsy-sentinel scalars), a contradiction is not.
-- Paradigms behind these rules: Clean Architecture, Hexagonal (Ports & Adapters), DDD, CQRS/CQS, TDD, Kent Beck Simple Design.
+- For a case no rule here covers, apply Clean Architecture, Hexagonal Architecture, DDD, CQRS/CQS, TDD and Kent Beck Simple Design.
 
 ## 1. Architecture
 
@@ -43,11 +43,11 @@ Read this file before writing or modifying code, then read the specifics file fo
 
 ## 2. Module
 
-- Deep module: offer a small interface over a deep implementation: `repo.save(entity)` hiding ORM mapping, enum conversion and system-field stripping beats `save_fields(dict, mask)` that pushes the work onto every caller.
+- Deep module: offer a small interface over a deep implementation: `repo.save(entity)` hides ORM mapping, enum conversion and system-field stripping from every caller.
 - One-way dependencies: A references B ⇒ B never knows A; a cycle nullifies the split.
 - Imports at the top of the file, test files included; resolve a circular import by restructuring modules, never by moving the import into a function.
 - Domain vs application placement: a rule true in every use case → domain (`can_transition_to()`, where APPROVE→DRAFT is never allowed; entity field constraint `title max_length=15`); a rule true only in one flow → application ("all fields required on submit" while a draft may be empty; "start date 2 business days ahead" on create/update); split constants and exceptions the same way (`domain/constants` vs `application/constants`).
-- Module constants go after imports + logger and before the first function (`_STRATEGY_REGISTRIES`), shared `DEFAULT_*` at module top; make a constant only when the value means something; `_ZERO = Decimal('0')` is inlined as `Decimal('0')`.
+- Module constants go after imports + logger and before the first function (`_STRATEGY_REGISTRIES`), shared `DEFAULT_*` at module top; make a constant only when the value means something; a bare value such as `Decimal('0')` stays inline.
 - Interface method order: list Repository/Port methods in CRUD order `save` → `findBy*`/`findAll*` → `countBy*` → `existsBy*` → `deleteBy*` (or `update`/`revoke`), the same order in every port of a project so the main entrypoint is found at a glance.
 - Abstraction discipline: extract the same knowledge (a business decision, a discriminating rule) at its 2nd occurrence into its domain module; let a formatting/conversion helper that would become a cross-module shared util wait for the Rule of Three / AHA (Avoid Hasty Abstractions), because a wrong coupling costs more than a little duplication; keep a 1-call-site helper when it is a single defence point (encapsulating `as unknown as T` or a drift guard); same-module step helpers are never "over-abstraction" (Function "Length"); in doubt, keep it local.
 - Requested scope only: add only the structure the task asked for and ask before introducing a ClassVar, helper or layer that did not exist.
@@ -60,14 +60,14 @@ Read this file before writing or modifying code, then read the specifics file fo
 - SRP: one reason to change; split a usecase that validates ownership and also renders the notification email.
 - OCP: see Architecture "Extension by addition".
 - LSP: make a Fake repository honour the real one's contract (update of a missing row raises `NotFound` in both) so tests and production agree.
-- ISP: expose narrow port methods (`count_by_status()`) instead of forcing a caller to take `find_all()` for a count.
+- ISP: expose narrow port methods (`count_by_status()`).
 - DIP: see Architecture "Dependency rule".
 - Value object: immutable, equal by value, invariants enforced in the constructor (Architecture "Validation ladder": single-value invariant).
 - Always-valid entity: check state transitions inside entity methods and raise a domain exception on an invalid one; never rely on caller checks, which scatter invariants and get missed.
-- Rich domain: put behaviour that reads or changes an entity's state on the entity (`payout.approve(now)`), not as `if` chains over its fields in a usecase; an anemic entity is acceptable only for plain CRUD.
-- Tell, don't ask / Law of Demeter: call `order.mark_paid(now)` instead of reading `order.status` and assigning from the usecase; a method talks to its own fields, its parameters and objects it creates, with no `a.b().c().d()` chains.
+- Rich domain: put behaviour that reads or changes an entity's state on the entity (`payout.approve(now)`); an anemic entity is acceptable only for plain CRUD.
+- Tell, don't ask / Law of Demeter: call `order.mark_paid(now)` from the usecase; a method talks to its own fields, its parameters and objects it creates.
 - Composition over inheritance: share behaviour through a collaborator or strategy object, not a base usecase class.
-- Make illegal states unrepresentable: model a kind/state/mode argument as an enum even with two values (`kind=ExitKind.STOP_LOSS`, not `f(is_take_profit=False)` whose `False` cannot be read as "absent" vs "stop-loss kind"); two booleans (`is_tp` + `is_sl`) create (True,True)/(False,False) contradictions → one enum; an Optional field plus a same-root boolean (`take_profit: Decimal | None` + `is_take_profit`) mixes existence with kind → one field; fields that travel with a variant form a discriminated union (`coding-rules-frontend.md` "Types") and a constrained value gets a constrained type (`coding-rules-python.md` "Types").
+- Make illegal states unrepresentable: model a kind/state/mode argument as an enum even with two values (`kind=ExitKind.STOP_LOSS`); two booleans (`is_tp` + `is_sl`) create (True,True)/(False,False) contradictions → one enum; an Optional field plus a same-root boolean (`take_profit: Decimal | None` + `is_take_profit`) mixes existence with kind → one field; fields that travel with a variant form a discriminated union (`coding-rules-frontend.md` "Types") and a constrained value gets a constrained type (`coding-rules-python.md` "Types").
 - Boolean only for a true on/off flag (`verbose`, `dry_run`); when reading any boolean, first name the axis it answers; `False` is the opposite pole of that axis, not "absent".
 - Usecase class structure: state-holding builders and UseCases are classes (`PayoutStatementTree`, `PayoutStatementSummaryUseCase`); pure orchestration/fetch helpers may be module functions (`resolve_statement_scope`, `build_statement_tree`, `summarize_statement`, `_statement_*`); externally called → public, internal → private instance method, public `@staticmethod` only for pure state-independent computation, never a private classmethod/staticmethod, and all private helpers of one class are one kind.
 - CQS with the entity exception: accept `Entity.change()` mutating in memory and returning the result; everywhere else keep Query and Command apart (Function "SRP + CQS per helper").
@@ -81,7 +81,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - Length: 30–40 lines soft limit; past it, split by responsibility into private helpers (Composed Method); a helper called only 1–2 times still earns its name, and private → private calls between step helpers are fine.
 - Step-down order: public main above, helpers below, one abstraction level per step: usecase `execute` on top and `_needs_requeue` below; module-level shared helpers below the usecase classes in call-chain order (`_publish_job_resource` above `_is_publish_stale`); Python's late binding makes helper-after-caller safe.
 - SRP + CQS per helper: one reason to change; a Query (returns a value, no side effect) and a Command (mutates, returns nothing) never share a function; split one that does both.
-- Guards belong to the caller: `_verify_value(field, value, registry)` does not open with `if field not in mask: return` / `if not value: return`; the caller loop `continue`s or returns early and the helper does only what its name promises.
+- Guards belong to the caller: the caller loop `continue`s or returns early and the helper does only what its name promises.
 - Same helper N times → table + loop: turn 2+ explicit calls of one helper with different arguments into an `(argument combination)` list as a module constant iterated in a for-loop; 4 calls + 2 similar mapping-validation calls is where readability tips.
 - Inline up to 100–110 chars, otherwise a named variable; `return Payload(**repo.create(entity).dict())` is decided by its length.
 - No unnecessary defaults: remove a parameter default once every call site passes the value explicitly (UI defaults in API payloads: `coding-rules-frontend.md` "UI defaults are FE responsibility").
@@ -90,11 +90,11 @@ Read this file before writing or modifying code, then read the specifics file fo
 
 ## 5. Naming
 
-- Ubiquitous language: use the term the codebase/glossary already uses, one word per concept; never `org` here and `publisher` there for the same thing.
-- Function name = business role: `send_payout_email`, never `send_payout_email_async`/`_in_thread`; mechanism words stay out of the name.
+- Ubiquitous language: use the term the codebase/glossary already uses, one word per concept.
+- Function name = business role: `send_payout_email`; mechanism words stay out of the name.
 - Model field = DB column so a debugging query maps 1:1.
-- Positive predicates: `can_*`/`is_*`/`has_*` over `blocks_*`/`*_unfinished` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
-- Intention-revealing, searchable names: `remaining_budget` not `rb`, a named constant not a magic number, single letters only in comprehensions/lambdas.
+- Positive predicates: `can_*`/`is_*`/`has_*` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
+- Intention-revealing, searchable names: `remaining_budget`, a named constant not a magic number, single letters only in comprehensions/lambdas.
 - Enum naming: model enum without suffix (`DisplayCampaignStatus`) vs domain enum with `Type` suffix (`DisplayCampaignStatusType`); infra converts via `ModelEnum(domain_enum.value)`.
 - Enum zero value by direction: a server-filled output/stored enum puts a real domain value at 0 (`STATUS_PLANNED=0`, `PAYOUT_EMAIL_STATUS_PENDING=0`, `PayoutStatus.DRAFT=0`), 1:1 with the DB default and with no UNSPECIFIED in the domain enum; a client-filled input discriminator/view selector keeps `_UNSPECIFIED=0` so an unset value is rejected (INVALID_ARGUMENT) or defaulted; when an enum flips input ↔ output, flip its 0 policy too.
 
@@ -150,8 +150,8 @@ Read this file before writing or modifying code, then read the specifics file fo
   1. background thread/executor: patch the submit function to run synchronously (autouse fixture when shared), verify real threads only in a dedicated `threading.Event.wait(timeout)` test, wait on events/conditions never `sleep`
   2. time: inject `now`
   3. random/Faker: set every result-affecting value explicitly
-  4. shared state: no module-level mutables, leftover DB rows or order coupling
-- MC/DC for personal repos only (linkcart etc.): in `A && (B || C)` each sub-condition flips the decision alone with the others fixed; branch coverage 100% is not enough, n+1 cases usually suffice, and with no JaCoCo-style support the input table is designed by hand.
+  4. shared state: keep every mutable value and DB row test-local so tests pass in any order
+- MC/DC for personal repos only (linkcart etc.): in `A && (B || C)` each sub-condition flips the decision alone with the others fixed; branch coverage 100% is not enough, start from n+1 cases, and with no JaCoCo-style support the input table is designed by hand.
 - Test-only attributes (`data-testid`) ship in the same PR as the test that queries them (`getByTestId`); otherwise defer the attribute.
 
 ## 9. Simple Design & Refactoring
@@ -166,8 +166,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 ## 10. Change discipline
 
 - Existing patterns first: before proposing a change, `grep -r "<pattern>" {app}/ --include="*.py"` across sibling modules (id field `default=0`/`gt=0`, `VALID_TRANSITIONS` public/private, `Error` vs `Exception` naming); when the existing pattern differs from the ideal, show both and let the user decide.
-- Verify current code before asking: confirm the target code is not already doing X before proposing X, and frame the question as "currently A, a sibling module does B. Switch or keep?".
+- Pattern-switch questions: frame them as "currently A, a sibling module does B. Switch or keep?".
 - Review-agent suggestions: grep the module and its siblings first and route new defensive code (`assert`s, a duplicate `updated_count` check, a manual `updated_at`) to ASK.
 - Verify file state with `git diff --name-only` / `ls` / `git status` before saying a file exists, changed or was deleted; branch switches and merges change the state.
-- Tests before push: run the tests of every changed module.
 - Build check after moves/import changes: after `git mv` or an import-path change, check the moved file's relative imports, prefer absolute path aliases, and run `npm run build` (or the project's build); jest resolves leniently, vite/webpack does not; tests passing ≠ build passing.
