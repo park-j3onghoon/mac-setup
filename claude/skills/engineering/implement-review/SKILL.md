@@ -30,7 +30,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 모든 발견에 조치한다: 고치거나, 묻거나, 남기는 이유를 적는다. 편집과 명령은 1단계의 작업 디렉토리에서 한다.
 
-1. 기존 패턴 확인: 고치기 전에 같은 패턴이 레포 다른 곳에서 어떻게 쓰이는지 Grep으로 본다. 2단계 발견이 권하는 수정이 레포에 없는 방어 코드(assert · 중복 존재 체크 · `updated_at` 수동 세팅 등)면 ASK로 보낸다. 그 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣고, 확인하지 못했으면 미확인이라고 쓴다.
+1. 기존 패턴 확인: `~/.claude/lib/coding-rules.md`를 Read하고 Change discipline 절의 Existing patterns first와 Review-agent suggestions를 2단계 발견에 적용한다. 방어 코드 ASK의 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣는다.
 2. 분류: AUTO-FIX = 기존 패턴과 일치하는 기계적 수정(import 정리, 오타, 누락 필드). ASK = 판단이 필요한 것(아키텍처 결정, 트레이드오프, 기존 패턴과 다른 방향). 남김 = 고치지 않을 INFO. 남김은 이유를 한 줄로 적는다.
 3. AUTO-FIX 적용: 수정마다 한 줄: `[AUTO-FIXED] [file:line] 문제 → 조치`.
 4. ASK는 한 번에 하나씩 묻는다. 사용자가 발견 원문을 보지 못했다고 가정하고 설명한다.
@@ -70,7 +70,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V (보류 · 기각 · �
 리뷰어별: 코드 A · 언어 B · 팀 C · 보안 S · Codex D · Codex adversarial E
 ```
 
-반영한 수정이 있으면 새 커밋으로 남긴다. 파일 목록과 커밋 메시지 안을 보여 주고 승인받은 뒤 커밋한다. 이 PR과 무관한 파일(생성물 · 잠금 파일 등)은 목록에서 뺀다.
+반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 그 문서의 커밋 규칙대로 커밋한다. 이 PR과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다.
 
 1단계에서 `{T}`가 있었으면 리뷰 브랜치를 head에 ff로 반영하고 리뷰 worktree를 지운다. ff가 실패하면 멈추고 묻는다.
 

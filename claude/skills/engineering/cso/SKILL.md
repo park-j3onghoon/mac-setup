@@ -30,7 +30,7 @@ red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드�
 - 테스트 코드의 취약점
 - 문서 파일(.md)의 보안 우려
 
-발견마다 source→sink 코드 추적으로 증명을 시도하고 결과를 태그한다. `VERIFIED`는 코드 추적으로 확인한 것, `UNVERIFIED`는 패턴 매칭까지만 한 것.
+발견마다 `~/.claude/lib/owasp.md`의 증명 방식 절을 따라 증명을 시도하고 `VERIFIED`·`UNVERIFIED`를 붙인다.
 
 ## 보고서 형식
 
