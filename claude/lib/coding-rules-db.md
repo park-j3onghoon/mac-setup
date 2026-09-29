@@ -29,5 +29,5 @@ Applies when writing schema/migrations for team-style MySQL, together with `codi
 
 ## updated_at
 
-- `ON UPDATE CURRENT_TIMESTAMP` is the DDL convention for `updated_at`, applied by the DBA out-of-band; it is absent from repo migrations, so its absence in a grep is not a bug (ORM consequence: `coding-rules-python.md` "Never set updated_at by hand").
-- Legacy tables may lack it (a legacy billing table `payout_organization`: `datetime(6)`, no ON UPDATE, `auto_now` only); verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.
+- `ON UPDATE CURRENT_TIMESTAMP` is the DDL convention for `updated_at`, applied by the DBA out-of-band, so reviewers confirm it in the live table DDL, its only source (ORM consequence: `coding-rules-python.md` "Never set updated_at by hand").
+- Legacy tables may lack it (e.g. a legacy table with a `datetime(6)` column, no ON UPDATE and `auto_now` only); verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.

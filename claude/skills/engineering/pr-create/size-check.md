@@ -4,7 +4,7 @@ base 대비 추가된 `insertions` 로 PR 크기를 판정한다.
 
 ## base 확정
 
-이 브랜치의 PR이 있으면 그 `baseRefName`, 없으면 레포 기본 브랜치(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`)가 base다. stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
+레포 기본 브랜치(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`)가 base다. stacked PR이면 base는 master가 아니라 직전 스택 브랜치다. 사용자가 base나 범위(`A..B`)를 지정했으면 그 값을 쓴다.
 
 ```bash
 BASE={위에서 정한 base}
