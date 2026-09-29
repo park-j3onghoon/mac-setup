@@ -4,8 +4,6 @@ description: 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 �
 disable-model-invocation: true
 ---
 
-# /push-commit
-
 ## 1. 대상 확정
 
 현재 작업 디렉토리의 브랜치를 올린다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`를 Read한다. 커밋·push 전 확인·본문 규칙은 그 문서를 따른다.

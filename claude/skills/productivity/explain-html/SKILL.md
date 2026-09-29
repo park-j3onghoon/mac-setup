@@ -5,8 +5,6 @@ disable-model-invocation: true
 argument-hint: <주제> [저장 경로]
 ---
 
-# /explain-html: HTML 해설서
-
 인자로 받은 주제를 조사해 단일 HTML 파일 하나로 설명한다.
 
 ## 1. 스타일 규칙 로드

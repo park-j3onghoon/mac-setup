@@ -4,8 +4,6 @@ description: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 
 disable-model-invocation: true
 ---
 
-# /pr-create
-
 ## 1. 대상 확정
 
 현재 작업 디렉토리의 브랜치로 PR을 만든다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부른다. `~/.claude/lib/pr-rules.md`를 Read한다. 본문 구조와 제목·본문 언어는 그 문서를 따른다.

@@ -5,8 +5,6 @@ disable-model-invocation: true
 argument-hint: "[스킬 이름 | 전체]"
 ---
 
-# /skill-review: 스킬 점검
-
 스킬 하나 또는 전체를 구조 규약(어디에 있고 어디에 등록됐나)과 실행 기준(AI가 그대로 실행할 수 있나)으로 점검한다. 고치는 것은 승인 후에만 한다.
 
 ## 1. 대상 확정
