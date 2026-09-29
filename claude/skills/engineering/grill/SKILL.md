@@ -5,8 +5,6 @@ disable-model-invocation: true
 argument-hint: "<주제 또는 계획>"
 ---
 
-# /grill: 결정 인터뷰
-
 계획을 세우기 전에 design tree를 세워 갈림길을 전부 닫는다.
 
 사실은 내 몫, 결정은 사용자 몫이다. 코드·설정·데이터를 읽어 알 수 있는 것은 읽어서 답한다.

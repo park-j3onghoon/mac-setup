@@ -5,8 +5,6 @@ disable-model-invocation: true
 argument-hint: "[계획 파일 경로 | 구현 범위]"
 ---
 
-# /implement: 계획대로 구현
-
 tracer bullet: 진입점에서 저장소까지 관통하는 얇은 슬라이스를 하나 끝내고 넓힌다.
 
 ## 1. 범위 확정
