@@ -1,6 +1,4 @@
-# Coding Rules: DB schema (MySQL)
-
-Applies when writing schema/migrations for team-style MySQL, together with `coding-rules.md` (core).
+# DB (MySQL)
 
 ## Types
 
@@ -29,5 +27,11 @@ Applies when writing schema/migrations for team-style MySQL, together with `codi
 
 ## updated_at
 
-- `ON UPDATE CURRENT_TIMESTAMP` is the DDL convention for `updated_at`, applied by the DBA out-of-band, so reviewers confirm it in the live table DDL, its only source (ORM consequence: `coding-rules-python.md` "Never set updated_at by hand").
+- `ON UPDATE CURRENT_TIMESTAMP` is the DDL convention for `updated_at`, applied by the DBA out-of-band, so reviewers confirm it in the live table DDL, its only source.
 - Legacy tables may lack it (e.g. a legacy table with a `datetime(6)` column, no ON UPDATE and `auto_now` only); verify per table via staging `information_schema.COLUMNS.EXTRA` (`on update CURRENT_TIMESTAMP`) before relying on `queryset.update()`.
+
+## Transactions and locks
+
+- Lock across the network by workload: with a single-worker batch + rare manual trigger + single-purpose low-contention row, hold `SELECT … FOR UPDATE` (Django `select_for_update`) through the external call such as an SES send (lock-during-send), simpler than a SENDING/IN_PROGRESS state plus reaper, since InnoDB `FOR UPDATE` blocks only locking reads/writes (plain reads use the MVCC snapshot) and releases on session death; with high concurrency (multiple workers) use a committed SENDING state + compare-and-set without a lock.
+- Dedup read under `FOR UPDATE`: lock all candidate rows and decide after the lock is held; a status filter in the locking read drops a row that turned SENT while waiting and opens a "none, create new" hole.
+- Check-then-insert: serialize with `GET_LOCK`, a unique constraint or a single entry point; a status value cannot stop a concurrent INSERT.

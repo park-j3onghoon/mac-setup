@@ -1,0 +1,8 @@
+# Errors
+
+- Not found: `update`/`delete` on a missing target raise a domain exception (`NotFound`/`EntityNotFound`) and return a non-nullable type; `find`/`search` may return null. Criterion: the caller expects absence → null; existence is a precondition → exception.
+- 404 vs 200 + null: `GET /resources/{id}` → 404 (`NotFound`, the REST standard); a condition-based single lookup ("the in-progress amendment") → 200 with a null field, because "looked, none" is a normal path.
+- Catch-all handlers return a fixed response and log the original error, so the client sees only the fixed response.
+- Unreachable branch: in a pure function return a safe fallback with the comment `정상 경로 도달 불가: ...`; in an async or event handler throw an error naming the branch (`unreachable: ...`) so error tracking can trace it, because a silent return is a silent failure with no user feedback.
+- Batch/loop failure aggregation: collect per-item failures and log once after the loop with the failure count and an id → message map instead of logging each item; this loses per-item stack traces, so persist each failed item in a terminal state (run FAILED) for monitoring and reprocessing. Nested loops aggregate per level (run loop, org loop), and a claimed item is closed to a terminal state on exception so no zombie stays "in progress".
+- Message style: English + resource name + id (`Campaign request not found: id=42`, `Campaign creative not found: campaign_id=7`), raised as the domain exceptions `NotFoundError`/`NotAllowedError`/`ValidationError`; keep use case context out (the stack trace and APM carry it) and let the frontend map the message to Korean.
