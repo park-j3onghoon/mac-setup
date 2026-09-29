@@ -35,7 +35,7 @@ disable-model-invocation: true
 - B) BIG CHANGE (Recommended): 차원별 Agent 병렬 리뷰, 차원당 최대 4개 이슈
 - C) SMALL CHANGE: 인라인 압축 리뷰, 차원당 1개 이슈
 
-기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
+C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
 완료 기준: 미결 갈림길이 없거나 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
 
@@ -63,7 +63,7 @@ disable-model-invocation: true
 ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
 1. 계획 전문
 2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
-3. "`~/.claude/lib/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`)을 Read하고 그 규칙으로 판단하라"
+3. "`~/.claude/lib/coding-rules.md`와 계획이 건드리는 스택의 서브파일(`coding-rules-python.md`·`coding-rules-frontend.md`·`coding-rules-db.md`·`coding-rules-vue.md`)을 Read하고 그 규칙으로 판단하라"
 4. "이슈 번호를 {N}부터 시작하라"
 5. "최대 4개 이슈. 없으면 `No issues found.` 반환"
 6. 아래 리뷰 관점 절의 엔지니어링 선호와 인지 패턴
@@ -124,17 +124,11 @@ Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제
 
 완료 기준: Codex 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈춘 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
 
-## Step 4: 구현 시작 확인
+## Step 4: 마감
 
-AskUserQuestion:
-```
-계획이 {저장한 절대경로}에 저장되었습니다.
-- A) 구현 시작
-- B) 계획 수정 필요
-- C) 지금은 구현하지 않음
-```
+`plan.md`의 절대경로를 알리고 멈춘다.
 
-완료 기준: 구현은 A) 구현 시작을 받은 뒤에만 착수한다.
+완료 기준: 채팅에 `plan.md`의 절대경로가 남았다.
 
 ## 리뷰 관점
 
