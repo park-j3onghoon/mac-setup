@@ -2,7 +2,7 @@
 name: investigate
 description: 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다.
 disable-model-invocation: true
-argument-hint: [증상 또는 에러 메시지]
+argument-hint: "[증상 또는 에러 메시지]"
 ---
 
 증거로 확인된 근본 원인이 나온 뒤에 코드를 고친다.

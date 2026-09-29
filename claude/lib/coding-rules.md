@@ -82,7 +82,7 @@ Read this file before writing or modifying code, then read the specifics file fo
 - Step-down order: public main above, helpers below, one abstraction level per step: usecase `execute` on top and `_needs_requeue` below; module-level shared helpers below the usecase classes in call-chain order (`_publish_job_resource` above `_is_publish_stale`); Python's late binding makes helper-after-caller safe.
 - SRP + CQS per helper: one reason to change; a Query (returns a value, no side effect) and a Command (mutates, returns nothing) never share a function; split one that does both.
 - Guards belong to the caller: the caller loop `continue`s or returns early and the helper does only what its name promises.
-- Same helper N times → table + loop: turn 2+ explicit calls of one helper with different arguments into an `(argument combination)` list as a module constant iterated in a for-loop; 4 calls + 2 similar mapping-validation calls is where readability tips.
+- Same helper N times → table + loop: turn 4+ explicit calls of one helper with different arguments into an `(argument combination)` list as a module constant iterated in a for-loop.
 - Inline up to 100–110 chars, otherwise a named variable; `return Payload(**repo.create(entity).dict())` is decided by its length.
 - No unnecessary defaults: remove a parameter default once every call site passes the value explicitly (UI defaults in API payloads: `coding-rules-frontend.md` "UI defaults are FE responsibility").
 - Collection params non-nullable: an empty collection means "no filter"; scalars may be `None` (Python narrowing: `coding-rules-python.md` "Types").
