@@ -14,9 +14,9 @@ disable-model-invocation: true
 1. 기존 코드로 이미 해결되는 부분은?
 2. 목표를 달성하려면 꼭 바꿔야 하는 파일·함수는 무엇인가?
 3. 8+ 파일 수정 또는 2+ 새 클래스/서비스면 scope creep 경고를 낸다.
-4. 계획에 임시 우회·TODO 잔존(숏컷)이 있으면 완전판과의 차이·나중에 메우는 비용을 적는다.
+4. 계획에 임시 우회·TODO 잔존이 있으면 완전판과의 차이·나중에 메우는 비용을 적는다.
 
-미결 갈림길 점검: 계획이 사용자가 골라야 할 결정을 조용히 가정하고 넘어간 자리를 찾는다. 신호는 셋이다. 근거 없이 단정한 방식 선택(왜 그것인지가 없음), 대안이 한 번도 언급되지 않은 분기점, "추후 결정"·"TBD"로 미룬 채 그 위에 후속 단계가 쌓인 곳.
+미결 갈림길 점검: 계획이 사용자가 골라야 할 결정을 조용히 가정하고 넘어간 자리를 찾는다. 신호는 셋이다. 근거 없이 단정한 방식 선택, 대안이 한 번도 언급되지 않은 분기점, "추후 결정"·"TBD"로 미룬 채 그 위에 후속 단계가 쌓인 곳.
 
 하나라도 있으면 아래 형식으로 보고한다.
 
@@ -35,7 +35,7 @@ disable-model-invocation: true
 - B) BIG CHANGE (Recommended): 차원별 Agent 병렬 리뷰, 차원당 최대 4개 이슈
 - C) SMALL CHANGE: 인라인 압축 리뷰, 차원당 1개 이슈
 
-기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 여기서 고른 스코프는 settled다. 이후 모든 이슈는 그 스코프 안에서 낸다.
+기본은 B다. C는 오타 수준(3줄 안팎) 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
 완료 기준: 미결 갈림길이 없거나 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
 
@@ -140,7 +140,7 @@ AskUserQuestion:
 
 Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
 
-엔지니어링 선호: 지식의 중복은 한 출처로 모으되 우연한 중복은 Rule of Three까지 둔다(`~/.claude/lib/coding-rules.md` §2 Module "Abstraction discipline" · §9 Simple Design) · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+엔지니어링 선호: 중복은 `~/.claude/lib/coding-rules.md` Module 절의 Abstraction discipline과 Simple Design & Refactoring 절을 따른다 · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
 
 인지 패턴
 1. Blast radius: 최악의 경우 영향 범위
@@ -149,5 +149,4 @@ Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
 4. Systems over heroes: 새벽 3시에도 안전하게 도는가
 5. Reversibility: 실패 비용을 낮게
 6. Essential vs accidental complexity: 진짜 문제를 푸는가
-7. Make the change easy, then make the easy change
-8. Two-week smell test: 2주 안에 기능을 못 붙이면 아키텍처 문제
+7. Two-week smell test: 2주 안에 기능을 못 붙이면 아키텍처 문제

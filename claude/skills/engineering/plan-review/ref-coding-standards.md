@@ -1,13 +1,12 @@
 # Coding Standards Review Reference
 
-관용구·타입 안전·네이밍, import 위치, 불필요한 default, 컬렉션 파라미터, boolean 대신 enum(boolean trap), DRY와 Rule of Three는 `~/.claude/lib/coding-rules.md` §2 Module · §3 Class/Object · §4 Function · §5 Naming · §9 Simple Design에 있다. 아래는 계획 리뷰에서 반복해 걸린 지점.
+관용구·타입 안전·네이밍, import 위치, 불필요한 default, 컬렉션 파라미터, boolean 대신 enum, DRY와 Rule of Three는 `~/.claude/lib/coding-rules.md` Module·Class / Object·Function·Naming·Simple Design & Refactoring 절에 있다.
 
 ## Checklist
 
 ### Python / Django
 - 타입 힌트 약화 여부 (Any 추가, Optional 남용)
 - dataclass > dict, Enum > string 상수
-- 계획이 새 boolean 파라미터를 도입하면 그 값이 답하는 축을 적는다. 종류·상태·모드면 2-값이어도 enum
 
 ### Kotlin / Spring Boot
 - data class 불변성, copy() 활용
