@@ -27,7 +27,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 
 ## 4. 클린 코드 / 네이밍
 
-- `~/.claude/lib/coding/function.md`·`~/.claude/lib/coding/naming.md`·`~/.claude/lib/coding/comments.md`·`~/.claude/lib/coding/file-layout.md`와 `~/.claude/lib/coding/simple-design.md`의 Abstraction discipline으로 판정한다.
+- `~/.claude/lib/coding/clean-code.md`와 `~/.claude/lib/coding/simple-design.md`의 Abstraction discipline으로 판정한다.
 
 ## 5. YAGNI / 명시성
 

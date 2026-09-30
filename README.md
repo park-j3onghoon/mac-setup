@@ -68,7 +68,7 @@ mac-setup/
 | [`lib/document-tone.md`](claude/lib/document-tone.md) | PR 본문·코멘트 같은 문서의 문장 끝 규칙 (`pr-rules.md`가 가리킨다) |
 | [`lib/diagram/`](claude/lib/diagram/) | 도식 형식 고르기(코드블록 · markdown 표 · HTML) · HTML 틀 둘(양의 이동을 보이는 생키 도식, 단계별 흐름과 경로를 비교하는 흐름 지도) |
 | [`lib/explain/`](claude/lib/explain/) | 개념 설명 서술 방식(공통 규칙 `index.md` · 상황에 맞을 때만 더 읽는 코드 · 비교 · 문서 분할) |
-| [`lib/coding/`](claude/lib/coding/) | 코드 규칙. 목차 `index.md`가 작업마다 읽을 모듈을 고른다(설계 clean-architecture·hexagonal·ddd·cqs·simple-design · 코드 function·naming·file-layout·errors·comments · 테스트 tdd · 변경 절차 change-discipline · 스택 python·frontend·db·proto) |
+| [`lib/coding/`](claude/lib/coding/) | 코드 규칙. 목차 `index.md`가 작업마다 읽을 모듈을 고른다(설계 clean-architecture·hexagonal·ddd·simple-design · 코드 clean-code·errors · 테스트 tdd · 변경 절차 change-discipline · 스택 python·frontend·db·proto) |
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
 | [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
