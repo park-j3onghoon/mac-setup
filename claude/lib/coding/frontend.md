@@ -4,7 +4,7 @@
 
 - Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the hook/param resolver: `const step = isValidStep(params.step) ? params.step : "settings";`.
 - URL-driven refactors keep the old initial state: when a page moves from `useState("...")` to URL params, reproduce that initial value at hook level.
-- Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, keep `useEffect` + `router.replace` only for the address bar, and comment the split of roles:
+- Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, keep `useEffect` + `router.replace` only for the address bar, and comment the split of roles; `useEffect` + `router.replace` alone renders one blank frame first:
   ```tsx
   const effectiveStep =
     step === "creative" && state === null ? "settings" : step;
@@ -20,7 +20,7 @@
 
 ## Types
 
-- Zod input vs values: when Values from `onSubmit` go back into `defaultValues` (Input), convert them in one helper:
+- Zod input vs values: when Values from `onSubmit` go back into `defaultValues` (Input), convert them in one helper; the move passes with a "nullable → non-null + validation" transform and breaks at runtime once a `string → Date` transform is added:
   ```ts
   function valuesToSettingsInput(v: Values): Partial<Input> {
     return v as unknown as Partial<Input>;
@@ -35,16 +35,16 @@
     | { action: "skip"; campaignId: number };
   // caller: if (a.action === "update") updateCampaign({ id: a.campaignId, ... })
   ```
-- Update payload drops create-only fields explicitly: destructure them out and keep `UpdateRequest = Omit<CreateRequest, "revenueType"> & { id }` aligned with the payload:
+- Update payload drops create-only fields explicitly: destructure them out (spread skips TS excess-property checks) and keep `UpdateRequest = Omit<CreateRequest, "revenueType"> & { id }` aligned with the payload:
   ```ts
   const { revenueType: _revenueType, ...updateBody } = body;
   await mutate({ id, ...updateBody });
   ```
-- Set-equality utils: state "inputs contain no duplicates" in the function comment of `hasSameMembers` and friends; when duplicates must count, compare sorted copies or count maps.
+- Set-equality utils: state "inputs contain no duplicates" in the function comment of `hasSameMembers` and friends (`[A,A,B]` and `[A,B,B]` compare equal); when duplicates must count, compare sorted copies or count maps.
 
 ## Async handlers and errors
 
-- No throw from an async handler chain: in a Promise-returning `onClick`, an overlay `onConfirm` or a wrapper that calls the callback and drops the return, grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, show a toast and return without rethrowing. An unreachable branch throws `new Error('unreachable: ...')`.
+- No throw from an async handler chain: in a Promise-returning `onClick`, an overlay `onConfirm` or a wrapper that calls the callback and drops the return, a throw becomes an unhandled rejection; grep each layer (`handleConfirm` → `Modal.BottomSheet onClick wrapper` → React `onClick`) for an `await`/`.catch`; with none, catch, show a toast and return without rethrowing. An unreachable branch throws `new Error('unreachable: ...')`.
 - Modals close on their own: let the modal close and offer retry through the button; `catch {}` without a binding is fine for confirm-modal branching alongside "mutation errors are handled in `onError`".
 
 ## Copy and toasts
@@ -71,7 +71,7 @@
 
 ## Layout
 
-- Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain.
+- Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain; an `auto` row grows without bound, and one missing `min-height: 0` breaks auto-scroll without an error.
 
 ## Tests
 
@@ -80,4 +80,4 @@
 
 ## Build
 
-- Build after a move: run `npm run build` and prefer absolute path aliases.
+- Build after a move: run `npm run build` and prefer absolute path aliases; jest resolves imports that vite/webpack reject.

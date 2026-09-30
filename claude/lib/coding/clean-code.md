@@ -9,7 +9,7 @@
 - Inline an expression up to 100–110 characters; past that, give it a named variable.
 - Defaults only where a caller omits the value: remove a parameter default once every call site passes the value explicitly.
 - Collection parameters are non-nullable: pass an empty collection for "no filter"; scalars may be null.
-- Explicit fields after a spread: when building from a spread plus explicit fields, put the explicit fields after the spread.
+- Explicit fields after a spread: when an explicit value must win over a same-named key in the spread, put it after the spread.
 - Immutable copy: a helper that would mutate an input map or list returns a modified copy as a new object.
 
 ## File layout
