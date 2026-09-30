@@ -1,6 +1,6 @@
 # Architecture Review Reference
 
-원칙(의존성 방향·SOLID·KISS/YAGNI·상태 저장·전이 다이어그램)은 `~/.claude/lib/coding/clean-architecture.md`·`~/.claude/lib/coding/hexagonal.md`·`~/.claude/lib/coding/ddd.md`·`~/.claude/lib/coding/simple-design.md`에 있다.
+원칙(의존성 방향·SOLID·KISS/YAGNI·상태 저장·전이 다이어그램)은 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/types.md`·`~/.claude/lib/coding/design.md`에 있다.
 
 ## 의존성 방향
 

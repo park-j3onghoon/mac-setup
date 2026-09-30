@@ -1,0 +1,8 @@
+# Design: duplication, abstraction and scope
+
+- Four rules: when design choices conflict, prefer in this order: tests pass, intention shows, no duplication, fewest elements.
+- DRY of knowledge: give every fact or decision one source of truth: when the same knowledge (a business decision, a discriminating rule) appears a second time, extract it into its domain module; keep code that only looks alike and changes for different reasons as separate copies.
+- Abstraction discipline: when a formatting/conversion helper would become a cross-module shared util, wait for the Rule of Three; for a shared helper, orchestrator or layer the sibling modules lack, even past the Rule of Three, first infer why they chose inline or duplication, confirm the benefit clearly beats resistance and learning curve, then start inside one module and propose spreading later; extracting shared code early for a planned later PR is allowed; keep a one-call-site helper that is a single defence point (encapsulating an unsafe cast, a drift guard); split into same-module step helpers freely; in doubt, keep it local.
+- YAGNI: build only what the task asks for now, and ask before adding a class variable, helper or layer outside the requested change; add defensive logic (a cancel-confirmation modal) only with a PRD/design basis or to prevent irreversible user loss.
+- KISS: choose the simplest thing that works, and remove accidental complexity before adding structure.
+- Extension by addition: when the same branch keeps being edited for each new case, introduce a strategy, polymorphism or port and add the next case as new code; share behaviour through a collaborator or strategy object, and keep use cases free of a shared base class.
