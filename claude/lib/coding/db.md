@@ -10,7 +10,7 @@
 
 ## Enum columns
 
-- Make the first enum value `''`; an unmatched value falls back to the first value.
+- Make the first enum value `''`.
 - Name every enum column `{enum_type}_type`.
 
 ## Charset
