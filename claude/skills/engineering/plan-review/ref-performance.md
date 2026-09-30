@@ -5,7 +5,7 @@
 ## Core Principles
 
 - 최적화는 측정된 병목에만: N+1은 측정 없이도 잡는다.
-- 캐싱은 일관성 비용을 동반한다: stale data 버그, invalidation 복잡도를 사전에 식별.
+- 캐싱을 쓰면 stale data 버그, invalidation 복잡도를 사전에 식별.
 
 ## Checklist
 
@@ -42,8 +42,8 @@
 - `json.dumps(sort_keys=True)`는 dict 키만 정렬하고 리스트 원소 순서는 그대로 둔다. 상위(DB/gRPC)가 `ORDER BY` 없이 리스트를 주면 호출마다 순서가 흔들려 같은 내용도 다른 문자열이 된다 → dedup miss. 모든 리스트 섹션을 안정 키로 명시 정렬한 뒤 직렬화하고, "상위 row 셔플 → 동일 문자열" 테스트로 고정한다. (숫자는 포맷 문자열/Decimal로 고정해 float drift도 제거.)
 
 ### React Query·TanStack Query 데이터 캐시
-- queryKey는 구조 보존 배열 사용. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함하면 React Query가 deep equality로 올바르게 구분.
-- `refetchOnMount: "always"`는 staleTime을 사실상 무력화. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)가 기본값으로 일관적.
+- queryKey는 구조 보존 배열 사용. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함한다.
+- `refetchOnMount: "always"`는 staleTime을 사실상 무력화. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)를 기본값으로 쓴다.
 - mutation onSuccess invalidation은 모든 편집 경로를 커버해야 유효. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 고려.
 
 ## Examples

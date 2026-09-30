@@ -19,7 +19,7 @@ git -C {작업 디렉토리} diff origin/$BASE...HEAD --numstat | sort -rn   # �
 ```
 
 - `--shortstat`의 insertions 값이 판정 대상이다.
-- `--numstat`의 첫 컬럼이 파일별 additions이고, 정렬 상위 파일이 곧 분할 후보다.
+- `--numstat`의 정렬 상위 파일이 곧 분할 후보다.
 
 ## 판정
 
