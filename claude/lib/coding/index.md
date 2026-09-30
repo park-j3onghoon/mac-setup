@@ -8,7 +8,6 @@
 - Invalid values unrepresentable: shape types and schema constraints so a wrong value cannot enter (an enum over a free string, NOT NULL, UNIQUE, CHECK).
 - Reversible steps: split a change so each step rolls back on its own, schema and code separately.
 - Queryable storage: store values in shapes a query can analyse later (typed columns and enums rather than free text, a dict or a JSON union).
-- Write down only what the code cannot show.
 - When following a rule would defeat one of these principles, show both options and let the user decide.
 
 ## Modules
