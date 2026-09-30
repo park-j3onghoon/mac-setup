@@ -2,7 +2,7 @@
 
 diff를 아래 카테고리별로 빠짐없이 검증한다.
 
-`~/.claude/lib/coding/index.md`를 Read하고 그 표에서 diff가 닿는 모듈을 Read해 이 기준에 더한다.
+`~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 diff가 닿는 모듈을 Read해 이 기준에 더한다.
 
 ## 1. 보안
 

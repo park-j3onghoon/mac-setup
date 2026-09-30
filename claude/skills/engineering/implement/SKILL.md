@@ -29,7 +29,7 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 
 ## 3. 규칙 적재
 
-- `~/.claude/lib/coding/index.md`를 Read하고, 그 표에서 이번 변경이 닿는 모듈(스택 파일 포함)을 모두 Read한다.
+- `~/.claude/lib/coding/index.md`를 Read하고, 그 목록에서 이번 변경이 닿는 모듈(스택 파일 포함)을 모두 Read한다.
 - 작업 중인 레포에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그것도 Read한다.
 - API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면 API 규칙 모듈(`~/.claude/lib/api-aip/index.md`)을 Read하고 그 문서의 트랙 판정부터 수행한다.
 
