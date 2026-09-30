@@ -12,17 +12,19 @@
 
 ## Modules
 
-When two rules conflict, the one listed higher wins: first by the module order below, then by the order inside a module.
+When two rules conflict, a rule in a stack section (Python, Frontend, proto) wins over the general rule it narrows; otherwise the one listed higher wins: first by the module order below, then by the order inside a module.
 
-- `~/.claude/lib/coding/change-discipline.md`: proposing a change, deviating from an existing pattern, moving files
-- `~/.claude/lib/coding/clean-architecture.md`: layers, dependency direction, entrypoints, use cases, application services, commands vs queries
-- `~/.claude/lib/coding/hexagonal.md`: ports, adapters, repositories, calls to other systems
-- `~/.claude/lib/coding/ddd.md`: entities, value objects, aggregates, state and transitions
-- `~/.claude/lib/coding/simple-design.md`: abstraction, duplication, scope of a change
-- `~/.claude/lib/coding/tdd.md`: tests
-- `~/.claude/lib/coding/errors.md`: exceptions, error responses, failure aggregation
-- `~/.claude/lib/coding/clean-code.md`: writing or splitting functions, placing code inside a file, comments and docstrings, naming
-- `~/.claude/lib/coding/python.md`: Python, Django, DRF, Pydantic, pytest
-- `~/.claude/lib/coding/frontend.md`: React, Vue, TypeScript; for the Vue main projects also `~/.claude/lib/coding-rules-vue.md`
-- `~/.claude/lib/coding/db.md`: MySQL schema, transactions, locks
-- `~/.claude/lib/coding/proto.md`: proto files
+- `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, file state, moves and builds, slices and commits
+- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, entrypoints, use cases and services, commands and queries, repositories, adapters to other systems
+- `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities, state and transitions, the validation ladder
+- `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
+- `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity, extension
+- `~/.claude/lib/coding/tests.md`: tests
+- `~/.claude/lib/coding/errors.md`: exceptions, failure aggregation, error messages, errors in async handlers
+- `~/.claude/lib/coding/functions.md`: writing or splitting functions and methods
+- `~/.claude/lib/coding/file-layout.md`: imports, constants, method and helper order inside a file
+- `~/.claude/lib/coding/comments.md`: comments and docstrings
+- `~/.claude/lib/coding/naming.md`: names and terms
+- `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks
+- `~/.claude/lib/coding/api.md`: HTTP responses, proto contracts, PATCH payloads, OpenAPI docs
+- `~/.claude/lib/coding/ui.md`: frontend screens: URL state, copy, components and forms, CSS layout; for the Vue main projects also `~/.claude/lib/coding-rules-vue.md`

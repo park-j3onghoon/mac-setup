@@ -1,0 +1,13 @@
+# Process: proposing and making a change
+
+- Ideal first: propose first the ideal structure that `~/.claude/lib/coding/architecture.md`, `~/.claude/lib/coding/domain.md`, `~/.claude/lib/coding/types.md` and `~/.claude/lib/coding/design.md` describe, compare candidates when several are ideal, state scope/legacy/schedule compromises separately afterwards, and give the grounds whenever you call a design excessive or complex.
+- Existing patterns first: before proposing or applying a change, a review agent's suggestion included, grep sibling modules for the pattern (`grep -r "{pattern}" {app}/`: an id field's default and lower bound, `VALID_TRANSITIONS` public/private, `Error` vs `Exception` naming); when the existing pattern differs from the ideal, or a sibling module does it differently, show both and let the user decide ("currently A, a sibling module does B. Switch or keep?").
+- Review-agent suggestions: route new defensive code (asserts, a duplicate `updated_count` check, a manually set `updated_at`) to ASK.
+- File state: before saying a file exists, changed or was deleted, check it with `git diff --name-only` / `ls` / `git status`, again after a branch switch or merge.
+- Build after moves: after `git mv` or an import-path change, check the moved file's relative imports, prefer absolute imports, and run the project's build.
+- Tracer bullet / vertical slice: deliver one thin end-to-end slice (entrypoint → use case → repository → storage → test) first and widen from there, one slice at a time.
+- Two hats: put restructuring (behaviour unchanged, tests untouched) and behaviour changes (tests change) in separate commits; when a feature is hard to add, first restructure under green until it is easy, then add the feature in its own commit.
+
+## Frontend
+
+- Build after moves: the build is `npm run build`, an absolute import is a path alias, and jest resolves imports that vite/webpack reject.

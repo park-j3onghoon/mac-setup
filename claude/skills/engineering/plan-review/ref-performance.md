@@ -1,6 +1,6 @@
 # Performance Review Reference
 
-타임아웃은 `~/.claude/lib/coding/hexagonal.md`, 락 유지 범위는 `~/.claude/lib/coding/db.md`, 배치 실패 집계는 `~/.claude/lib/coding/errors.md`에 있다.
+타임아웃은 `~/.claude/lib/coding/architecture.md`, 락 유지 범위는 `~/.claude/lib/coding/db.md`, 배치 실패 집계는 `~/.claude/lib/coding/errors.md`에 있다.
 
 ## Core Principles
 

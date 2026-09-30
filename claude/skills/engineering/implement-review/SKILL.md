@@ -30,7 +30,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 모든 발견에 조치한다: 고치거나, 묻거나, 남기는 이유를 적는다. 편집과 명령은 1단계의 작업 디렉토리에서 한다.
 
-1. 기존 패턴 확인: `~/.claude/lib/coding/change-discipline.md`를 Read하고 Existing patterns first와 Review-agent suggestions를 2단계 발견에 적용한다. 방어 코드 ASK의 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣는다.
+1. 기존 패턴 확인: `~/.claude/lib/coding/process.md`를 Read하고 Existing patterns first와 Review-agent suggestions를 2단계 발견에 적용한다. 방어 코드 ASK의 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣는다.
 2. 분류: AUTO-FIX = 기존 패턴과 일치하는 기계적 수정(import 정리, 오타, 누락 필드). ASK = 판단이 필요한 것(아키텍처 결정, 트레이드오프, 기존 패턴과 다른 방향). 남김 = 고치지 않을 INFO. 남김은 이유를 한 줄로 적는다.
 3. AUTO-FIX 적용: 주석은 줄이거나 지우기만 한다. 수정마다 한 줄: `[AUTO-FIXED] [file:line] 문제 → 조치`.
 4. ASK는 한 번에 하나씩 묻는다. 사용자가 발견 원문을 보지 못했다고 가정하고 설명한다.
