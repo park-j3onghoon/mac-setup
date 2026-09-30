@@ -1,6 +1,6 @@
 # Functions and methods
 
-- Length: when a function passes 30–40 lines, split it by responsibility into private helpers, even ones called once or twice; step helpers may call each other.
+- Length: when a function passes 40–50 lines, split it by responsibility into private helpers, even ones called once or twice; step helpers may call each other.
 - One reason to change: a helper does only what its name promises; put guards in the caller, whose loop skips or returns early.
 - Query or command: a function either returns a value without side effects or mutates and returns nothing; split one that does both. An entity method such as `entity.change()` may mutate in memory and return the result, and a command use case or a repository `create`/`save` may return the id or entity it produces.
 - Same helper N times → table + loop: turn 4+ explicit calls of one helper with different arguments into a module-constant list of argument combinations iterated in a loop.
