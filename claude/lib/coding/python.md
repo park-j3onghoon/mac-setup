@@ -11,7 +11,7 @@
 
 ## Functions and classes
 
-- Spread then explicit: `Entity(**payload.dict(), explicit_field=value)`.
+- Spread then explicit: `Entity(**{**payload.dict(), 'explicit_field': value})`.
 - Inline length decides a nested call too: `return Payload(**repo.create(entity).dict())`.
 - Immutable copy: `dict(input)` + the modification.
 - A bare value such as `Decimal('0')` stays inline instead of becoming a module constant.
