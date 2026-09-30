@@ -34,7 +34,7 @@
 - 데드락: 트랜잭션 내 락 순서 일관성
 - 트랜잭션 격리 수준: READ COMMITTED vs REPEATABLE READ 선택 근거
 - Kotlin 코루틴 / Django async: 공유 상태 접근 시 동기화 메커니즘
-- Read-after-write 전파 지연: 이벤트적 일관성 시스템(read replica, S3, 외부 거래소 포지션 API)은 write 성공 후에도 read가 옛 상태를 반환한다. write 응답값 자체를 source of truth 로 판정하고 후속 read는 보조 확인으로만 쓴다. 별도 read로 판정하면 "체결인데 미체결" 같은 오판이 blast radius 큰 분기에서 터진다.
+- Read-after-write 전파 지연: 이벤트적 일관성 시스템(read replica, DynamoDB 기본 읽기, 외부 거래소 포지션 API)은 write 성공 후에도 read가 옛 상태를 반환한다. write 응답값 자체를 source of truth 로 판정하고 후속 read는 보조 확인으로만 쓴다. 별도 read로 판정하면 "체결인데 미체결" 같은 오판이 blast radius 큰 분기에서 터진다.
 - full-replace 쓰기 + 부분 수정 = lost-update 레이스: write API가 리소스를 전체 교체하면 한 필드만 바꾸려는 호출자가 read-modify-write를 하게 되고, 같은 레코드의 다른 필드를 동시 수정한 두 요청 중 나중 쓰기가 앞 변경을 덮는 silent lost-update 가 난다. 소유 서비스가 부분 업데이트(field-mask/PATCH) API를 제공해 각 수정이 자기 필드만 원자적으로 건드리게 한다.
 
 ### 멱등성 / dedup canonical 직렬화
