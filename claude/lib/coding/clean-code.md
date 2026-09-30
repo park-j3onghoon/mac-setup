@@ -17,8 +17,7 @@
 - Imports go at the top of the file, test files included; resolve a circular import by restructuring modules.
 - Module constants go after the imports and the logger, before the first function (`_STRATEGY_REGISTRIES`), with shared `DEFAULT_*` at the module top; make a constant only when the value means something, and keep a bare value such as zero inline.
 - Interface method order: list repository/port methods in CRUD order `save` → `findBy*`/`findAll*` → `countBy*` → `existsBy*` → `deleteBy*` (or `update`/`revoke`), in the same order in every port of a project.
-- Step-down order: put the public entry above its helpers, one abstraction level per step (use case `execute` on top, `_needs_requeue` below); put module-level shared helpers below the classes that call them, in call-chain order (`_publish_job_resource` above `_is_publish_stale`).
-- Shared atomic helpers live at module level (`_month_range`, `fetch_org_payout_reports`), outside any use case class or base class.
+- Step-down order: put the public entry above its helpers, one abstraction level per step (use case `execute` on top, `_needs_requeue` below); put shared atomic helpers (`_month_range`, `fetch_org_payout_reports`) at module level, outside any use case class or base class, below the classes that call them in call-chain order (`_publish_job_resource` above `_is_publish_stale`).
 
 ## Comments and docstrings
 
@@ -43,7 +42,8 @@
 
 ## Naming
 
-- Ubiquitous language: use the term the codebase or glossary already uses, one word per concept.
+- Ubiquitous language: use the term the codebase or glossary already uses, one word per concept and one concept per word, the same term in identifiers, comments, docstrings and API fields.
+- Domain terms stay untranslated: in Korean comments and docstrings, write a concept the code names as its identifier (`unit_contract`, `target_amount`, `adjustment` 생성).
 - Functions and methods start with a verb naming the business action (`send_payout_email`, `approve`); a property or computed attribute may be a noun (`total_amount`). Keep mechanism words (async, thread, batch, cron, retry, worker) out of the name: `send_payout_email` over `run_email_batch`.
 - Positive predicates: `can_*`/`is_*`/`has_*` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
 - Intention-revealing, searchable names: `remaining_budget`, a named constant instead of a magic number, single letters only in lambdas and comprehensions.

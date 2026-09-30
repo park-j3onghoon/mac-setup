@@ -20,7 +20,7 @@
 ## Validation
 
 - Validation ladder in Django: type/format in the DRF Serializer or view, a single-value invariant in the value object's `__post_init__`, a relational rule in a domain method.
-- Explicit validation over framework magic: put checks in a `*Validator` class with `@classmethod validate_<field>(value) -> None` and plain `if ...: raise <Domain>InvalidArgumentError`; call it from both repo `create`/`update` (Django model creation and attribute assignment skip the entity validator) and the entity `@validator`, which returns the value unchanged; make the Fake repo make the same calls; call the `*Validator` directly in tests; keep the entity validator; before adding a validator, confirm seed and existing rows pass it; `to_entity()` runs it on every read.
+- Explicit validation over framework magic: put checks in a `*Validator` class with `@classmethod validate_<field>(value) -> None` and plain `if ...: raise <Domain>InvalidArgumentError`; call it from both repo `create`/`update` (Django model creation and attribute assignment skip the entity validator) and the entity `@validator`; make the Fake repo make the same calls; call the `*Validator` directly in tests; keep the entity validator; before adding a validator, confirm seed and existing rows pass it; `to_entity()` runs it on every read.
 - Validators return the value unchanged: skip pydantic `constr(...)` and any `@validator` that returns a replaced value (even `return v.strip()`); a check-raise-return-unchanged validator is fine; strip/normalize at the entrypoint (servicer/view) or not at all, and reject whitespace-only input with `if not x.strip()` without changing the value.
 
 ## Errors
@@ -50,6 +50,6 @@
 ## Time and external calls
 
 - `now` injection mechanics: `now: datetime | None = None` with `now = now or datetime.now(tz=timezone.utc)`; UseCase `execute(..., now=None)`.
-- Calendar date for a zone-anchored repo: when the repo anchors with `arrow.replace(tzinfo='Asia/Seoul').floor('day')`, pass `astimezone(tz).date()`; a UTC tz-aware `.date()` is a day off during UTC 15:00–23:59.
+- Calendar date for a zone-anchored repo: when the repo anchors with `arrow.replace(tzinfo='Asia/Seoul').floor('day')`, pass `astimezone(tz).date()`.
 - Timeouts: Django `EMAIL_TIMEOUT`, requests `timeout=`, gRPC `timeout=`.
 - `updated_at`: leave it to the DDL `ON UPDATE CURRENT_TIMESTAMP` and `auto_now` (`Foo.objects.filter(id=...).update(name='x')` is complete; `auto_now` does not fire on `queryset.update()`, and the DDL covers it); set it by hand only on a legacy table with neither `auto_now` nor `ON UPDATE`.
