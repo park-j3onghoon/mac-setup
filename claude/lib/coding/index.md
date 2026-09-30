@@ -3,7 +3,7 @@
 When two rules conflict, the one listed higher wins: first by the module order below, then by the order inside a module.
 
 - `~/.claude/lib/coding/change-discipline.md`: proposing a change, deviating from an existing pattern, moving files
-- `~/.claude/lib/coding/clean-architecture.md`: layers, dependency direction, entrypoints, use cases, commands vs queries
+- `~/.claude/lib/coding/clean-architecture.md`: layers, dependency direction, entrypoints, use cases, application services, commands vs queries
 - `~/.claude/lib/coding/hexagonal.md`: ports, adapters, repositories, calls to other systems
 - `~/.claude/lib/coding/ddd.md`: entities, value objects, aggregates, state and transitions
 - `~/.claude/lib/coding/simple-design.md`: abstraction, duplication, scope of a change
