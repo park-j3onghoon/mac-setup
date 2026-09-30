@@ -1,20 +1,16 @@
 # Coding rules
 
-Modules sit in `~/.claude/lib/coding/`. When two rules conflict, the module listed higher wins.
+When two rules conflict, the one listed higher wins: first by the module order below, then by the order inside a module.
 
-- `change-discipline.md`: proposing a change, deviating from an existing pattern, moving files
-- `clean-architecture.md`: layers, dependency direction, use cases, entrypoints
-- `hexagonal.md`: ports, adapters, repositories, calls to other services
-- `ddd.md`: entities, value objects, aggregates, state and transitions
-- `cqs.md`: commands vs queries, read models, writing or splitting functions
-- `simple-design.md`: abstraction, duplication, scope of a change
-- `tdd.md`: tests
-- `errors.md`: exceptions, error responses, failure aggregation
-- `function.md`: writing or splitting functions
-- `file-layout.md`: placing imports, constants, methods and helpers inside a file
-- `comments.md`: comments and docstrings
-- `naming.md`: naming anything
-- `python.md`: Python, Django, DRF, Pydantic, pytest
-- `frontend.md`: React, Vue, TypeScript; for the Vue main projects also `~/.claude/lib/coding-rules-vue.md`
-- `db.md`: MySQL schema, transactions, locks
-- `proto.md`: proto files
+- `~/.claude/lib/coding/change-discipline.md`: proposing a change, deviating from an existing pattern, moving files
+- `~/.claude/lib/coding/clean-architecture.md`: layers, dependency direction, entrypoints, use cases, commands vs queries
+- `~/.claude/lib/coding/hexagonal.md`: ports, adapters, repositories, calls to other systems
+- `~/.claude/lib/coding/ddd.md`: entities, value objects, aggregates, state and transitions
+- `~/.claude/lib/coding/simple-design.md`: abstraction, duplication, scope of a change
+- `~/.claude/lib/coding/tdd.md`: tests
+- `~/.claude/lib/coding/errors.md`: exceptions, error responses, failure aggregation
+- `~/.claude/lib/coding/clean-code.md`: writing or splitting functions, placing code inside a file, comments and docstrings, naming
+- `~/.claude/lib/coding/python.md`: Python, Django, DRF, Pydantic, pytest
+- `~/.claude/lib/coding/frontend.md`: React, Vue, TypeScript; for the Vue main projects also `~/.claude/lib/coding-rules-vue.md`
+- `~/.claude/lib/coding/db.md`: MySQL schema, transactions, locks
+- `~/.claude/lib/coding/proto.md`: proto files
