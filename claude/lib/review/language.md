@@ -12,7 +12,7 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 - 타입 힌트가 약해지지 않았는지 (`Any` 추가, 구체 타입 → Union 등)
 - `dict` 대신 `dataclass`, `NamedTuple` 사용 권장
 - `# type: ignore` 추가 시 이유가 명확한지
-- enum: char/string 필드보다 enum으로 잘못된 입력 방지
+- enum: char/string 필드보다 enum
 - `classmethod` vs `staticmethod` 구분 (클래스 연관성 기준)
 - 신규 `.py` 는 `from __future__ import annotations` 선언.
 
@@ -20,7 +20,6 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 - `defaultdict` vs `setdefault` 적절한 선택
 - `list` 대신 `set` (집합 연산 시)
 - 팩토리 메서드는 `from_*` 패턴 선호
-- Forward Reference 이유 이해
 
 ### 리소스/안전성
 - cursor.close() 누락, context manager 오용
@@ -65,7 +64,7 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 - context 기반 logger 사용
 - interface 분리
 - 파라미터가 많으면 struct로 관리
-- `time.Now().UTC()` 명시. `time.Now()` 사용 시 TZ 불명확
+- `time.Now()` 대신 `time.Now().UTC()` 명시
 - 함수 반환값의 TZ가 함수명에서 드러나지 않으면 경고
 - mapper 대신 생성자(`NewXxx(...)`): entity 변환은 생성자로.
 - worker/handler 같은 메커니즘 이름보다 usecase 목적을 드러내는 이름 선호.
@@ -113,7 +112,6 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 
 ### React
 - useEffect 의존성 배열 누락 → Maximum update depth 에러
-- 상태 업데이트 batching 이해
 
 ### 안전성
 - sessionStorage/localStorage: SSR 환경에서 접근 가능한지
