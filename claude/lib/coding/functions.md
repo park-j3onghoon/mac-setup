@@ -1,5 +1,7 @@
 # Functions and methods
 
+For Python code, also Read `~/.claude/lib/coding/functions-python.md`; for frontend code, `~/.claude/lib/coding/functions-frontend.md`.
+
 - Length: split a function into private helpers, even ones called once, when its body passes 35 lines (blank lines, comments and the docstring not counted) and your change created it or pushed it past 35. Cut at step boundaries: a step comment, a blank-line paragraph, one if/elif branch, one loop body. Name each helper with a verb phrase for its step and leave the caller as the ordered helper calls; step helpers may call each other. A body that is a single statement (one constructor call, one dict literal, one query) stays whole, and a function already over 35 lines before your change keeps its shape.
 - Branches: when a function's cyclomatic complexity passes 10 (each if, elif, for, while, except and match case counts one), move its branches out by what they share: a value-to-value choice becomes a module-constant dict; a choice of behaviour by one value becomes a dict from that value to a function or strategy class, with a test that every enum member has an entry; same-shape blocks per field become one helper called per field, or a table and loop (Same helper N times); state checks go to the transition map of `~/.claude/lib/coding/domain.md` (State machine shape). A chain whose arms each make one helper call with different arguments stays as it is.
 - One reason to change: a helper does only what its name promises; put guards in the caller, whose loop skips or returns early.
@@ -10,15 +12,3 @@
 - Collection parameters are non-nullable: pass an empty collection for "no filter"; scalars may be null.
 - Explicit fields after a spread: when an explicit value must win over a same-named key in the spread, put it after the spread.
 - Immutable copy: a helper that would mutate an input map or list returns a modified copy as a new object.
-
-## Python
-
-- Inline length decides a nested call too: `return ResponseDTO(**repo.create(entity).dict())`.
-- Falsy sentinel for absent scalars: when falsy means "no filter", use `search_id: int = 0`, `search_name: str = ''`.
-- Explicit fields after a spread: `Entity(**{**request_dto.dict(), 'explicit_field': value})`.
-- Immutable copy: `dict(input)` + the modification.
-- Use case class structure: make state-holding builders and UseCases classes (`ReportTree`, `MonthlyReportUseCase`); pure orchestration/fetch helpers may be module functions (`resolve_statement_scope`, `build_statement_tree`, `summarize_statement`, `_statement_*`); make an externally called method public and an internal one a private instance method; use a public `@staticmethod` only for pure state-independent computation and no private classmethod/staticmethod; keep all private helpers of one class the same kind.
-
-## Frontend
-
-- Set-equality utils: state "inputs contain no duplicates" in the function comment of `hasSameMembers` and friends (`[A,A,B]` and `[A,B,B]` compare equal); when duplicates must count, compare sorted copies or count maps.

@@ -1,6 +1,6 @@
 # Coding Standards Review Reference
 
-네이밍은 `~/.claude/lib/coding/naming.md`, import 위치는 `~/.claude/lib/coding/file-layout.md`, 불필요한 default·컬렉션 파라미터는 `~/.claude/lib/coding/functions.md`, boolean 대신 enum과 타입 안전은 `~/.claude/lib/coding/types.md`, DRY와 Rule of Three는 `~/.claude/lib/coding/design.md`에 있다. 스택별 관용구는 각 모듈의 Python·Frontend 절에 있다.
+네이밍은 `~/.claude/lib/coding/naming.md`, import 위치는 `~/.claude/lib/coding/file-layout.md`, 불필요한 default·컬렉션 파라미터는 `~/.claude/lib/coding/functions.md`, boolean 대신 enum과 타입 안전은 `~/.claude/lib/coding/types.md`, DRY와 Rule of Three는 `~/.claude/lib/coding/design.md`에 있다. 스택별 관용구는 각 모듈 첫머리가 가리키는 스택 파일(`*-python.md`·`*-frontend.md`)에 있다.
 
 ## Checklist
 

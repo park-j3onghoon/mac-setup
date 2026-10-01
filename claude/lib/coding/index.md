@@ -12,7 +12,7 @@
 
 ## Rule files
 
-When two rules conflict, a rule in a stack section (Python, Frontend, proto) wins over the general rule it narrows; otherwise the one listed higher wins: first by the file order below, then by the order inside a file.
+When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`, `*-proto.md`) wins over the general rule it narrows; otherwise the one listed higher wins: first by the file order below, then by the order inside a file.
 
 - `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, verifying another system before compensating for it, file state, moves and builds, slices and commits
 - `~/.claude/lib/coding/architecture.md`: layers and dependency direction, convention as the tie-breaker, entrypoints, use cases and services, commands and queries, ports and adapters

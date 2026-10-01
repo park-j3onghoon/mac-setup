@@ -1,5 +1,7 @@
 # Comments and docstrings
 
+For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
+
 - Why, not what: write a comment only for context the code cannot show.
 - Keep:
   - external standard references (AIP-XXX, RFC NNNN, company RFC links)
@@ -18,7 +20,3 @@
   - references to deleted migrations (`시드 migration 0108`), fail-fast notes, roadmap/follow-up notes
 - Docstrings follow the same Keep and Delete lists: delete one that restates the name (`mark_in_progress` → "Start (or restart) this run", `approve` → "Approve payout"); test docstrings follow `~/.claude/lib/coding/tests.md`.
 - Language: write comments and docstrings in Korean.
-
-## proto
-
-- Comment scope: write only shape and signatures in proto files; put contract, validation and rationale in server code, the PR body and Linear. Comment a structure that looks like a mistake (an intentionally empty `Foo {}`) until a field arrives, and name in a comment the organization that currently fills a role-neutral field (`string manager_name = 6;  // 담당 BD`).

@@ -1,5 +1,7 @@
 # Architecture: layers and what each holds
 
+For Python code, also Read `~/.claude/lib/coding/architecture-python.md`.
+
 ## Layers
 
 - Dependency rule: point dependencies only inward: presentation → application → domain, and infrastructure → domain by implementing the ports the domain defines. Between two modules of the same layer, keep the dependency one way too: when A references B, B never references A.
@@ -25,7 +27,3 @@
 - Adapters: a repository (storage), a gateway (another service), a notifier (email) or a publisher (messaging) implements a port; repository rules are in `~/.claude/lib/coding/db.md`.
 - Bounded context: when data comes from another service or module, translate it in the adapter into this domain's own entities and enums.
 - Gateway / BFF / adapter: transform and forward only; put defaults, field merge/preserve (including a read-modify-write that preserves missing fields) and invariants in the service that owns the domain.
-
-## Python
-
-- Thin entrypoint as a DRF view: build the UseCase with the repo → `_build_user_info(request)` → request DTO from `**request.query_params.dict()` / `**kwargs` → `use_case.execute(user_info, request_dto)` → `Response(data=response_dto.dict(), status=...)`.

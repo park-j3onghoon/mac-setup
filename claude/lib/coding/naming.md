@@ -1,5 +1,7 @@
 # Naming
 
+For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
+
 - Ubiquitous language: use the term the codebase or glossary already uses, one word per concept and one concept per word, the same term in identifiers, comments, docstrings and API fields.
 - Domain terms stay untranslated: in Korean comments and docstrings, write a concept the code names as its identifier (`contract`, `target_amount`, `adjustment` 생성).
 - Identifiers are English.
@@ -9,7 +11,3 @@
 - Intention-revealing, searchable names: `remaining_budget`; name a constant when its value means something, in place of a magic number, and keep a bare value such as zero inline; use single letters only in lambdas and comprehensions.
 - Model field names follow the DB column names; name every enum column `{enum_type}_type`.
 - Enum naming: model enum without suffix (`CampaignStatus`) vs domain enum with a `Type` suffix (`CampaignStatusType`).
-
-## Python
-
-- Intention-revealing, searchable names: `Decimal('0')` is a bare value.

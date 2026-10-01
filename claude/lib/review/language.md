@@ -2,7 +2,7 @@
 
 diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안전성, 플랫폼 특화 이슈를 검증한다.
 해당 언어 파일이 diff에 없으면 해당 섹션을 건너뛴다.
-diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/coding/index.md` 목록에서 diff가 닿는 모듈을 Read해 그 스택 절(Python·Frontend·proto)을 이 기준에 더한다. 프론트엔드 화면이면 `~/.claude/lib/coding/ui.md`, DB면 `~/.claude/lib/coding/db.md`도 더한다.
+diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/coding/index.md` 목록에서 diff가 닿는 모듈을 Read하고, 그 모듈 첫머리가 가리키는 스택 파일 중 diff 언어의 것(`*-python.md`·`*-frontend.md`·`*-proto.md`)을 이 기준에 더한다. 프론트엔드 화면이면 `~/.claude/lib/coding/ui.md`, DB면 `~/.claude/lib/coding/db.md`도 더한다.
 
 ---
 
