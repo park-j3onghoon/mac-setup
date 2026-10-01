@@ -20,14 +20,18 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 블로킹으로 도는 호출(`review`·`adversarial-review`와 아래 `status --wait`)은 Bash `run_in_background: true`로 띄운다.
 
-1. `task`는 `--background`를 붙여 띄우고, 출력의 `started in the background as <id>`에서 job-id를 읽는다. `review`·`adversarial-review`는 결과를 stdout으로 회수하고, job-id가 필요하면 `status --all`에서 찾는다.
-2. job-id가 있으면 반복 폴링 대신 블로킹 대기 한 줄로 완료를 기다린다.
+1. `task`는 `--background`를 붙여 띄우고, 출력의 `started in the background as <id>`에서 job-id를 읽는다. `review`·`adversarial-review`는 결과를 stdout으로 회수하고, job-id는 띄운 뒤 `status --all`에서 찾는다. `status`·`result`·`cancel`은 job을 띄운 경로에서 부른다.
+2. job-id로 5분씩 끊어 완료를 기다린다.
    ```bash
-   node "$CODEX_SCRIPT" status --wait <job-id> --timeout-ms 900000 --poll-interval-ms 5000
+   node "$CODEX_SCRIPT" status --wait <job-id> --timeout-ms 300000 --poll-interval-ms 5000
    ```
-   대기가 끝났는데 job이 아직 진행 중이면 같은 명령을 다시 걸어 완료까지 간다.
-3. `node "$CODEX_SCRIPT" result <job-id>`로 회수한다.
-4. job의 phase가 `starting`에 머물고 진행 로그가 더 자라지 않으면 `cancel <job-id>`한 뒤 자체 적대 점검으로 대체하고 사용자에게 알린다.
+   대기가 끝났는데 job이 아직 진행 중이면 상태와 마지막 진행 기록 뒤 지난 초를 본다.
+   ```bash
+   node "$CODEX_SCRIPT" status <job-id> --json | python3 -c 'import json,os,sys,time; j=json.load(sys.stdin)["job"]; print(j["status"], int(time.time() - os.path.getmtime(j["logFile"])))'
+   ```
+   300초 미만이면 대기 명령을 다시 건다. 300초 이상이면 멈춘 job으로 보고 4로 간다.
+3. `node "$CODEX_SCRIPT" result <job-id>`로 회수한다. phase가 `failed`면 4로 간다.
+4. 멈춘 job은 `cancel <job-id>`한다. 멈추거나 실패한 job은 어느 명령이 멈췄거나 실패했는지(실패면 오류 원문)를 사용자에게 알리고 자체 적대 점검으로 대체한다.
 
 완료는 그 job-id의 phase로만 판단한다.
 
