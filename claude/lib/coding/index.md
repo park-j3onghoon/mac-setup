@@ -26,5 +26,5 @@ When two rules conflict, a rule in a stack section (Python, Frontend, proto) win
 - `~/.claude/lib/coding/comments.md`: comments and docstrings
 - `~/.claude/lib/coding/naming.md`: names and terms
 - `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks
-- `~/.claude/lib/coding/api.md`: HTTP responses, proto contracts, PATCH payloads, OpenAPI docs
+- `~/.claude/lib/coding/api.md`: HTTP responses, proto contracts, partial updates, OpenAPI docs
 - `~/.claude/lib/coding/ui.md`: frontend screens: URL state, copy, components and forms, CSS layout; for the Vue main projects also `~/.claude/lib/coding-rules-vue.md`
