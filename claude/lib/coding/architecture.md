@@ -3,6 +3,7 @@
 ## Layers and use cases
 
 - Dependency rule: point dependencies only inward: presentation → application → domain, and infrastructure → domain by implementing the ports the domain defines. Between two modules of the same layer, keep the dependency one way too: when A references B, B never references A.
+- Convention breaks ties: when these rules allow several placements or structures, follow the one the project already uses.
 - Thin entrypoint: an entrypoint (view, servicer, CLI, consumer), list and retrieve included, only checks type and format, builds the use case, maps request → DTO, calls it, and maps result → response.
 - One scenario per use case: a use case runs one user scenario end to end; it reaches the ORM, HTTP clients and email rendering only through ports that adapters (repositories, gateways, notifiers, publishers) implement.
 - Use cases call no other use case: put the steps several use cases share in a service or an atomic validator (`validate_order_ownership`); a service calls domain methods and ports in a fixed order, runs inside the calling use case's unit of work, and never calls a use case.

@@ -15,7 +15,7 @@
 When two rules conflict, a rule in a stack section (Python, Frontend, proto) wins over the general rule it narrows; otherwise the one listed higher wins: first by the module order below, then by the order inside a module.
 
 - `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, file state, moves and builds, slices and commits
-- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, entrypoints, use cases and services, commands and queries, repositories, adapters to other systems
+- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, convention as the tie-breaker, entrypoints, use cases and services, commands and queries, repositories, adapters to other systems
 - `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, state and transitions, the validation ladder
 - `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
 - `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity, extension
