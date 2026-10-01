@@ -5,7 +5,7 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
 ## Cycle and scope
 
 - Red / green / refactor: write a failing test first, then the minimal code that passes it, then refactor while the tests stay green.
-- Test at the seams: assert behaviour through the public interface (use case entry, port, HTTP), and test a simple-composition use case through an entrypoint integration test; test a private helper or internal map through what calls it, while a transition map, a `*Validator` and a value object may be tested directly.
+- Test at the seams: assert behaviour through the public interface (the message bus or use case entry, a port, HTTP), and test a simple-composition use case through an entrypoint integration test; test an extracted function or internal map through what calls it, while a transition map, a `*Validator` and a value object may be tested directly.
 - Cover the change: give every behaviour the change adds or modifies a test at its public seam; the Leave untested list below holds the only exceptions.
 - Leave untested: before copying a test layer, ask "is this testing our code or the framework?". Leave these untested:
   - framework built-ins (field types, enum membership, required/optional, declarative constraints, ORM basics)
@@ -19,8 +19,9 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
 
 - Naming and structure: English method name (`test_rejects_invalid_status_type`), a Korean scenario docstring that says more than the name, and `# given` / `# when` / `# then` markers (a routing-smoke or exception test may combine them as `# when & then`; one legacy project uses uppercase with a short note, `# Given: 기본그룹 org + 배정그룹 org`).
 - Markers beat file-local convention: give new tests the docstring and markers even when neighbouring tests lack them, and leave lightly edited existing tests as they are; split `assert call().data...` into When (`response = call()`) and Then; write in the Then comment only what the docstring does not say.
-- Dedup and helpers: keep one of a single-field and a multi-field change test that prove the same thing; test the same rule via different fields once; put helpers (`create_draft`, `force_status`, `_make_repo_with_usecases`) in the suite's shared fixture file.
+- Dedup and shared setup: keep one of a single-field and a multi-field change test that prove the same thing; test the same rule via different fields once; put functions several tests share (`create_draft`, `force_status`, `_make_repo_with_usecases`) in the suite's shared fixture file.
 - Domain objects only in fixtures/factories: build them with `make_batch()` / `FakeRepository.for_batch(...)` instead of inline `Batch(...)`/`OrderLine(...)` in a test body.
+- Test doubles: give a port that holds state a fake (a working in-memory implementation), a call that only needs an answer a stub (a fixed return value), and use a mock (a check on the call itself) only when the call is the outcome (an email sent exactly once).
 - Fakes honour the real contract: make a fake repository behave like the real one (update of a missing row raises `NotFound` in both).
 
 ## Determinism

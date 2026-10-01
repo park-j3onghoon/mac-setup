@@ -3,6 +3,7 @@
 ## Principles
 
 - One owner per business decision: the domain holds business rules, use cases and services hold the flow, and repositories, gateways and callers store, transform or forward.
+- Change by addition: shape code so that a new case, reaction or implementation arrives as new code (a strategy class, an event handler, an adapter wired in the composition root), and an unavoidable edit stays inside the module that owns the decision; accept the extra indirection this costs.
 - Build on verified behaviour: before relying on another service, a repository, the DB schema or a library, read its code or DDL.
 - Checks on every path, in layers: put a check that must always hold where every entrypoint (HTTP, CLI, queue, batch, tests) passes, and back it with another layer (a schema constraint, authorization, output encoding).
 - Invalid values unrepresentable: shape types and schema constraints so a wrong value cannot enter (an enum over a free string, NOT NULL, UNIQUE, CHECK).
@@ -15,14 +16,14 @@
 When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`, `*-proto.md`) wins over the general rule it narrows; otherwise the one listed higher wins: first by the file order below, then by the order inside a file.
 
 - `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, verifying another system before compensating for it, file state, moves and builds, slices and commits
-- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, convention as the tie-breaker, entrypoints, use cases and services, commands and queries, ports and adapters
+- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, convention as the tie-breaker, entrypoints and the message bus, use cases, services and the unit of work, commands and queries, ports and adapters
 - `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, state and transitions, the validation ladder
 - `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
 - `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity, extension
 - `~/.claude/lib/coding/tests.md`: tests
 - `~/.claude/lib/coding/errors.md`: exceptions, failure aggregation, error messages, errors in async handlers, timeouts on calls to other systems
 - `~/.claude/lib/coding/functions.md`: writing or splitting functions and methods
-- `~/.claude/lib/coding/file-layout.md`: imports, constants, method and helper order inside a file
+- `~/.claude/lib/coding/file-layout.md`: imports, constants and function order inside a file
 - `~/.claude/lib/coding/comments.md`: comments and docstrings
 - `~/.claude/lib/coding/naming.md`: names and terms
 - `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks, repositories: return types, mapping and saving, pagination, dates, normalized values

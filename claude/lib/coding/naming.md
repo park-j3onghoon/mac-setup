@@ -6,6 +6,7 @@ For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 - Domain terms stay untranslated: in Korean comments and docstrings, write a concept the code names as its identifier (`contract`, `target_amount`, `adjustment` 생성).
 - Identifiers are English.
 - Functions and methods start with a verb naming the business action (`send_payout_email`, `approve`); a property or computed attribute may be a noun (`total_amount`). Keep mechanism words (async, thread, batch, cron, retry, worker) out of the name: `send_payout_email` over `run_email_batch`.
+- Messages: name a command in the imperative mood (`IssueContract`) and a domain event in the past tense (`ContractIssued`).
 - Positive predicates: `can_*`/`is_*`/`has_*` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
 - Booleans: when reading one, name the axis it answers and read `False` as the opposite pole of that axis.
 - Intention-revealing, searchable names: `remaining_budget`; name a constant when its value means something, in place of a magic number, and keep a bare value such as zero inline; use single letters only in lambdas and comprehensions.
