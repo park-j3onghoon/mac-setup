@@ -10,7 +10,7 @@
 
 ## Enum columns
 
-- Make the first enum value `''`.
+- Make the first enum value `''`. When `''` has a clearly useful meaning, name its member for that meaning (`UNKNOWN`, `ALL`) and keep it in the domain enum; otherwise name it `UNSPECIFIED`, leave it out of the domain enum, and have the repository map it to `None` for an optional field or reject it for a required one.
 
 ## Charset
 
