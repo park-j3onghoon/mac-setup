@@ -12,8 +12,7 @@ mac-setup/
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
-│   ├── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
-│   └── commands/sc/      # SuperClaude 명령(미사용이라 install.sh가 링크하지 않는다)
+│   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── private/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
 ├── codex/                # ~/.codex/ 로 symlink 대상
