@@ -1,6 +1,6 @@
 # Functions and methods
 
-- Length: when a function passes 40–50 lines, split it by responsibility into private helpers, even ones called once or twice; step helpers may call each other.
+- Length: split a function into private helpers, even ones called once, when its body passes 35 lines (blank lines, comments and the docstring not counted) and your change created it or pushed it past 35. Cut at step boundaries: a step comment, a blank-line paragraph, one if/elif branch, one loop body. Name each helper with a verb phrase for its step and leave the caller as the ordered helper calls; step helpers may call each other. A body that is a single statement (one constructor call, one dict literal, one query) stays whole, and a function already over 35 lines before your change keeps its shape.
 - One reason to change: a helper does only what its name promises; put guards in the caller, whose loop skips or returns early.
 - Query or command: a function either returns a value without side effects or mutates and returns nothing; split one that does both. An entity method such as `entity.change()` may mutate in memory and return the result, and a command use case or a repository `create`/`save` may return the id or entity it produces.
 - Same helper N times → table + loop: turn 4+ explicit calls of one helper with different arguments into a module-constant list of argument combinations iterated in a loop.
