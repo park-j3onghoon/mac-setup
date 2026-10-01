@@ -1,6 +1,6 @@
 # Data/Database Review Reference
 
-MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)는 `~/.claude/lib/coding/db.md`, 레이어·리포지토리 계약은 `~/.claude/lib/coding/architecture.md`에 있다.
+MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)와 리포지토리 계약은 `~/.claude/lib/coding/db.md`, 레이어는 `~/.claude/lib/coding/architecture.md`에 있다.
 
 ## Core Principles
 

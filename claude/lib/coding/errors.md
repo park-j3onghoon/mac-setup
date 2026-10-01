@@ -7,12 +7,14 @@
 - Unreachable branch: in a pure function, return a safe fallback with the comment `정상 경로 도달 불가: ...`; in an async or event handler, throw an error naming the branch (`unreachable: ...`).
 - Batch/loop failure aggregation: collect per-item failures and log once after the loop with the failure count and an id → message map; persist each failed item in a terminal state (run FAILED); in nested loops, aggregate per level (run loop, org loop); on exception, close a claimed item to a terminal state.
 - Message style: write English + resource name + id (`Campaign request not found: id=42`, `Campaign creative not found: campaign_id=7`), raise it with the exception for its role, leave use case context out, and let the frontend map the message to Korean.
+- Timeouts: set explicit connect/read timeouts on every call to another system (HTTP, gRPC, SMTP).
 
 ## Python
 
 - Catch-all handlers: `except Exception` returns the fixed string `"Internal Server Error"`.
 - Batch/loop failure aggregation: `logger.error('... %d failed: %s', failed_count, {id: message})`.
 - Message style: `raise NotFoundError(f'Campaign request not found: id={request_id}')`.
+- Timeouts: Django `EMAIL_TIMEOUT`, requests `timeout=`, gRPC `timeout=`.
 
 ## Frontend
 
