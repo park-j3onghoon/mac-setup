@@ -37,7 +37,7 @@ while IFS= read -r f; do
   [ "$n" -gt 0 ] && { note "$n 건  ${f#$HOME/git/mac-setup/}"; em=$((em+n)); fail=1; }
 done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" \
            \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.html' \) 2>/dev/null \
-         | grep -vE '/commands/|reference/invocation\.md|lib/answer-style\.md')
+         | grep -vE 'reference/invocation\.md|lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"
@@ -48,7 +48,7 @@ while IFS= read -r f; do
     exp="${p/#\~/$HOME}"
     [ -e "$exp" ] || { note "MISSING $exp  ($f)"; missing=$((missing+1)); fail=1; }
   done < <(grep -oE '`(~/|/Users/teddy\.park/)[^`]*`' "$f" | tr -d '`' | sort -u)
-done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" -name '*.md' 2>/dev/null | grep -vE '/plans/|/commands/')
+done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" -name '*.md' 2>/dev/null | grep -vE '/plans/')
 [ "$missing" -eq 0 ] && note "모두 존재"
 
 echo "== 4. JSON 유효성"
