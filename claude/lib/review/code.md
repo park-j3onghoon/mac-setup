@@ -41,7 +41,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 
 - 에러 처리 계층: infra vs usecase 레이어 분리. 에러 반환 vs 값 기반 분기.
 - 설계 의도 일치: secondary write가 primary 성공과 무관하게 실행되어야 하는지 등.
-- usecase 단계 순서: update/create usecase에서 stats 집계, display_* 응답 필드, 추가 조회 등 response payload 조립은 repository가 반환한 updated/created 엔티티 기반으로 수행. 순서: validation → update/create → response 집계.
+- usecase 단계 순서: update/create usecase에서 stats 집계, display_* 응답 필드, 추가 조회 등 응답 DTO 조립은 repository가 반환한 updated/created 엔티티 기반으로 수행. 순서: validation → update/create → response 집계.
 - API 설계: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 - 패키지 구조: 순환참조, 코드 위치 적절성.
 

@@ -25,7 +25,7 @@
 
 ## Components and forms
 
-- UI defaults are FE responsibility: set the initial radio/select value in the FE and declare the field required in the BE payload; keep a BE default only when omitting the field is a meaningful business state (`target_age_ranges_json={}` = no targeting, with its reason in a comment); remove a BE default that validation rejects anyway (`budget=0`) or that the UI also defines:
+- UI defaults are FE responsibility: set the initial radio/select value in the FE and declare the field required in the BE request DTO; keep a BE default only when omitting the field is a meaningful business state (`target_age_ranges_json={}` = no targeting, with its reason in a comment); remove a BE default that validation rejects anyway (`budget=0`) or that the UI also defines:
   ```python
   # 지적 대상: UI 초기값을 BE에도 둔다
   revenue_type: CampaignRevenueType = Field(default=CampaignRevenueType.CPC)
