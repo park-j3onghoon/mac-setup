@@ -8,6 +8,7 @@
   - non-obvious algorithm tricks (limit+1 hasNext, microsecond-precision cursor, base64url format)
   - disambiguation between confusable code/types ("vs" comparison)
   - hidden constraints/invariants (DB column type alignment such as `MAX_*=65535  # MySQL unsigned smallint 최대`, external API nullability assumption), external-system contracts, circular-import avoidance (a `TYPE_CHECKING` import for an annotation-only cycle)
+  - a value format the type cannot show, with one example value: in the parser that turns the raw string into a structured type (`# "이름=id,id", 예: "alice=10,11"`), or at the field when no code parses the value (an external id stored and passed on)
 - Delete:
   - a description the name or signature already gives (`"X 토큰을 생성한다"` over `fun generate(): String`); "X용 VO/DTO" labels on data classes
   - change history ("이전에는 Map이었으나...") → git log/PR body
