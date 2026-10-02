@@ -12,7 +12,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`.
 
 ## Presentation
 
-- Thin entrypoint: an entrypoint (view, servicer, CLI, consumer), list and retrieve included, only checks type and format, maps request → command, hands it to the message bus, and maps result → response; a query may call its read model directly.
+- Thin entrypoint: an entrypoint (view, servicer, CLI, consumer), list and retrieve included, only checks type and format, maps request → command, hands it to the message bus, and maps result → response; a query may call its read model directly, and for a command whose response must carry the resource (AIP Create/Update), read it through the resource's read model with the returned id, on the primary when reads go to a replica.
 
 ## Application
 
