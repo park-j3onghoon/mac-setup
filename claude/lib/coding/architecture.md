@@ -7,6 +7,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`.
 - Dependency rule: point dependencies only inward: presentation → application → domain, and infrastructure → domain by implementing the ports the domain defines. Between two modules of the same layer, keep the dependency one way too: when A references B, B never references A.
 - Composition root: only the composition root creates adapters and passes them to use cases and services, which receive ports and the unit of work as parameters; it sits outside the layers (`bootstrap.py` in Python, `cmd/<app>/main.go` in Go, the container configuration in Spring), and entrypoints get the message bus from it.
 - Utils: a function with no business term and no port is a util; it sits outside the layers, and any layer may call it.
+- Cosmic Python by default: these rules follow Cosmic Python; before writing a composition root, message bus, unit of work, handler or repository, read how the project already implements it.
 - Convention breaks ties: when these rules allow several placements or structures, follow the one the project already uses.
 
 ## Presentation
@@ -17,7 +18,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`.
 
 - One scenario per use case: a use case runs one user scenario end to end; a command use case is the handler of one command.
 - Message bus: the message bus hands each command to its one handler and, after the unit of work commits, each domain event to every handler registered for it; a failing command handler raises to the caller, while a failing event handler is logged and the other handlers still run; add a reaction to an event as a new event handler.
-- Unit of work: a use case opens one unit of work over the repositories it uses and commits it explicitly, and leaving it without a commit rolls back; the unit of work interface belongs to the application and its database implementation is an adapter; "transaction" names only the database mechanism inside that adapter.
+- Unit of work: a use case opens one unit of work over the repositories it uses and commits it explicitly, and leaving it without a commit rolls back; the unit of work interface sits in the application by default and its database implementation is an adapter; "transaction" names only the database mechanism inside that adapter.
 - Use cases call no other use case and share no base class: put the steps several use cases share in a service (`validate_order_ownership`); a service calls domain methods and ports in a fixed order, runs inside the calling use case's unit of work, and never calls a use case.
 - Commands and queries: a command use case has side effects and returns a minimal id/status; a query use case has none. Split read and write models when their shapes or paths diverge, and give an externally served query endpoint its own read model rather than a repository projection.
 
