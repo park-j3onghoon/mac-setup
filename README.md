@@ -75,6 +75,7 @@ mac-setup/
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 |
 | [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/push-commit`·`/pr-create`·`/implement-review`·`/investigate`가 읽는다) |
 | [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·팀 리뷰어·보안 게이트) · 리뷰 준비(PR 링크 → diff) · 문제 지점 찾기(리뷰 공통 절차) · 주장 검증 |
+| [`lib/skill-writing.md`](claude/lib/skill-writing.md) | 스킬·모듈 작성 규칙 25개 (`/skill-review` 4단계가 읽는다) |
 
 ## 새 맥에서 사용법
 
