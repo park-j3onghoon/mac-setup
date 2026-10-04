@@ -67,7 +67,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 ```
 Review: N 이슈 (CRITICAL X · INFO Y)
 Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V (보류 · 기각 · 남김)
-리뷰어별: 코드 A · 언어 B · 팀 C · 보안 S · Codex D · Codex adversarial E
+리뷰어별: 코드 A · 언어 B · 관점 C · 보안 S · Codex D · Codex adversarial E
 ```
 
 반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 그 문서의 커밋 규칙대로 커밋한다. 이 PR과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다.

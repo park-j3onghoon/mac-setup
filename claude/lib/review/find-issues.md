@@ -28,7 +28,7 @@ diff에서 돈 계산·권한·데이터 변경·외부 호출처럼 틀리면 �
 
 - 코드 공통: `~/.claude/lib/review/code.md`
 - 언어별: `~/.claude/lib/review/language.md`
-- 팀 리뷰어: `~/.claude/lib/review/team.md`
+- 관점: `~/.claude/lib/review/perspectives.md`
 - 보안: 레벨이 2 이상일 때만. `~/.claude/lib/security/index.md`의 레벨표가 정한 모듈 전부
 
 프롬프트마다 넣을 것:
@@ -54,7 +54,7 @@ Codex로 한 번 더 볼지 AskUserQuestion 1회로 묻는다. 권장안을 첫 
 
 ## 5. 결과 통합
 
-- 같은 이슈를 여러 리뷰어가 잡았으면 하나로 합치고 출처를 `(코드+팀+보안+codex)`처럼 표시한다.
+- 같은 이슈를 여러 리뷰어가 잡았으면 하나로 합치고 출처를 `(코드+관점+보안+codex)`처럼 표시한다.
 - Codex 발견도 같은 목록에 합치고, `~/.claude/lib/codex-adversarial.md`를 Read하고 결과 취급 절을 따른다.
 - CRITICAL을 위, INFO를 아래로 정렬한다.
 - diff가 바꾼 기능을 설명하는 문서가 그대로면 `[INFO] 문서가 오래됐을 수 있음: {파일}이 {기능}을 설명하지만 코드가 변경됨.`
