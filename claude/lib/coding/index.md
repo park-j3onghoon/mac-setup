@@ -16,7 +16,7 @@
 When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`, `*-proto.md`) wins over the general rule it narrows; otherwise the one listed higher wins: first by the file order below, then by the order inside a file.
 
 - `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, verifying another system before compensating for it, file state, moves and builds, slices and commits
-- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, Cosmic Python by default, convention as the tie-breaker, entrypoints and the message bus, use cases, services and the unit of work, commands and queries, ports and adapters
+- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, convention as the tie-breaker, entrypoints, use cases, command and event handlers, the unit of work, services, command or query use cases, CQRS read models, ports and adapters
 - `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, state and transitions, the validation ladder
 - `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
 - `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity, extension

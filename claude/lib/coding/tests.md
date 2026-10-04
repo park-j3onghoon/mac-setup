@@ -5,7 +5,7 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
 ## Cycle and scope
 
 - Red / green / refactor: write a failing test first, then the minimal code that passes it, then refactor while the tests stay green.
-- Test at the seams: assert behaviour through the public interface (the message bus or use case entry, a port, HTTP), and test a simple-composition use case through an entrypoint integration test; test an extracted function or internal map through what calls it, while a transition map, a `*Validator` and a value object may be tested directly.
+- Test at the seams: assert behaviour through the public interface (the use case entry, a port, HTTP), and test a simple-composition use case through an entrypoint integration test; test an extracted function or internal map through what calls it, while a transition map, a `*Validator` and a value object may be tested directly.
 - Cover the change: give every behaviour the change adds or modifies a test at its public seam; the Leave untested list below holds the only exceptions.
 - Leave untested: before copying a test layer, ask "is this testing our code or the framework?". Leave these untested:
   - framework built-ins (field types, enum membership, required/optional, declarative constraints, ORM basics)
