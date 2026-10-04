@@ -50,6 +50,8 @@ mac-setup/
 | [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다. |
 | [`/push-commit`](claude/skills/engineering/push-commit/SKILL.md) | 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. |
 
+구현 뒤 흐름은 `/push-commit` → `/pr-create`(Draft 생성과 크기 검사) → `/implement-review` → `/push-commit`이다.
+
 ### productivity
 
 | 스킬 | 하는 일 |

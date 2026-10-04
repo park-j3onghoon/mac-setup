@@ -15,7 +15,7 @@ gh pr list --head {브랜치} --json number,url
 ```
 
 - 미커밋 변경이 있거나, 브랜치가 origin에 없거나 origin보다 앞서 있으면 `/push-commit`으로 먼저 올리라고 권하고 멈춘다.
-- 이 브랜치의 PR이 이미 있으면 URL을 알리고 멈춘다. 제목·본문 갱신은 `/push-commit`이 맡는다.
+- 이 브랜치의 PR이 이미 있으면 URL을 알리고, 제목·본문 갱신은 `/push-commit`으로 하라고 권하고 멈춘다.
 
 → 완료: 작업 디렉토리 절대경로와 브랜치가 정해졌고, 브랜치가 origin과 같으며, 이 브랜치의 PR이 없다.
 
