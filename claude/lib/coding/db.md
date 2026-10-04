@@ -5,7 +5,7 @@ For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 ## Types
 
 - `user_id` is int.
-- Use an enum where possible.
+- Use an enum for a column that holds a kind, state or mode.
 - Leave integer columns on the implicit default 0.
 - Time columns are `timestamp`.
 - Give varchar 20–30% headroom over the longest expected value.
@@ -32,7 +32,7 @@ For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 
 ## Transactions and locks
 
-- Lock across the network by workload: with a single-worker batch, rare manual triggers and a single-purpose low-contention row, hold `SELECT … FOR UPDATE` (Django `select_for_update`) through the external call such as an SES send; with multiple workers, commit a SENDING state and use compare-and-set without a lock.
+- Lock across the network by workload: with a single-worker batch, rare manual triggers and a single-purpose low-contention row, hold `SELECT … FOR UPDATE` through the external call such as an SES send; with multiple workers, commit a SENDING state and use compare-and-set without a lock.
 - Dedup read under `FOR UPDATE`: lock all candidate rows without a status filter and decide after the lock is held.
 - Check-then-insert: serialize with `GET_LOCK`, a unique constraint or a single entry point; a status value does not stop a concurrent INSERT.
 

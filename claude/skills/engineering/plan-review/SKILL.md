@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 스코프 질문
 1. 기존 코드로 이미 해결되는 부분은?
-2. 목표를 달성하려면 꼭 바꿔야 하는 파일·함수는 무엇인가?
+2. 목표를 달성하려면 바꿔야 하는 최소 파일·함수는 무엇인가?
 3. 8+ 파일 수정 또는 2+ 새 클래스/서비스면 scope creep 경고를 낸다.
 4. 계획에 임시 우회·TODO 잔존이 있으면 완전판과의 차이·나중에 메우는 비용을 적는다.
 
@@ -88,7 +88,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 
 
 - NOT in scope: 고려했으나 제외한 작업, 항목당 1줄 근거
 - What already exists: 하위 문제를 이미 부분적으로 푸는 기존 코드·흐름
-- Failure modes: 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 3개 모두 없으면 critical gap
+- Failure modes: 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 테스트 커버도 에러 핸들링도 없고 무음 실패면 critical gap
 - 미결정: Step 0에서 계속을 골라 남긴 갈림길. 항목당 계획이 가정한 것과 언제 정해야 하는지. 없으면 생략
 - Completion summary
 

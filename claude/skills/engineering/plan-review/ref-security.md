@@ -1,13 +1,10 @@
 # Security Review Reference
 
-## Core Principles
+## Checklist
 
-- Defense in depth: 인증 + 인가 + 입력 검증 + 출력 인코딩.
 - Least privilege: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
 - 공격자처럼 생각한다: 현실적 공격 경로가 있는 것만 지적한다.
 - 여기서는 계획 레벨 점검만 한다.
-
-## Checklist
 
 ### OWASP Top 10
 - `~/.claude/lib/owasp.md`를 Read하고 A01·A03·A05·A07·A10 항목을 계획이 새로 만드는 엔드포인트·쿼리·설정·인증·외부 호출에 대어 본다.

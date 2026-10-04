@@ -18,5 +18,5 @@ For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
   - standard pattern/control-flow narration the structure already shows: `# compare-and-set 으로 중복 claim 방지`, `# try/except 로 한 항목 실패 격리`, `# 예외 시 좀비 방지 FAILED 마감`, `# 전부 SENT면 성공 아니면 실패`, `# 도메인 status → 모델 status 변환`
   - multi-line design essays ("why safe / why this design") → PR body or plan, keeping only the line the code cannot show (the UNIQUE constraint is owned by `send_email`)
   - references to deleted migrations (`시드 migration 0108`), fail-fast notes, roadmap/follow-up notes
-- Docstrings follow the same Keep and Delete lists: delete one that restates the name (`mark_in_progress` → "Start (or restart) this run", `approve` → "Approve payout"); for test docstrings, Read `~/.claude/lib/coding/tests.md` and follow its rules.
+- Docstrings follow the same Keep and Delete lists: delete one that restates the name (`mark_in_progress` → "Start (or restart) this run"); for test docstrings, Read `~/.claude/lib/coding/tests.md` and follow its rules.
 - Language: write comments and docstrings in Korean.

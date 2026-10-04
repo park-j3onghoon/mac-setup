@@ -1,5 +1,7 @@
 # UI: screens, copy and forms
 
+For Python code, also Read `~/.claude/lib/coding/ui-python.md`.
+
 ## URL query as the source of truth
 
 - Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the hook/param resolver (`const step = isValidStep(params.step) ? params.step : "settings";`); when a page moves from `useState("...")` to URL params, that default is the old initial value.
@@ -25,15 +27,7 @@
 
 ## Components and forms
 
-- UI defaults are FE responsibility: set the initial radio/select value in the FE and declare the field required in the BE request DTO; keep a BE default only when omitting the field is a meaningful business state (`target_age_ranges_json={}` = no targeting, with its reason in a comment); remove a BE default that validation rejects anyway (`budget=0`) or that the UI also defines:
-  ```python
-  # 지적 대상: UI 초기값을 BE에도 둔다
-  revenue_type: CampaignRevenueType = Field(default=CampaignRevenueType.CPC)
-  target_sex_type: CampaignTargetSexType = Field(default=CampaignTargetSexType.ALL)
-  # 맞는 형태: BE는 받기만 하고 FE가 정한다
-  revenue_type: CampaignRevenueType = Field(...)
-  target_sex_type: CampaignTargetSexType = Field(...)
-  ```
+- UI defaults are FE responsibility: set the initial radio/select value in the FE and declare the field required in the BE request DTO; keep a BE default only when omitting the field is a meaningful business state (`target_age_ranges_json={}` = no targeting, with its reason in a comment); remove a BE default that validation rejects anyway (`budget=0`) or that the UI also defines.
 - Form field subscription (TanStack Form): wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop instead of reading `form.state.values.showDailyBudget` directly.
 - Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`.
 - bootstrap-vue `v-b-popover`: pass the object form `{ content, html: true }` instead of the `.html` modifier.

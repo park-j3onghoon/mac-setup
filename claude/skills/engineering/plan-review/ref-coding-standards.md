@@ -5,7 +5,7 @@
 ## Checklist
 
 ### Python / Django
-- 타입 힌트 약화 여부 (Any 추가, Optional 남용)
+- 타입 힌트 약화 여부 (Any 추가, 구체 타입 → Optional)
 
 ### Kotlin / Spring Boot
 - data class 불변성, copy() 활용

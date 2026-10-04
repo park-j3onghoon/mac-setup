@@ -2,23 +2,20 @@
 
 MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)와 리포지토리 계약은 `~/.claude/lib/coding/db.md`, 레이어는 `~/.claude/lib/coding/architecture.md`에 있다.
 
-## Core Principles
-
-- NOT NULL, UNIQUE, CHECK 제약으로 잘못된 데이터 진입 차단.
-- 마이그레이션은 별도 PR.
-
 ## Checklist
 
+- 마이그레이션은 별도 PR.
+
 ### 스키마 설계
-- 정규화 수준 적절성
+- 정규화 수준 선택 근거
 - 필드 타입 (금액 → Decimal, 수량 → PositiveIntegerField)
 - nullable 필드의 비즈니스 근거 (None = "미입력"인지 "해당없음"인지)
-- DDD 엔티티 vs 값 객체 구분
+- 엔티티 vs 값 객체 구분: `~/.claude/lib/coding/domain.md`를 Read하고 Entities and values 절로 판단한다
 
 ### 마이그레이션
 - 마이그레이션 파일 존재 여부
 - 하위 호환 배포 가능 (스키마 먼저 → 코드 배포 순서)
-- 대규모 테이블 ALTER 시 온라인 DDL / pt-online-schema-change 고려
+- 대규모 테이블 ALTER 시 온라인 DDL / pt-online-schema-change 사용 여부
 - 데이터 마이그레이션과 스키마 마이그레이션 분리
 
 ### 쿼리 최적화

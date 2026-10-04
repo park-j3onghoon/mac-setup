@@ -30,12 +30,11 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 ### Django 특화
 - ORM `.annotate()` 에 새 필드 추가 시, 결과 dict 키와 dataclass 필드 일치 확인
 - migration 파일 누락 / 순서 오류
-- `PositiveIntegerField` vs `BigIntegerField` 등 타입 적절성
+- `PositiveIntegerField` vs `BigIntegerField` 등 값 범위에 맞는 타입인지
 - `.iterator()`는 무거운 엔티티를 대량 스캔하며 스트림으로 소비할 때만 쓴다. 결과를 바로 `list()`로 만들거나 청크로 바운드된 가벼운 projection(`values_list`)에 붙은 `.iterator()`는 지적한다.
 
 ### 스타일 / 복잡도
-- early return 으로 중첩 해소: 함수 내 들여쓰기 3단계 이내
-- 함수당 분기 5개 이하. 초과 시 헬퍼로 분리
+- early return 으로 중첩 해소: 함수 본문 기준 들여쓰기 3단계 이내(if·for·while·try·with 블록 한 겹이 1단계)
 - `os.path` 대신 `pathlib`
 - bare `except:` 대신 구체 예외만 catch
 - 1회성 로직에 도입한 ABC/Protocol은 지적한다

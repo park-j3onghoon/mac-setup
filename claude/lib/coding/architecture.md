@@ -5,7 +5,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`.
 ## Layers
 
 - Dependency rule: point dependencies only inward: presentation → application → domain, and infrastructure → domain by implementing the ports the domain defines. Between two modules of the same layer, keep the dependency one way too.
-- Composition root: only the composition root creates adapters and passes them to use cases and services, which receive ports and the unit of work as parameters; it sits outside the layers (`bootstrap.py` in Python, `cmd/<app>/main.go` in Go, the container configuration in Spring), and entrypoints get what they call from it.
+- Composition root: only the composition root creates adapters and passes them to use cases and services, which receive ports and the unit of work as parameters; it sits outside the layers, and entrypoints get what they call from it.
 - Utils: a function with no business term and no port is a util; it sits outside the layers, and any layer may call it.
 - Convention breaks ties: when these rules allow several placements or structures, follow the one the project already uses.
 

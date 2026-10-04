@@ -44,8 +44,8 @@ diff에서 돈 계산·권한·데이터 변경·외부 호출처럼 틀리면 �
 
 Codex로 한 번 더 볼지 AskUserQuestion 1회로 묻는다. 권장안을 첫 옵션에 두고, 아래 셋 중 무엇을 돌릴지와 그 이유를 한 줄 붙인다.
 
-- 건너뛰기: 변경 200줄 미만 + 루틴 수정
-- `codex review`: 200줄 이상 또는 도메인·애플리케이션 레이어 변경
+- 건너뛰기: 추가 줄 수 200 미만이고 아래 항목의 조건이 하나도 없음
+- `codex review`: 추가 줄 수 200 이상 또는 도메인·애플리케이션 레이어 변경
 - `codex review` + `codex adversarial-review`: 새 추상화·레이어 도입, 마이그레이션 동반, 아키텍처 결정
 
 실행·회수는 `~/.claude/lib/codex-adversarial.md`를 Read하고 그 절차대로 하며, Codex는 대상 경로에서 실행한다.
