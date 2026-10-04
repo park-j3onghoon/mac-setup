@@ -21,6 +21,6 @@ argument-hint: "[경로 | off]"
 
 ## 3. 해제: `/guard off`
 
-`~/.claude/lib/guard.md`의 해제 절을 그대로 따른다.
+`~/.claude/lib/guard.md`를 Read하고 그 문서의 해제 절을 그대로 따른다.
 
 → 완료: 해제 메시지를 출력했고 모든 디렉토리에서 Edit/Write가 열렸다.

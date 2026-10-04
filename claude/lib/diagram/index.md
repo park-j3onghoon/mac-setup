@@ -8,6 +8,6 @@
 
 ## 생키·흐름 지도 저장
 
-- 경로는 `~/.claude/lib/plans-path.md`의 규칙을 따르고, 파일명은 `{주제}-sankey.html`·`{주제}-flow.html`이다. 호출한 쪽이 경로를 정했으면 그쪽을 쓴다. `mkdir -p`로 디렉토리를 먼저 만든다.
+- 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따르고, 파일명은 `{주제}-sankey.html`·`{주제}-flow.html`이다. 호출한 쪽이 경로를 정했으면 그쪽을 쓴다. `mkdir -p`로 디렉토리를 먼저 만든다.
 - 같은 경로에 파일이 있으면 `{이름}.{YYYYMMDD}.bak.html`로 백업한 뒤 덮어쓴다.
 - `open {절대경로}`로 브라우저에 띄우고, 채팅에 절대경로를 알린다.

@@ -37,7 +37,7 @@ disable-model-invocation: true
 
 C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
-완료 기준: 미결 갈림길이 없거나 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
+→ 완료: 미결 갈림길이 없거나 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
 
 ## Step 0.5: 차원 triage
 
@@ -52,7 +52,7 @@ C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 �
 | Security | 인증, 인가, API 엔드포인트 추가, 사용자 입력 처리 |
 | Performance | 쿼리, 루프, 대량 데이터, 외부 API, 동시성 |
 
-완료 기준: 한 줄 출력. `DIMENSION RELEVANCE: 5/6 active (Security skipped: no auth/API changes)`
+→ 완료: 한 줄 출력. `DIMENSION RELEVANCE: 5/6 active (Security skipped: no auth/API changes)`
 
 ## Step 1: 리뷰 실행
 
@@ -82,7 +82,7 @@ ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. �
 
 Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 목록에서 계획이 닿는 모듈을 직접 Read하고, 차원당 핵심 1개 이슈만 같은 번호 범위로 매겨 한 번에 제시한다.
 
-완료 기준: 통합 결과를 제시하고 AskUserQuestion 1회로 "어느 이슈를 계획에 반영할지"를 받았다.
+→ 완료: 통합 결과를 제시하고 AskUserQuestion 1회로 "어느 이슈를 계획에 반영할지"를 받았다.
 
 ## Step 2: 종합 산출물
 
@@ -104,17 +104,17 @@ Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 
 - Critical gaps: ___
 ```
 
-완료 기준: 해당되는 블록을 모두 채웠다.
+→ 완료: 해당되는 블록을 모두 채웠다.
 
 ## Step 3: 계획 저장
 
 리뷰를 반영한 최종 계획을 `plan.md`에 쓴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다.
 
-완료 기준: 그 경로에 파일이 있다.
+→ 완료: 그 경로에 파일이 있다.
 
 ## Step 3.5: Codex 적대 검증
 
-모든 실행에서 돈다. Codex에게 계획을 red-team 시킨다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈추거나 실패한 job의 대체, 결과 취급도 그 문서를 따른다.
+모든 실행에서 돈다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈추거나 실패한 job의 대체, 결과 취급도 그 문서를 따른다.
 
 Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제 요약}`부터 번호를 이어 매긴다. 선택지와 추천은 Claude가 붙이고, Step 1에서 이미 다룬 이슈와 같으면 그 번호를 적는다. 그 목록을 보여 준 뒤 AskUserQuestion 1회:
 - A) 제기된 이슈를 전부 Edit로 plan.md에 반영 → Step 4
@@ -122,22 +122,22 @@ Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제
 - C) 원안대로 진행 → Step 4
 - D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
 
-완료 기준: Codex 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈추거나 실패한 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
+→ 완료: Codex 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈추거나 실패한 job을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, A~D 중 하나를 받았다.
 
 ## Step 4: 마감
 
 `plan.md`의 절대경로를 알리고 멈춘다.
 
-완료 기준: 채팅에 `plan.md`의 절대경로가 남았다.
+→ 완료: 채팅에 `plan.md`의 절대경로가 남았다.
 
 ## 리뷰 관점
 
-Agent 프롬프트와 인라인 리뷰가 공통으로 쓰는 판단 기준.
+인라인 리뷰도 아래 기준으로 판단한다.
 
-엔지니어링 선호: 중복은 `~/.claude/lib/coding/design.md`를 따른다 · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+엔지니어링 선호: 중복은 `~/.claude/lib/coding/design.md`를 Read하고 그 규칙을 따른다 · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
 
 인지 패턴
-1. Blast radius: 최악의 경우 영향 범위
+1. Blast radius: 최악의 경우 영향 범위를 따진다
 2. Boring by default: 검증된 기술 우선
 3. Incremental > revolutionary: 되돌릴 수 있는 작은 단계로 쪼갠다
 4. Systems over heroes: 새벽 3시에도 안전하게 도는가

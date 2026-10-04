@@ -12,7 +12,7 @@ For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 
 ## Enum columns
 
-- Make the first enum value `''`. When `''` has a clearly useful meaning, name its member for that meaning (`UNKNOWN`, `ALL`) and keep it in the domain enum; otherwise name it `UNSPECIFIED`, leave it out of the domain enum, and have the repository map it to `None` for an optional field or reject it for a required one.
+- Make the first enum value `''`. When `''` has a clearly useful meaning, name its member for that meaning (`UNKNOWN`, `ALL`) and keep it in the domain enum; otherwise name it `UNSPECIFIED`, leave it out of the domain enum, and have the repository map it to null for an optional field or reject it for a required one.
 
 ## Charset
 
@@ -22,7 +22,7 @@ For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 
 - FK/relations to other tables → fact values → varchar/json.
 
-## Aggregate counters (cached fields)
+## Aggregate counters
 
 - When the aggregated rows reach 1,000, cache a counter: update it at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
 

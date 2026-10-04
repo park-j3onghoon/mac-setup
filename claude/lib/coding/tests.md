@@ -13,7 +13,7 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
   - snapshots of a private map copied into the test
   - exhaustive invalid cases; test the valid cases
   - log wording; test only the functional property (run_id submit/finish pairing) and keep the wording contract in a constant comment
-- MC/DC: in personal repos (linkcart etc.), give each sub-condition of a decision such as `A && (B || C)` a case where it alone flips the result with the others fixed; start from n+1 cases, and without JaCoCo-style support design the input table by hand.
+- MC/DC: in personal repos (linkcart etc.), give each sub-condition of a decision such as `A && (B || C)` a case where it alone flips the result with the others fixed; start from n+1 cases, and without coverage-tool support design the input table by hand.
 
 ## Shape
 
@@ -31,4 +31,4 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
   1. background thread/executor: replace the submit function with a synchronous one (shared by the suite when several tests need it); verify real threads only in a dedicated test that waits on an event with a timeout; wait on events/conditions instead of `sleep`
   2. time: have the use case entry take the current time as a parameter or an injected clock, pin it in tests, and derive other times in the test as offsets from it
   3. random/fake data: set every result-affecting value explicitly, the value before a change included
-  4. shared state: keep every mutable value and DB row test-local, so each test passes alone and in any order
+  4. shared state: keep every mutable value and DB row test-local; each test passes alone and in any order

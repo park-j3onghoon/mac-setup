@@ -1,6 +1,6 @@
 # 상위 관례와 다른 점
 
-아래 셋은 상위 레포(`mattpocock/skills`)에만 해당한다. 판단 근거가 필요하면 `invocation.md`와 `openai.yaml`을 Read한다.
+아래 셋은 상위 레포(`mattpocock/skills`)에만 해당한다. 판단 근거가 필요하면 `~/.claude/skills/skill-review/reference/invocation.md`와 `~/.claude/skills/skill-review/reference/openai.yaml`을 Read한다.
 
 - `.claude-plugin/plugin.json`: 상위 레포는 스킬을 Claude Code 플러그인으로 배포해 promoted 스킬을 그 매니페스트에 등록한다. 우리는 심링크로 설치한다.
 - User-invoked / Model-invoked 구분: 상위 레포는 둘을 섞어 쓰고 README를 그 둘로 나눈다. 우리는 전부 user-invoked이고 README를 한 목록으로 둔다.

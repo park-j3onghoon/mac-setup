@@ -1,8 +1,8 @@
 # 언어별 공통 리뷰 기준
 
 diff의 변경된 파일 언어를 감지하여 해당 언어의 관용구, 안전성, 플랫폼 특화 이슈를 검증한다.
-해당 언어 파일이 diff에 없으면 해당 섹션을 건너뛴다.
-diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/coding/index.md` 목록에서 diff가 닿는 모듈을 Read하고, 그 모듈 첫머리가 가리키는 스택 파일 중 diff 언어의 것(`*-python.md`·`*-frontend.md`·`*-proto.md`)을 이 기준에 더한다. 프론트엔드 화면이면 `~/.claude/lib/coding/ui.md`, DB면 `~/.claude/lib/coding/db.md`도 더한다.
+해당 언어 파일이 diff에 없으면 그 언어 절을 건너뛴다.
+diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 diff가 닿는 모듈을 Read하고, 그 모듈 첫머리가 가리키는 스택 파일 중 diff 언어의 것(`*-python.md`·`*-frontend.md`·`*-proto.md`)을 이 기준에 더한다. 프론트엔드 화면이면 `~/.claude/lib/coding/ui.md`, DB면 `~/.claude/lib/coding/db.md`도 Read해 더한다.
 
 ---
 
@@ -37,8 +37,8 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 - early return 으로 중첩 해소: 함수 내 들여쓰기 3단계 이내
 - 함수당 분기 5개 이하. 초과 시 헬퍼로 분리
 - `os.path` 대신 `pathlib`
-- bare `except:` 금지: 구체 예외만 catch
-- 1회성 로직에 ABC/Protocol 도입 지양
+- bare `except:` 대신 구체 예외만 catch
+- 1회성 로직에 도입한 ABC/Protocol은 지적한다
 
 ---
 
@@ -58,7 +58,7 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 - `*int32` vs `int32`, `optional` proto field로 nil/zero-value 명확 구분
 - 컴파일 타임 인터페이스 검증: `var _ Interface = (*Impl)(nil)`
 - 방어 코드 제거: 빌드타임에 보장되는 nil 체크·생성자가 보장하는 invariant·도달 불가 경로의 방어 코드, `sync.Once`와 `init()`을 함께 쓴 중복 방어는 잉여 → 제거.
-- `&slice[i]` 등 슬라이스 원소 aliasing 지양. append/재할당 시 stale 포인터.
+- `&slice[i]` 등 슬라이스 원소 aliasing은 지적한다. append/재할당 시 stale 포인터.
 
 ### 관용구
 - context 기반 logger 사용
@@ -81,9 +81,9 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 
 ### 테스트
 - mock은 mockgen 생성물을 생성자 정식 경로(`NewXxx(..., dep)`)로 주입한다.
-- 테스트 상수/구조체는 테스트 전용 리터럴로 alias 선언 + helper 로 생성한다.
-- `gomock.Any()` 남용 금지: 검증 대상 필드는 명시적으로 매칭.
-- give-when-then 순서. DI 불필요한 domain/entity/util 은 suite 없이 단순 테스트로 충분(최상위 pkg, 무의존).
+- 테스트 상수/구조체는 테스트 전용 리터럴로 alias 선언 + 함수로 생성한다.
+- 검증 대상 필드는 `gomock.Any()` 대신 명시적으로 매칭.
+- given-when-then 순서. DI 불필요한 domain/entity/util 은 suite 없이 단순 테스트로 충분(최상위 pkg, 무의존).
 
 ---
 
@@ -101,7 +101,7 @@ diff에 Python·프론트엔드·DB·proto 파일이 있으면 `~/.claude/lib/co
 ## Kotlin / Spring Boot
 
 ### null safety
-- `!!` 사용 금지, `?.let` / `?:` / `requireNotNull` 활용
+- `!!` 대신 `?.let` / `?:` / `requireNotNull` 활용
 - data class 불변성, copy() 활용
 - `@field:NotBlank` 등 어노테이션 정확한 target 지정
 - sealed class/interface로 타입 안전 분기

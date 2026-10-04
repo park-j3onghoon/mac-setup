@@ -2,10 +2,8 @@
 name: explain-html
 description: 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다.
 disable-model-invocation: true
-argument-hint: <주제> [저장 경로]
+argument-hint: "<주제> [저장 경로]"
 ---
-
-인자로 받은 주제를 조사해 단일 HTML 파일 하나로 설명한다.
 
 ## 1. 스타일 규칙 로드
 
@@ -29,4 +27,4 @@ argument-hint: <주제> [저장 경로]
 
 `~/.claude/lib/explain-html.md`를 Read하고 그 문서의 구조 설계 → 작성 → 저장 절차를 그대로 수행한다. 인자로 저장 경로를 받았으면 그 경로를 쓴다.
 
-→ 완료: 그 문서의 세 단계 완료 기준을 모두 만족했다. HTML 파일이 저장돼 브라우저에 떠 있고, 채팅에 절대경로가 남았다.
+→ 완료: 그 문서의 단계별 완료 기준을 모두 만족했다. HTML 파일이 저장돼 브라우저에 떠 있고, 채팅에 절대경로가 남았다.
