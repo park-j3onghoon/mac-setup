@@ -32,7 +32,7 @@ argument-hint: "[스킬 이름 | 전체]"
 
 하위 모듈
 - `SKILL.md`가 아닌 `.md` 가운데 한 스킬만 쓰는 것은 그 스킬 디렉토리 안에, 둘 이상이 쓰는 것은 `claude/lib/`(회사 내용이면 `private/claude/lib/`)에 있다. `~/.claude` 최상위 `.md`는 `CLAUDE.md` 하나다.
-- 하위 모듈은 내용만 담는다. 소비자는 `grep -rl`로 찾는다.
+- 하위 모듈은 내용만 담는다. 소비자는 `command grep -rl {모듈 파일 이름} ~/git/mac-setup/claude ~/git/mac-setup/private`로 찾는다.
 - 스킬은 쓰는 모듈을 포인터로 밝힌다. `~/.claude/CLAUDE.md`가 이미 로드하는 모듈도 포인터를 둔다.
 - 포인터는 "`~/.claude/…` 전체 경로를 Read하고 {할 일}" 평문으로 쓴다. 스킬 안 모듈은 `~/.claude/skills/{스킬}/…`로 쓴다.
 - 모든 답에 쓰이는 규칙만 `~/.claude/CLAUDE.md`에서 import한다. 일부 답에만 쓰이는 규칙은 그 조건을 적은 포인터로 읽는다.

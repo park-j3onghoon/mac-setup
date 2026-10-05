@@ -14,6 +14,15 @@ for d in "$HOME/.claude" "$HOME/.claude/skills" "$HOME/.codex" "$HOME/.codex/ski
 done
 [ "$fail" -eq 0 ] && note "없음"
 
+echo "== 1b. ~/.claude 최상위 .md"
+top=0
+for f in "$HOME"/.claude/*.md "$HOME/git/mac-setup/claude"/*.md "$HOME/git/mac-setup/private/claude"/*.md; do
+  [ -e "$f" ] || [ -L "$f" ] || continue
+  [ "${f##*/}" = CLAUDE.md ] && continue
+  note "CLAUDE.md 밖 최상위 .md: $f"; top=$((top+1)); fail=1
+done
+[ "$top" -eq 0 ] && note "CLAUDE.md 하나"
+
 echo "== 2. SKILL.md frontmatter"
 while IFS= read -r f; do
   head=$(awk 'NR>1 && /^---/{exit} NR>1{print}' "$f")
@@ -22,10 +31,11 @@ while IFS= read -r f; do
   grep -q '^disable-model-invocation: true' <<<"$head" || { note "disable-model-invocation 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }
-  # allowed-tools 는 전역 allow 에 없는 도구를 그 스킬 범위에서만 열 때만 쓴다.
+  # allowed-tools 는 전역 allow 에 없는 도구를 그 스킬 범위에서만 열 때만 쓴다. 비공개 스킬은 install.sh 가 링크하는 비공개 settings.json 과 대조한다.
+  case "$f" in "$HOME/git/mac-setup/private/"*) allow="$HOME/git/mac-setup/private/claude/settings.json";; *) allow="$HOME/git/mac-setup/claude/settings.json";; esac
   while IFS= read -r t; do
     jq -e --arg t "$t" '.permissions.allow | index($t)' \
-      "$HOME/git/mac-setup/claude/settings.json" >/dev/null 2>&1 \
+      "$allow" >/dev/null 2>&1 \
       && { note "allowed-tools 가 전역 allow 와 중복: $t  ($f)"; fail=1; }
   done < <(sed -n '/^allowed-tools:/,/^[a-z-]*:/p' <<<"$head" | grep -oE '^\s*-\s*\S+' | sed 's/^[[:space:]]*-[[:space:]]*//')
 done < <(find "$HOME/git/mac-setup/claude/skills" "$HOME/git/mac-setup/private/claude/skills" -maxdepth 3 -name SKILL.md 2>/dev/null)
@@ -37,7 +47,7 @@ while IFS= read -r f; do
   [ "$n" -gt 0 ] && { note "$n 건  ${f#$HOME/git/mac-setup/}"; em=$((em+n)); fail=1; }
 done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" \
            \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.html' \) 2>/dev/null \
-         | grep -vE 'reference/invocation\.md|lib/answer-style\.md')
+         | grep -vE 'lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash): 되돌릴 수 없는 git 명령을 에이전트가 실행하지 못하게 막는다.
-# 사용자는 프롬프트에 `! <명령>` 으로 직접 실행할 수 있다. 차단 대상은 CLAUDE.md 안전 하드룰과 같다.
+# 사용자는 프롬프트에 `! <명령>` 으로 직접 실행할 수 있다. 차단 대상은 ~/.claude/lib/guard.md 가 사용자 실행으로 정한 명령과 같다.
 
 set -uo pipefail
 CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null)
@@ -19,7 +19,7 @@ deny() {
 
 # force push (--force, -f, --force-with-lease, +refspec)
 if printf '%s' "$CMD" | grep -qE 'git[[:space:]]+push([[:space:]]+[^|;&]*)?([[:space:]]--force([[:space:]]|=|$)|[[:space:]]--force-with-lease|[[:space:]]-f([[:space:]]|$)|[[:space:]]\+[A-Za-z0-9._/-]+:)'; then
-  deny "force push 는 실행하지 않습니다(CLAUDE.md 안전 하드룰). 필요하면 명령과 절차를 안내할 테니 사용자가 '! <명령>' 으로 직접 실행하세요."
+  deny "force push 는 실행하지 않습니다. 필요하면 명령과 절차를 안내할 테니 사용자가 '! <명령>' 으로 직접 실행하세요."
 fi
 
 # 커밋되지 않은 작업을 지우는 명령

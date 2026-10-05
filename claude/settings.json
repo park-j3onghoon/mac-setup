@@ -100,7 +100,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash /Users/teddy.park/.claude/statusline-command.sh"
+    "command": "bash \"$HOME\"/.claude/statusline-command.sh"
   },
   "enabledPlugins": {
     "ralph-loop@claude-plugins-official": false,

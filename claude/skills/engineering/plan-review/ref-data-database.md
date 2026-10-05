@@ -4,8 +4,6 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 
 ## Checklist
 
-- 마이그레이션은 별도 PR.
-
 ### 스키마 설계
 - 정규화 수준 선택 근거
 - 필드 타입 (금액 → Decimal, 수량 → PositiveIntegerField)
@@ -13,6 +11,7 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 - 엔티티 vs 값 객체 구분: `~/.claude/lib/coding/domain.md`를 Read하고 Entities and values 절로 판단한다
 
 ### 마이그레이션
+- 마이그레이션은 별도 PR
 - 마이그레이션 파일 존재 여부
 - 하위 호환 배포 가능 (스키마 먼저 → 코드 배포 순서)
 - 대규모 테이블 ALTER 시 온라인 DDL / pt-online-schema-change 사용 여부

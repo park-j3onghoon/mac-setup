@@ -11,6 +11,8 @@ mac-setup/
 │   ├── CLAUDE.md
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
+│   ├── set-tab-title.sh  # 터미널 탭 제목과 세션 이름 설정
+│   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단)
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
 │   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
@@ -19,7 +21,7 @@ mac-setup/
 │   ├── AGENTS.md
 │   ├── config.toml
 │   ├── hooks.json
-│   └── skills/           # .system만 추적(install.sh가 링크하지 않음). Codex 스킬 4개는 claude/skills를 링크
+│   └── skills/           # .system만 추적(install.sh가 링크하지 않음). Codex 스킬은 install.sh의 CODEX_SKILLS 목록대로 claude/skills를 링크
 ├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
 │   ├── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
@@ -100,7 +102,7 @@ codex login
 
 ## 설치 방식: symlink
 
-`bash install.sh`는 멱등입니다. 레포의 `claude/*.md`·`claude/*.sh`·`settings.json`·`claude/lib/*`·`claude/hooks/*`와 버킷 안 스킬을 각각 symlink하고, 대상이 사라진 symlink는 지웁니다. 파일을 새로 추가할 때 `install.sh`를 고칠 필요는 없고, 버킷이나 최상위 디렉토리를 새로 만들 때만 고칩니다.
+`bash install.sh`는 멱등입니다. 레포의 `claude/*.md`·`claude/*.sh`·`settings.json`·`claude/lib/*`·`claude/hooks/*`와 버킷 안 스킬을 각각 symlink하고, 대상이 사라진 symlink는 지웁니다. 이 목록에 드는 파일·스킬·버킷은 새로 만들어도 `install.sh`를 고칠 필요가 없고, 목록 밖의 파일 종류나 디렉토리를 링크할 때와 Codex에 둘 스킬을 바꿀 때(`install.sh`의 `CODEX_SKILLS`)만 고칩니다.
 
 레포 파일이 `~/.claude/CLAUDE.md`, `~/.zshrc` 등으로 symlink 됩니다. 실 파일을 에디팅하면 레포가 자동으로 바뀌므로 git으로 변경 추적이 바로 됩니다. 로그·캐시(`~/.claude/sessions/`, `~/.codex/history.jsonl` 등)는 `~/.claude`·`~/.codex` 내에 실물 디렉토리로 남아 레포에는 섞이지 않습니다.
 

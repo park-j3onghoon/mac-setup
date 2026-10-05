@@ -12,7 +12,7 @@ red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드�
 
 0. 위협 모델: 대상 레포의 README와 주요 설정을 읽고 컴포넌트 연결, 신뢰 경계, 사용자 입력의 진입점·유출점을 적는다. → 완료: 세 항목이 각각 채워짐.
 1. 공격 표면 매핑: `~/.claude/skills/cso/scan-commands.md`를 Read하고, 엔드포인트·인증 경계·외부 통합·웹훅 핸들러를 열거해 `ATTACK SURFACE MAP`을 채운다. → 완료: 찾은 라우트가 `ATTACK SURFACE MAP`의 칸 중 하나에 전부 배정됨.
-2. 시크릿 발굴: `~/.claude/skills/cso/scan-commands.md`의 git 3종 명령으로 이력과 추적 파일을 훑고, `.env`가 `.gitignore`에 있는지와 CI 설정에 인라인 시크릿이 있는지 본다. → 완료: 이력·추적 파일·CI 설정 3경로가 전부 스캔됨.
+2. 시크릿 발굴: `~/.claude/skills/cso/scan-commands.md`의 `시크릿 발굴 git 3종` 명령으로 이력과 추적 파일을 훑고, `.env`가 `.gitignore`에 있는지와 CI 설정에 인라인 시크릿이 있는지 본다. → 완료: 이력·추적 파일·CI 설정 3경로가 전부 스캔됨.
 3. 의존성 공급망: 패키지 매니저의 audit을 돌리고, 락파일이 있고 git에 추적되는지 본다. → 완료: audit 출력과 락파일 상태가 확인됨.
 4. CI/CD 파이프라인: `.github/workflows/`의 워크플로마다 `~/.claude/skills/cso/scan-commands.md`의 `GitHub Actions 3종 점검`을 적용한다. → 완료: 워크플로 파일 전부가 3종 점검을 거침.
 5. OWASP Top 10: `~/.claude/lib/owasp.md`를 Read하고 A01·A03·A05·A07·A10을 그 문서의 항목과 증명 방식으로 판정한다. → 완료: 5개 모두 발견 또는 PASS 또는 해당 없음으로 판정됨.
