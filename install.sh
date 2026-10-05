@@ -163,7 +163,10 @@ for f in AGENTS.md config.toml hooks.json; do
   link_file "$REPO_DIR/codex/$f" "$HOME/.codex/$f"
 done
 
-link_file "$REPO_DIR/codex/rules/default.rules" "$HOME/.codex/rules/default.rules"
+# Codex 승인 규칙은 사내 경로가 쌓이므로 private/ 에만 둔다.
+if [ -f "$REPO_DIR/private/codex/rules/default.rules" ]; then
+  link_file "$REPO_DIR/private/codex/rules/default.rules" "$HOME/.codex/rules/default.rules"
+fi
 
 # Codex 는 Claude 와 같은 SKILL.md 를 본다. 사본을 두지 않는다.
 CODEX_SKILLS="cso guard plan-review implement-review"

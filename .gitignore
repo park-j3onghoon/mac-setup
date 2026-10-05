@@ -23,3 +23,6 @@ installation_id
 # 이 트리는 install.sh 가 심링크로 배포하고, git 은 전혀 추적하지 않는다.
 # 나중에 백업이 필요하면 이 디렉토리에서 git init 후 private 리모트만 붙이면 된다.
 /private/
+
+# Codex 승인 규칙(사내 경로가 쌓인다)은 private/codex/rules/ 에 둔다.
+/codex/rules/

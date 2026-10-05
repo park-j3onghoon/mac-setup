@@ -19,7 +19,6 @@ mac-setup/
 │   ├── AGENTS.md
 │   ├── config.toml
 │   ├── hooks.json
-│   ├── rules/default.rules
 │   └── skills/           # .system만 추적(install.sh가 링크하지 않음). Codex 스킬 4개는 claude/skills를 링크
 ├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
