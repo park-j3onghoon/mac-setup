@@ -25,6 +25,8 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
   ---
   ```
 
+  두 글의 경계는 블록 가운데 `(여기서부터는 AI가 작성한 내용입니다.)` 줄로 찾는다.
+
 - AI가 쓴 글은 `## As-Is` → `## To-Be` → Background(Linear/RFC/PRD 링크) → 변경(파일·모듈마다 바뀐 것) → 호환성·영향 → Test plan 순서로 쓴다. As-Is와 To-Be는 각각 문장 3개 이내로 쓴다.
 - 레포의 PR 템플릿(`.github/pull_request_template.md`)이 있어도 이 구조로 쓴다.
 - 진행 상황·설계 논의·중간 과정·멀티-PR 맥락은 코멘트로 쓴다.
