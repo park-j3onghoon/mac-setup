@@ -164,7 +164,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 
 ### Go 패턴
 - 에러 래핑: `fmt.Errorf("...: %w", err)`. Uber Go style. `failed to` prefix 는 지적. sentinel + 컨텍스트: `fmt.Errorf("%w: flagID is empty", ErrInvalidConfig)`
-- nil/panic 가드: 타입 단언, 인덱스 경계, `MustGet` panic 가능성
+- nil/panic 가드: type assertion, 인덱스 경계, `MustGet` panic 가능성
 - panic 대신 error 리턴: 비즈니스 로직 panic 던지면 프로세스 그대로 뻗어버림
 - ctx 전파: `context.Background()` 새로 만들기보다 상위 ctx
 - 구체 타입 vs `interface{}`: 동적 타입 노출은 지적, 제네릭

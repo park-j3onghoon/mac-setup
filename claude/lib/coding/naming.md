@@ -3,7 +3,7 @@
 For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 
 - Ubiquitous language: use the term the codebase or glossary already uses, one word per concept and one concept per word, the same term in identifiers, comments, docstrings and API fields.
-- Domain terms stay untranslated: in Korean comments and docstrings, write a concept the code names as its identifier (`contract`, `target_amount`, `adjustment` 생성).
+- Code terms stay untranslated: in Korean comments and docstrings, write a concept the code names (an identifier, a language keyword, a library or test API) as the code writes it (`contract`, `target_amount`, `adjustment` 생성, `assert` instead of 단언).
 - Identifiers are English.
 - Functions and methods start with a verb naming the business action (`send_payout_email`, `approve`); a property or computed attribute may be a noun (`total_amount`). Keep mechanism words (async, thread, batch, cron, retry, worker) out of the name.
 - Messages: name a command in the imperative mood (`IssueContract`) and a domain event in the past tense (`ContractIssued`).

@@ -8,7 +8,7 @@
 - 에러 체크 일관성
 
 ## 안전성
-- 타입 단언(`ret.Get(0).(*Type)`) 시 nil 체크
+- type assertion(`ret.Get(0).(*Type)`) 시 nil 체크
 - 인덱스 경계 검사 (`tokens length check`)
 - 형변환 실패 시 panic 가능성
 - `*int32` vs `int32`, `optional` proto field로 nil/zero-value 명확 구분

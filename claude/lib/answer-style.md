@@ -10,7 +10,7 @@
 
 - 약어는 첫 등장에 풀네임과 함께 쓴다: `역할 기반 접근 제어(Role-Based Access Control, RBAC)`. 두 번째부터는 약어만 쓴다.
 - 서비스·저장소·테이블·필드는 `~/.claude/lib/data-notation.md`를 Read하고 그 표기를 따른다. `prod_orders.v_order_daily.amount`처럼 이름 하나로 어디 것인지 드러나게 쓴다.
-- 코드에 이름이 있는 개념은 문장 안에서도 코드의 단어를 그대로 쓴다: "Order를 `cancel`한다", "`refund`가 끝나면". 뜻이 필요하면 첫 등장에 괄호로 푼다: `cancel`(Order의 status를 CANCELED로 바꾸는 메서드).
+- 코드에 이름이 있는 개념은 문장 안에서도 코드의 단어를 그대로 쓴다. 식별자, 언어 키워드, 라이브러리·테스트 API가 모두 해당하고, 답변뿐 아니라 커밋 메시지·PR·리포트·주석·메모에도 같다: "Order를 `cancel`한다", "`refund`가 끝나면", "응답 `assert`를 뺀다"(단언 대신). 뜻이 필요하면 첫 등장에 괄호로 푼다: `cancel`(Order의 status를 CANCELED로 바꾸는 메서드).
 
 ## 정의에 실제 맥락 예시를 붙인다
 
