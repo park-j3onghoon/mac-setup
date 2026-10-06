@@ -48,7 +48,6 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 
 - 에러 wrapping: 레이어 경계에서 context 추가. `failed to` prefix 중복.
 - 조건부 부작용: if 안에서 외부 API 호출, DB 쓰기.
-- except 블록 직접 return: `handle_exceptions` 같은 데코레이터에서 변수 할당 후 fall-through 대신 각 except 블록에서 직접 `return Response(...)`.
 - except 범위 최소화: `try` 블록이 그 예외를 의도한 한 줄보다 넓으면, 같은 블록의 다른 단계가 같은 예외 타입을 던질 때 의도치 않게 흡수된다. rollback/cleanup 경로에서 `try: cancel(); close() except NotFound: pass`는 cancel이 NotFound로 실패해도 정리 성공으로 둔갑시켜 좀비 리소스를 silent 방치한다. `except`가 흡수해도 되는 정확한 호출만 내부 try로 감싸고, 나머지 단계의 예외는 밖으로 escalate시켜야 한다. 검증: "이 except가 잡는 예외를 try 안의 모든 호출이 던질 수 있나? 그 중 흡수하면 안 되는 게 있나?"
 
 ## 8. 관측성

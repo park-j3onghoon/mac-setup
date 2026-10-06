@@ -17,12 +17,12 @@ ATTACK SURFACE MAP
 ## 시크릿 발굴 git 3종
 
 ```bash
-git log -p --all -S "AKIA" --diff-filter=A -- "*.env" "*.yml" "*.json" 2>/dev/null | head -20
-git log -p --all -G "sk-|ghp_|gho_|xoxb-|xoxp-" 2>/dev/null | head -20
+git log --all -S "AKIA" --diff-filter=A --format='%h %ad' --date=short --name-only -- "*.env" "*.yml" "*.json" 2>/dev/null | head -20
+git log --all -G "sk-|ghp_|gho_|xoxb-|xoxp-" --format='%h %ad' --date=short --name-only 2>/dev/null | head -20
 git ls-files '*.env' '.env.*' | grep -v '.example\|.sample'
 ```
 
-첫 명령은 새로 추가된 3개 확장자만 보고 `head -20`은 패치 앞부분만 보여준다. 히트가 하나라도 나오면 그 커밋·파일을 직접 열어 범위를 넓힌다.
+첫 명령은 새로 추가된 3개 확장자만 보고 `head -20`은 히트 커밋 앞부분만 보여준다. 히트가 하나라도 나오면 그 커밋·파일을 직접 열어 범위를 넓힌다.
 
 ## GitHub Actions 3종 점검
 

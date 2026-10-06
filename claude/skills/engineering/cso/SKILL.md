@@ -22,7 +22,7 @@ red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드�
 
 ## 보고 게이트
 
-신뢰도 8/10 이상이면서 현실적 공격 경로를 코드로 보인 exploitable 한 발견만 보고한다. 아래 다섯은 보고 대상에서 뺀다.
+신뢰도 8/10 이상이면서 현실적 공격 경로가 있는 exploitable 한 발견만 보고한다. 아래 다섯은 보고 대상에서 뺀다.
 
 - DoS/리소스 소진
 - 디스크에 저장된 시크릿(암호화·권한이 설정된 경우)
@@ -42,4 +42,4 @@ SECURITY FINDINGS
 1   CRIT   9/10   VERIFIED   Secrets    git 이력에 AWS 키        .env:3
 ```
 
-심각도는 CRIT/HIGH/MED/LOW, 신뢰도는 `n/10`. 발견마다 공격 시나리오 · 영향 · 권장 조치(구체적 수정 + 예시)를 붙인다. 보고서는 채팅으로 내고, 파일로 남길 때만 `security-report.md`로 남긴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다.
+심각도는 CRIT/HIGH/MED/LOW, 신뢰도는 `n/10`. 발견마다 공격 시나리오 · 영향 · 권장 조치(구체적 수정 + 예시)를 붙인다. 보고서는 채팅으로 내고, 사용자가 파일을 요청하면 `security-report.md`로 남긴다. 저장 경로는 `~/.claude/lib/plans-path.md`를 Read하고 그 규칙을 따른다.

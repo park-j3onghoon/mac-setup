@@ -2,9 +2,12 @@
 name: plan-review
 description: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·Codex 적대 검증으로 통과시킨다.
 disable-model-invocation: true
+argument-hint: "[계획 파일 경로]"
 ---
 
 이 스킬이 쓰는 파일은 `plan.md` 하나이고, 나머지 코드·문서는 읽기만 한다.
+
+인자가 경로면 그 파일을, 없으면 대화에 마지막으로 나온 계획을 리뷰한다. 둘 다 없으면 계획 파일 경로를 묻는다.
 
 ## Step 0: 스코프 챌린지
 
@@ -24,11 +27,11 @@ disable-model-invocation: true
 [미결] {결정 항목}: 계획은 {가정한 것}으로 전제하는데 근거가 없다. {이것이 정해져야 결정되는 후속}
 ```
 
-미결을 보고한 뒤 AskUserQuestion 1회로 처리를 받는다.
+미결 갈림길을 보고한 뒤 AskUserQuestion 1회로 처리를 받는다.
 - A) 멈춘다 (Recommended): 사용자가 `/grill`로 결정을 닫고 다시 온다
-- B) 계속한다: 미결을 `plan.md`의 미결정 항목에 그대로 적고 리뷰를 이어간다
+- B) 계속한다: 미결 갈림길을 `plan.md`의 미결정 항목에 그대로 적고 리뷰를 이어간다
 
-미결이 없으면 바로 스코프를 고른다.
+미결 갈림길이 없으면 바로 스코프를 고른다.
 
 스코프는 AskUserQuestion 1회, 3옵션:
 - A) SCOPE REDUCTION: 최소 버전을 제안하고 승인받은 뒤 B 또는 C로 재진입
@@ -89,7 +92,7 @@ Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 
 - NOT in scope: 고려했으나 제외한 작업, 항목당 1줄 근거
 - What already exists: 하위 문제를 이미 부분적으로 푸는 기존 코드·흐름
 - Failure modes: 새 코드패스마다 테스트 커버? 에러 핸들링? 무음 실패? 테스트 커버도 에러 핸들링도 없고 무음 실패면 critical gap
-- 미결정: Step 0에서 계속을 골라 남긴 갈림길. 항목당 계획이 가정한 것과 언제 정해야 하는지. 없으면 생략
+- 미결정: Step 0에서 계속을 골라 남긴 미결 갈림길. 항목당 계획이 가정한 것과 언제 정해야 하는지. 없으면 생략
 - Completion summary
 
 ```
@@ -114,10 +117,10 @@ Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 
 
 ## Step 3.5: Codex 적대 검증
 
-모든 실행에서 돈다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. focus 문구에는 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로 같은 focus의 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈추거나 실패한 job의 대체, 결과 취급도 그 문서를 따른다.
+모든 실행에서 돈다. `~/.claude/lib/codex-adversarial.md`를 Read하고 모드 표의 `task` 행을 Step 3에서 저장한 `plan.md`의 절대경로로 실행한다. 작업 지시 끝에 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로, 같은 문장을 리뷰 초점으로 넣은 `adversarial-review` 행을 쓴다. 비동기 실행·대기·회수, 대상 코드, 멈추거나 실패한 job의 대체, 결과 취급도 그 문서를 따른다.
 
 Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제 요약}`부터 번호를 이어 매긴다. 선택지와 추천은 Claude가 붙이고, Step 1에서 이미 다룬 이슈와 같으면 그 번호를 적는다. 그 목록을 보여 준 뒤 AskUserQuestion 1회:
-- A) 제기된 이슈를 전부 Edit로 plan.md에 반영 → Step 4
+- A) 제기된 이슈를 전부 Edit로 `plan.md`에 반영 → Step 4
 - B) 사용자가 지정한 일부만 반영 → Step 4
 - C) 원안대로 진행 → Step 4
 - D) 설계 재검토 → Step 0 또는 Step 1로 되돌림
@@ -134,7 +137,7 @@ Codex 발견을 Step 1의 응답 형식으로 옮겨 `[Issue 25] (codex) {문제
 
 인라인 리뷰도 아래 기준으로 판단한다.
 
-엔지니어링 선호: 중복은 `~/.claude/lib/coding/design.md`를 Read하고 그 규칙을 따른다 · 테스트와 엣지 케이스는 많은 쪽 · 명시적 > 영리한 코드 · 최소 diff.
+엔지니어링 선호: 중복은 `~/.claude/lib/coding/design.md`를 Read하고 그 규칙을 따른다 · 테스트 범위는 `~/.claude/lib/coding/tests.md`를 Read하고 그 Cover the change와 Leave untested 항목을 따른다 · 명시적 > 영리한 코드 · 최소 diff.
 
 인지 패턴
 1. Blast radius: 최악의 경우 영향 범위를 따진다

@@ -44,7 +44,9 @@ gh api repos/{owner}/{repo}/pulls/{번호}/reviews --paginate \
   ! git -C {작업 디렉토리 절대경로} push
   ```
 
-→ 완료: push 출력이 대화에 들어왔고 실패가 없다.
+push한 브랜치를 base로 쓰는 열린 PR이 있으면(`gh pr list --base {브랜치} --json number,headRefName`) 그 목록을 보여 주고, `~/.claude/lib/pr-rules.md`의 stacked PR 절을 따라 전파할지 묻는다. 전파한 브랜치도 이 단계 규칙대로 push한다.
+
+→ 완료: push 출력이 대화에 들어왔고 실패가 없으며, base로 쓰는 열린 PR이 있었으면 사용자가 전파 여부를 답했고 전파한 브랜치도 push됐다.
 
 ## 4. PR 갱신
 

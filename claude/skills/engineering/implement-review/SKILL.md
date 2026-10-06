@@ -1,13 +1,13 @@
 ---
 name: implement-review
-description: 내 PR을 서브에이전트 3개(보안 트리거가 있으면 4개)로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다.
+description: 내 PR을 서브에이전트로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다.
 disable-model-invocation: true
 argument-hint: "[PR URL]"
 ---
 
 ## 1. 리뷰 준비
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 3단계의 리뷰 worktree는 아래처럼 만든다. 먼저 head가 체크아웃된 트리 `{T}`를 찾는다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 그 문서 리뷰 worktree 절의 worktree는 아래처럼 만든다. 먼저 head가 체크아웃된 트리 `{T}`를 찾는다.
 
 ```bash
 git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이 든 블록의 "worktree" 줄이 {T}다
@@ -16,7 +16,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 - `{T}`가 있으면: `git -C {T} status --short`에 미커밋 변경이나 untracked 파일이 있을 때 목록을 보여 주고, 먼저 커밋해 리뷰에 넣을지 빼고 진행할지 묻는다. 그다음 `git -C {클론} worktree add -b review/{head} {작업 디렉토리} {head}`로 리뷰 브랜치를 올린다.
 - `{T}`가 없으면: `git -C {클론} worktree add {작업 디렉토리} {head}`로 head를 바로 올린다.
 
-작업 디렉토리나 `review/{head}` 브랜치가 이미 있으면, `review/{head}`가 없거나 `git -C {클론} merge-base --is-ancestor review/{head} {head}`가 참일 때만 `git -C {클론} worktree remove {작업 디렉토리}`와 `git -C {클론} branch -D review/{head}`로 지우고 다시 만든다. 그 밖의 경우나 remove가 거절하면 사용자에게 묻는다.
+작업 디렉토리나 `review/{head}` 브랜치가 이미 있으면, `review/{head}`가 없거나 `git -C {클론} merge-base --is-ancestor review/{head} {head}`가 참일 때만 지우고 다시 만든다. 작업 디렉토리는 `git -C {클론} worktree remove {작업 디렉토리}`로 지우고, `{T}`가 있으면 `review/{head}`를 `git -C {T} branch -d review/{head}`로 지운다. 그 밖의 경우나 remove나 `branch -d`가 거절하면 사용자에게 묻는다.
 
 → 완료: 그 문서의 완료 기준을 만족했고, `{T}` 유무가 정해졌다.
 

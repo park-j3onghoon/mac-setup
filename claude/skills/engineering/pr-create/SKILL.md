@@ -21,15 +21,15 @@ gh pr list --head {브랜치} --json number,url
 
 ## 2. 크기 검사
 
-`~/.claude/skills/pr-create/size-check.md`를 Read하고 판정까지 수행한다.
+`~/.claude/skills/pr-create/size-check.md`를 Read하고 판정까지 수행한다. WARNING에서 진행하지 않기로 하면 멈추고, FAIL에서 A·C를 고르면 분할 안을 알리고 멈춘다. FAIL에서 B를 고르면 3단계로 간다.
 
-→ 완료: 판정이 나왔고, FAIL이면 분할 방법이 합의됐다.
+→ 완료: 판정이 나왔고, WARNING이면 진행 여부를, FAIL이면 A·B·C 가운데 고른 안을 받았다.
 
 ## 3. PR 생성
 
 제목은 `<type>: [<Linear ID>] <설명>`으로 쓴다. type은 Conventional Commits이고 scope는 생략한다(예: `fix: [ABC-123] 알림 메일 중복 발송 방어`). Linear ID는 브랜치명·커밋 메시지나 Linear API에서 찾고, 못 찾으면 사용자에게 묻는다. "없음"이면 대괄호를 뺀다.
 
-제목·본문 초안을 보여 주고 승인받은 뒤 `gh pr create --draft --assignee @me`로 만든다. reviewer는 비워 두고 사용자가 직접 지정한다.
+제목·본문 초안을 보여 주고 승인받은 뒤 `gh pr create --draft --assignee @me --base {base}`로 만든다. `{base}`는 2단계에서 정한 base다. reviewer는 비워 두고 사용자가 직접 지정한다.
 
 만든 직후 과정 맥락을 코멘트로 단다(`gh pr comment {번호} --body …`). 남길 맥락이 없는 단발성 PR이면 생략한다.
 

@@ -9,19 +9,19 @@ argument-hint: "[스킬 이름 | 전체]"
 
 ## 1. 대상 확정
 
-인자가 스킬 이름이면 그 하나, 그 외에는 아래 두 곳의 모든 `SKILL.md`를 대상으로 한다.
+인자가 스킬 이름이면 그 스킬 디렉터리, 그 외에는 아래 두 곳의 모든 스킬 디렉터리를 대상으로 한다.
 
 - `~/git/mac-setup/claude/skills/{engineering,productivity}/`
 - `~/git/mac-setup/private/claude/skills/*/`
 
-→ 완료: 점검할 `SKILL.md` 경로 목록이 확정됐다.
+→ 완료: 점검할 스킬 디렉터리 경로 목록이 확정됐다.
 
 ## 2. 구조 규약
 
 아래 항목별로 판정한다.
 
 버킷과 등록
-- 공개 레포에서 일상적인 코드 작업 스킬은 `engineering/`, 일상적인 비코드 업무 도구는 `productivity/` 아래에 있다. 버킷은 레포 안에서만 쓴다. `install.sh`가 버킷을 순회해 `~/.claude/skills/<이름>/SKILL.md`로 평평하게 심링크한다.
+- 공개 레포에서 일상적인 코드 작업 스킬은 `engineering/`, 일상적인 비코드 업무 도구는 `productivity/` 아래에 있다. 버킷은 레포 안에서만 쓴다. `install.sh`가 버킷을 순회해 스킬 폴더를 `~/.claude/skills/<이름>`으로 평평하게 심링크한다.
 - 버킷에 있는 모든 스킬은 최상위 `README.md`에 항목이 있고, 스킬 이름이 그 `SKILL.md`로 링크돼 있다.
 - 각 버킷 폴더에 `README.md`가 있고, 그 버킷의 모든 스킬을 한 줄 설명과 함께 나열하며, 스킬 이름이 `SKILL.md`로 링크돼 있다.
 - 회사 스킬은 `private/claude/skills/` 바로 아래에 두고 목록도 그 트리 안에서만 관리한다.
@@ -59,7 +59,7 @@ bash ~/git/mac-setup/scripts/check-pair.sh
 
 ## 4. 작성 규칙
 
-`~/.claude/lib/skill-writing.md`를 Read하고 대상 스킬 디렉터리의 모든 `.md`·`.html` 줄을 규칙 1~25에 대어 판정한다.
+`~/.claude/lib/skill-writing.md`를 Read하고 대상 스킬 디렉터리의 모든 `.md`·`.html` 줄을 그 규칙에 대어 판정한다.
 
 → 완료: 위반마다 파일:줄과 규칙 번호가 적혔고, 위반이 없는 규칙에는 "해당 없음"이 적혔다.
 
@@ -82,8 +82,6 @@ SKILL REVIEW: {스킬} ({N}줄)
 2. Codex에도 둘 스킬이면 `install.sh`의 Codex 절에 이름을 넣는다. 같은 `SKILL.md`를 링크한다.
 3. 기계 검사 셋이 다시 PASS인지.
 
+`~/.claude/lib/skill-writing.md`의 규칙 24에 드는 수정이면 같은 커밋에서 규칙 24가 정한 곳을 함께 고친다.
+
 → 완료: 리포트를 냈고, 승인받은 항목만 반영됐으며, 반영 후 기계 검사 셋이 다시 PASS다.
-
-## 참고
-
-상위 레포(`mattpocock/skills`) 관례와 다른 점은 `~/.claude/skills/skill-review/reference/upstream-diff.md`에 있다. 판단 근거가 필요할 때만 Read한다.

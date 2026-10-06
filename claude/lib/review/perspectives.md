@@ -16,7 +16,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 외부 시스템 contract 일관성 (외부 시스템에 남기는 레코드의 접두어 같은 약속)
 
 ### silent 동작 / 기본값 함정
-- try/except 후 None 반환 거부 (exception 발생하게 두는 게 자연스러운 경우)
+- try/except 후 None 반환은 지적 (exception 발생하게 두는 게 자연스러운 경우)
 - Sentry 폭증 방지: error message 변동값은 `extra` 분리
 - 무용한 방어코드 제거: 순수 함수 try/except → silent 위험
 - silent default 버그: 클라이언트 필드 누락 → 1 로 초기화
@@ -53,11 +53,11 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 에러 메시지 정보성: "failed to ..." 만으로 부족
 
 ### 추상화·레이어·구조
-- 과도한 추상화 견제: 한 곳에서만 쓰는 클래스 인라인, factory 패턴 인터페이스 안 되면 코드 분리
+- 과도한 추상화는 지적: 한 곳에서만 쓰는 클래스 인라인, factory 패턴 인터페이스 안 되면 코드 분리
 - 외부 라이브러리 설정을 직접 옮기는 대신 "지금은 너무 많은 추상화 피하고 그대로 두자"
-- facade 분리, 구조체 vs string 분리 필요성 견제
-- 단순함 우선: 복잡하지 않으면 외부 라이브러리/함수화 필요 없음
-- 다형성 필요성 검증: 단일 구현이면 인터페이스 분리 불필요
+- facade 분리, 구조체 vs string 분리는 필요한지 묻는다
+- 단순함 우선: 복잡하지 않은 코드에 들인 외부 라이브러리·함수화는 지적
+- 다형성 필요성 검증: 구현이 하나뿐인 인터페이스 분리는 지적
 - 레이어 의존성 방향: domain 의 라이브러리 종속과 application use case 의 ORM 직접 호출은 지적. 레포 `CLAUDE.md`가 정한 onion 구조
 - DDD: dynamo 에러는 controller 직접 노출 대신 usecase 에러로 변환
 - Django base table 상속은 지적 (pk/migration 누락)
@@ -88,7 +88,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 
 ### AI 생성 코드 가드
 - `# type: ignore` 추가/타입힌트 약화는 의도 확인
-- AI/Claude 생성 spec/migration/code 무비판 수용 거부. follow-up PR 로 정리
+- AI/Claude가 만든 spec/migration/code를 검토 없이 받아들인 것은 지적. follow-up PR 로 정리
 - AGENTS.md/CLAUDE.md 협업 문서에서 위험 명령 제거
 - AI 생성 PR 본문이 기계적이면 실제 의도 작성 요구
 - AI 가 못 잡는 비즈니스 로직은 한글 주석 강화
@@ -213,8 +213,6 @@ diff를 아래 카테고리의 관점으로 검증한다.
 
 - 변경된 줄의 원래 의도를 `git blame`과 `git log -L <시작>,<끝>:<파일>`로 거슬러 확인한다. 이번 변경이 그 의도를 되돌리거나 예전에 고친 버그를 다시 들이면 지적한다. 근거는 그 커밋의 해시와 제목이다.
 - 같은 파일을 건드린 최근 PR을 `git log -n 10 --format='%h %s' -- <파일>`로 찾는다(커밋 제목의 `(#번호)`). 그 PR의 리뷰 코멘트를 `gh pr view <번호> --comments`와 `gh api repos/{owner}/{repo}/pulls/<번호>/comments`로 읽고, 그때 지적된 문제가 이번 diff에도 해당하면 그 PR 링크와 함께 지적한다.
-
----
 
 ## 출력 형식
 

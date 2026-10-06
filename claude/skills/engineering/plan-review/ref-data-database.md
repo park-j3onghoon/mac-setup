@@ -1,8 +1,8 @@
-# Data/Database Review Reference
+# Data/Database 리뷰 기준
 
 MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)와 리포지토리 계약은 `~/.claude/lib/coding/db.md`, 레이어는 `~/.claude/lib/coding/architecture.md`에 있다.
 
-## Checklist
+## 체크리스트
 
 ### 스키마 설계
 - 정규화 수준 선택 근거
@@ -29,7 +29,7 @@ MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카�
 - 복합 인덱스 컬럼 순서 (카디널리티 높은 것 먼저)
 - 불필요한 인덱스 식별 (조회 쿼리가 쓰지 않는 인덱스)
 
-## Examples
+## 예시
 
 ```python
 # 잘된 예시: ORM annotate ↔ dataclass 동기화
@@ -40,6 +40,7 @@ class CampaignStats(DataTransferObject):
 
 qs = Campaign.objects.annotate(
     impression_count=Count("impressions"),  # dataclass 필드와 이름 일치
+    campaign_id=F("id"),
     click_count=Count("clicks"),
-).values("id", "impression_count", "click_count")
+).values("campaign_id", "impression_count", "click_count")
 ```

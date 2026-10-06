@@ -23,7 +23,7 @@ For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend 
 - Dedup and shared setup: keep one of a single-field and a multi-field change test that prove the same thing; test the same rule via different fields once; put functions several tests share (`create_draft`, `force_status`, `_make_repo_with_usecases`) in the suite's shared fixture file.
 - Domain objects only in fixtures/factories: build them with `make_batch()` / `FakeRepository.for_batch(...)` instead of inline `Batch(...)`/`OrderLine(...)` in a test body.
 - Test doubles: give a port that holds state a fake (a working in-memory implementation), a call that only needs an answer a stub (a fixed return value), and use a mock (a check on the call itself) only when the call is the outcome (an email sent exactly once).
-- Fakes honour the real contract: make a fake repository behave like the real one (update of a missing row raises `NotFound` in both).
+- Fakes honour the real contract: make a fake repository behave like the real one (update of a missing row raises `NotFoundError` in both).
 
 ## Determinism
 

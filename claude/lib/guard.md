@@ -20,7 +20,7 @@ force push·`reset --hard`·`clean -f`·`checkout .`·`restore .`·`branch -D`�
 
 제한 디렉토리 목록은 끝에 `/`를 붙여 기억한다.
 
-그 밖의 파일을 Edit/Write 해야 하면 먼저 확인을 받는다. "이 파일은 제한 디렉토리 외부입니다: [path]. 수정하시겠습니까?" 승인 후 편집한다.
+그 밖의 파일을 Edit/Write 해야 하면 먼저 확인을 받는다. "이 파일은 제한 디렉토리 외부입니다: {파일 경로}. 수정하시겠습니까?" 승인 후 편집한다.
 
 Read·Grep·Glob·Bash는 평소대로 쓴다.
 
@@ -28,7 +28,7 @@ Read·Grep·Glob·Bash는 평소대로 쓴다.
 
 ```
 Guard 모드 활성화:
-1. 위험 명령어 경고: rm -rf, DROP TABLE, kubectl delete 등 실행 전 경고
-2. 편집 제한: [path]/ 외부 파일 Edit/Write 시 확인 필요
+1. 위험 명령 경고: rm -rf, DROP TABLE, kubectl delete 등 실행 전 경고
+2. 편집 제한: {제한 디렉토리} 외부 파일 Edit/Write 시 확인 필요
 해제: /guard off (편집 제한만) 또는 세션 종료 (전체)
 ```

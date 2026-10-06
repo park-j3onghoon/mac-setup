@@ -29,6 +29,7 @@ while IFS= read -r f; do
   grep -q '^name:' <<<"$head"        || { note "name 없음: $f"; fail=1; }
   grep -q '^description:' <<<"$head" || { note "description 없음: $f"; fail=1; }
   grep -q '^disable-model-invocation: true' <<<"$head" || { note "disable-model-invocation 없음: $f"; fail=1; }
+  grep -qE '^argument-hint: *[^" ]' <<<"$head" && { note "argument-hint 값에 큰따옴표 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }
   # allowed-tools 는 전역 allow 에 없는 도구를 그 스킬 범위에서만 열 때만 쓴다. 비공개 스킬은 install.sh 가 링크하는 비공개 settings.json 과 대조한다.
@@ -50,6 +51,22 @@ done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" \
          | grep -vE 'lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
 
+echo "== 2c. 완료 줄 표기 (→ 완료:)"
+lbl=0
+while IFS= read -r hit; do
+  note "${hit#$HOME/git/mac-setup/}"; lbl=$((lbl+1)); fail=1
+done < <(grep -rnE '^[[:space:]]*완료( 기준| 조건)?[[:space:]]*[:=]' "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" \
+           --include='*.md' --include='*.html' 2>/dev/null)
+[ "$lbl" -eq 0 ] && note "없음"
+
+echo "== 2d. 장식 기호 (§ · 「」 · ①ⓐ)"
+dec=0
+while IFS= read -r hit; do
+  note "${hit#$HOME/git/mac-setup/}"; dec=$((dec+1)); fail=1
+done < <(grep -rnE '§|「|」|①|②|③|④|⑤|ⓐ|ⓑ|ⓒ' "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" \
+           --include='*.md' --include='*.html' 2>/dev/null | grep -v '/lib/skill-writing\.md:')
+[ "$dec" -eq 0 ] && note "없음"
+
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"
 missing=0
 while IFS= read -r f; do
@@ -60,6 +77,23 @@ while IFS= read -r f; do
   done < <(grep -oE '`(~/|/Users/teddy\.park/)[^`]*`' "$f" | tr -d '`' | sort -u)
 done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" -name '*.md' 2>/dev/null | grep -vE '/plans/')
 [ "$missing" -eq 0 ] && note "모두 존재"
+
+echo "== 3b. 포인터 표기 (/Users/…/.claude 대신 ~/.claude)"
+abs=0
+while IFS= read -r hit; do
+  note "${hit#$HOME/git/mac-setup/}"; abs=$((abs+1)); fail=1
+done < <(grep -rnoE '`/Users/[^/`]+/\.claude/[^`]*`' "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" --include='*.md' 2>/dev/null)
+[ "$abs" -eq 0 ] && note "없음"
+
+echo "== 3c. .html 틀의 ~/.claude 경로 해소"
+hm=0
+while IFS= read -r f; do
+  while IFS= read -r p; do
+    case "$p" in *'{'*|*'*'*) continue;; esac
+    [ -e "${p/#\~/$HOME}" ] || { note "MISSING $p  ($f)"; hm=$((hm+1)); fail=1; }
+  done < <(grep -oE '~/\.claude/[A-Za-z0-9_./{}*-]*[A-Za-z0-9_/}*-]' "$f" | sort -u)
+done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" -name '*.html' 2>/dev/null)
+[ "$hm" -eq 0 ] && note "모두 존재"
 
 echo "== 4. JSON 유효성"
 for j in "$HOME/git/mac-setup/claude/settings.json" "$HOME/git/mac-setup/codex/hooks.json"; do

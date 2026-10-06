@@ -1,8 +1,8 @@
-# Performance Review Reference
+# Performance 리뷰 기준
 
 락 유지 범위는 `~/.claude/lib/coding/db.md`, 타임아웃과 배치 실패 집계는 `~/.claude/lib/coding/errors.md`에 있다.
 
-## Checklist
+## 체크리스트
 
 - 최적화는 측정된 병목에만: N+1은 측정 없이도 잡는다.
 - 캐싱을 쓰면 stale data 버그, invalidation 복잡도를 사전에 식별.
@@ -44,7 +44,7 @@
 - `refetchOnMount: "always"`는 staleTime을 사실상 무력화. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)를 기본값으로 쓴다.
 - mutation onSuccess invalidation은 모든 편집 경로를 커버해야 유효. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 켠다.
 
-## Examples
+## 예시
 
 ```python
 # 잘된 예시: N+1 방지

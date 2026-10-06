@@ -27,7 +27,7 @@ diff에서 돈 계산·권한·데이터 변경·외부 호출처럼 틀리면 �
 한 메시지에서 아래 리뷰어를 동시에 띄운다. 호출한 쪽이 더하는 서브에이전트도 같은 배치에 띄운다.
 
 - 코드 공통: `~/.claude/lib/review/code.md`
-- 언어별: `~/.claude/lib/review/language.md`
+- 언어별: `~/.claude/lib/review/language/index.md`
 - 관점: `~/.claude/lib/review/perspectives.md`
 - 보안: 레벨이 2 이상일 때만. `~/.claude/lib/security/index.md`의 레벨표가 정한 모듈 전부
 
@@ -35,8 +35,9 @@ diff에서 돈 계산·권한·데이터 변경·외부 호출처럼 틀리면 �
 
 1. diff 파일 경로 전부, 의도 요약, 먼저 볼 곳 목록, 대상 경로.
 2. 담당 기준 파일의 절대경로와 이 지시: "이 파일을 먼저 Read하고, 항목마다 PASS·해당 없음·발견 중 하나로 판정한다. PASS는 살펴봤는데 발견이 없는 것이고, 해당 없음은 이 diff와 무관한 것이다. 출력은 이 파일의 출력 형식을 따른다."
-3. 보안 서브에이전트에는 `~/.claude/lib/security/index.md`의 출력 형식 절을 따르라는 지시.
+3. 보안 서브에이전트에는 `~/.claude/lib/security/index.md`의 원칙 절과 출력 형식 절을 따르라는 지시.
 4. "코드 확인은 대상 경로 안에서 Grep/Read로 한다" + `~/.claude/lib/review/claims.md`를 Read해 옮긴 목록 항목 전부.
+5. 대상 경로에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그 파일의 절대경로와 이 지시: "이 파일도 Read하고 그 규칙으로 판정한다."
 
 → 완료: 띄운 서브에이전트가 모두 결과를 돌려줬다.
 

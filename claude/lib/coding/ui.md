@@ -1,23 +1,11 @@
 # UI: screens, copy and forms
 
-For Python code, also Read `~/.claude/lib/coding/ui-python.md`.
+For frontend code, also Read `~/.claude/lib/coding/ui-frontend.md`.
 
 ## URL query as the source of truth
 
-- Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the hook/param resolver (`const step = isValidStep(params.step) ? params.step : "settings";`); when a page moves from `useState("...")` to URL params, that default is the old initial value.
-- Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, keep `useEffect` + `router.replace` only for the address bar, and comment the split of roles; `useEffect` + `router.replace` alone renders one blank frame first:
-  ```tsx
-  const effectiveStep =
-    step === "creative" && state === null ? "settings" : step;
-
-  useEffect(() => {
-    if (step === "creative" && state === null) {
-      router.replace(settingsUrl);
-    }
-  }, [step, state, router]);
-
-  // JSX에서는 step 대신 effectiveStep을 쓴다
-  ```
+- Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the param resolver (`const step = isValidStep(params.step) ? params.step : "settings";`); when a page moves from local state to URL params, that default is the old initial value.
+- Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, correct the address bar separately, and comment the split of roles.
 
 ## Copy and toasts
 
@@ -27,10 +15,7 @@ For Python code, also Read `~/.claude/lib/coding/ui-python.md`.
 
 ## Components and forms
 
-- UI defaults are FE responsibility: set the initial radio/select value in the FE and declare the field required in the BE request DTO; keep a BE default only when omitting the field is a meaningful business state (`target_age_ranges_json={}` = no targeting, with its reason in a comment); remove a BE default that validation rejects anyway (`budget=0`) or that the UI also defines.
-- Form field subscription (TanStack Form): wrap every value-driven toggle/conditional in the `form.Field name="showDailyBudget"` render prop instead of reading `form.state.values.showDailyBudget` directly.
-- Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`.
-- bootstrap-vue `v-b-popover`: pass the object form `{ content, html: true }` instead of the `.html` modifier.
+- UI defaults are FE responsibility: set the initial radio/select value in the FE.
 - i18n keys ship with the rendering component: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n; pre-extract only executable code for a planned later PR.
 
 ## CSS layout

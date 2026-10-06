@@ -1,6 +1,6 @@
-# Security Review Reference
+# Security 리뷰 기준
 
-## Checklist
+## 체크리스트
 
 - Least privilege: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.
 - 공격자처럼 생각한다: 현실적 공격 경로가 있는 것만 지적한다.
@@ -22,7 +22,7 @@
 - 하드코딩된 시크릿, API 키 없는지
 - .env가 .gitignore에 포함되어 있는지
 
-## Examples
+## 예시
 
 ```python
 # 잘된 예시: 인증 + 입력 검증 + 안전한 에러

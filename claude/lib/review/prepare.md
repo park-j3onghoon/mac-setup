@@ -2,7 +2,7 @@
 
 ## 1. PR 링크
 
-인자나 대화에 PR 링크(`https://github.com/{owner}/{repo}/pull/{number}`)가 없으면 "리뷰할 PR 링크를 보내 주세요."라고 묻고 기다린다. `{repo} {번호}` 형태로 받았으면 그 레포 클론에서 `gh pr view {번호} --json url`로 링크를 확정한다.
+인자나 대화에 PR 링크(`https://github.com/{owner}/{repo}/pull/{number}`)가 없으면 "리뷰할 PR 링크를 보내 주세요."라고 묻고 기다린다. `{repo} {number}` 형태로 받았으면 그 레포 클론에서 `gh pr view {number} --json url`로 링크를 확정한다.
 
 ```bash
 gh pr view {링크} --json number,title,body,author,baseRefName,headRefName,additions,deletions
