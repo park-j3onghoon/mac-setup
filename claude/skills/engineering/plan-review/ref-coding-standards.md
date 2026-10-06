@@ -17,7 +17,7 @@
 
 ```kotlin
 // 잘된 예시: null safety
-fun findCampaign(id: Long): Campaign =
-    campaignRepository.findByIdOrNull(id)
-        ?: throw CampaignNotFoundException(id)  // !! 대신 명시적 예외
+fun findBook(id: Long): Book =
+    bookRepository.findByIdOrNull(id)
+        ?: throw BookNotFoundException(id)  // !! 대신 명시적 예외
 ```

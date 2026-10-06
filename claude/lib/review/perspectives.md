@@ -21,7 +21,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 무용한 방어코드 제거: 순수 함수 try/except → silent 위험
 - silent default 버그: 클라이언트 필드 누락 → 1 로 초기화
 - silent drop: 컬럼 deprecate 시 기존 적재 데이터 조회 경로 보정 누락 (`total += old_a + old_b`처럼 옛 컬럼 값을 합치는 경로)
-- silent fallback/early_success: 데이터 누락과 mismatch 를 모두 False 로 묶음 → 일시 누락 시 전환 차단. matched/mismatched/skipped enum 또는 (bool, reason)
+- silent fallback·조기 성공 응답: 데이터 누락과 mismatch 를 모두 False 로 묶음 → 일시 누락 시 전환 차단. matched/mismatched/skipped enum 또는 (bool, reason)
 - Liveness 신뢰: liveness probe 로 자연 복구되는 경우 handling 추가 대신 exception
 - 빈 selector / 빈 문자열 / 0 falsy 엣지: `a && b`가 0을 거짓으로 거름, `[""]`, 빈 문자열 enum 값의 validation 통과, 최솟값과 최댓값이 같을 때 같은 쿼리 중복
 
@@ -45,7 +45,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 함수명 = 비즈니스 역할 + 동작 직접 드러나는 이름: 구현 세부 (async/thread) 를 드러낸 이름은 지적. `AsyncOrderUpdateThread` → `OrderUpdater`
 - 컨텍스트 드러나는 이름: "end date" → "가장 나중의 end date"
 - boolean 네이밍 (`isRemovable`), 모호한 값 (0/1, win-lose) → 의미 명확하게
-- 도메인 용어 충돌: `Segment` 가 유저 세그먼트로 이미 사용, `experimentGroup` 도메인 prefix
+- 도메인 용어 충돌: `Segment` 가 유저 세그먼트로 이미 사용, `abTestGroup` 도메인 prefix
 - 매직 값/넘버 → 상수/enum: `-99` 같은 sentinel 어색, `20`/`5`/`60000` 같은 매직 넘버 상수화
 - 이름 변경 최소화: 의미 변경 없으면 기존 이름 유지
 - 인프라 비독립 네이밍: repository `Set` (redis 의식) → `MarkProcessed` (저장소 무관)
@@ -122,7 +122,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 재시도/백오프 일관성: 최대 4회, 1s/2s/4s/8s
 - 인프라/배포 영향 범위: helm values, virtual service, mesh forwarding. canary 적용 가능성
 - 환경 의존 설정: 하드코딩이 env 따라 달라져야 하는지, 미사용 ENV 제거
-- 인프라 설정 디테일: ServiceMonitor port, extraServicePorts, helm chart
+- 인프라 설정 디테일: ServiceMonitor port, chart의 추가 service port 값, helm chart
 - 안 쓰는 좀비 step 제거: `snok/install-poetry` 등
 - 린트/CI 자동화 비용 (`go run` 매 커밋 컴파일, CODEOWNERS 매핑)
 
@@ -149,7 +149,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - API/도메인 enum: string union 대신 enum, PascalCase + `-Enum`
 - BE/FE 미사용 필드 제거. camelCase/snake_case 일관성
 - 공통 컴포넌트/유틸 재사용 (이미 있는 포맷 함수·아이콘·헤더·스키마 함수)
-- 웹 스토리지 SafeStorage 패턴
+- 웹 스토리지는 키·schema·기본값을 묶은 항목으로 읽고 쓰고, 읽을 때 schema로 검증하는 패턴
 - 내비게이션 가드: 취소 + showConfirm (화면 간 일관)
 - 데이터 모킹 위치: 전부 mocks.ts
 - subscribe vs useStore: `form.Subscribe` 로 불필요 리렌더링 방지

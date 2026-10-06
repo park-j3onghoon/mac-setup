@@ -2,7 +2,7 @@
 
 ## 에러 핸들링
 - 레이어 경계에서 `fmt.Errorf("...: %w", err)` 패턴 사용
-- 다중 에러 체인은 `fmt.Errorf("%w: %w", e1, e2)` 또는 `errors.Join(...)`으로 묶는다. 재시도 제어가 필요하면 `skipRetry` 등 제어용 에러를 join.
+- 다중 에러 체인은 `fmt.Errorf("%w: %w", e1, e2)` 또는 `errors.Join(...)`으로 묶는다. 재시도 제어가 필요하면 재시도를 멈추는 제어용 에러를 join.
 - 비핵심 I/O(postback·enrichment 등) 에러를 `log.Warnf`로 기록하고 계속 진행하는 패턴은 정상으로 본다.
 - `failed to` prefix 불필요 중복
 - 에러 체크 일관성

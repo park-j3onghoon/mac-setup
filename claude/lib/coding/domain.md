@@ -12,7 +12,7 @@ For Python code, also Read `~/.claude/lib/coding/domain-python.md`.
 - Value object: make it immutable and compare it by value.
 - Rich domain: put behaviour that reads or changes an entity's state on the entity and change an entity only through its methods (`order.mark_paid(now)`); inside a method, use only its own fields, its parameters and objects it creates; put a rule over several entities on the entity that owns the decision and pass it the others; keep a data-only entity for plain CRUD only.
 - Actor rules: when a business rule names who may act (only the billing manager confirms a statement), the domain method takes the actor's id and decides; the use case passes the id from the session.
-- Factory method: when creating a new entity has rules (initial state, defaults, checks at creation), put them in a named creation method on the entity (`Contract.issue(...)`, `create_pending(...)`) and create through it; a repository rebuilds a stored entity with the constructor; add a separate factory object only when one creation gathers values from several aggregates.
+- Factory method: when creating a new entity has rules (initial state, defaults, checks at creation), put them in a named creation method on the entity (`Contract.issue(...)`, `Loan.open(...)`) and create through it; a repository rebuilds a stored entity with the constructor; add a separate factory object only when one creation gathers values from several aggregates.
 
 ## State
 

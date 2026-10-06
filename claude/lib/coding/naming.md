@@ -3,7 +3,7 @@
 For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 
 - Ubiquitous language: use the term the codebase or glossary already uses, one word per concept and one concept per word, the same term in identifiers, comments, docstrings and API fields.
-- Code terms stay untranslated: in Korean comments and docstrings, write a concept the code names (an identifier, a language keyword, a library or test API) as the code writes it (`contract`, `target_amount`, `adjustment` 생성, `assert` instead of 단언).
+- Code terms stay untranslated: in Korean comments and docstrings, write a concept the code names (an identifier, a language keyword, a library or test API) as the code writes it (`contract`, `due_amount`, `adjustment` 생성, `assert` instead of 단언).
 - Identifiers are English.
 - Functions and methods start with a verb naming the business action (`send_payout_email`, `approve`); a property or computed attribute may be a noun (`total_amount`). Keep mechanism words (async, thread, batch, cron, retry, worker) out of the name.
 - Messages: name a command in the imperative mood (`IssueContract`) and a domain event in the past tense (`ContractIssued`).
@@ -11,4 +11,4 @@ For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 - Booleans: when reading one, name the axis it answers and read false as the opposite pole of that axis.
 - Intention-revealing, searchable names: `remaining_budget`; name a constant when its value means something, in place of a magic number, and keep a bare value such as zero inline; use single letters only in lambdas and comprehensions.
 - Model field names follow the DB column names; name every enum column `{enum_type}_type`.
-- Enum naming: model enum without suffix (`CampaignStatus`) vs domain enum with a `Type` suffix (`CampaignStatusType`).
+- Enum naming: model enum without suffix (`LoanStatus`) vs domain enum with a `Type` suffix (`LoanStatusType`).

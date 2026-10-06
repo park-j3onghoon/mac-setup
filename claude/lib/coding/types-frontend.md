@@ -8,14 +8,14 @@
   ```
 - Discriminated union for fields that travel with an action: the caller narrows on `action`:
   ```ts
-  type NextAction =
+  type QueuedAction =
     | { action: "create" }
-    | { action: "update"; campaignId: number }
-    | { action: "skip"; campaignId: number };
-  // 호출하는 쪽: if (nextAction.action === "update") updateCampaign({ id: nextAction.campaignId, ... })
+    | { action: "update"; bookId: number }
+    | { action: "skip"; bookId: number };
+  // 호출하는 쪽: if (queuedAction.action === "update") updateBook({ id: queuedAction.bookId, ... })
   ```
-- Update request body drops create-only fields explicitly: destructure them out (spread skips TS excess-property checks) and keep `UpdateRequest = Omit<CreateRequest, "revenueType"> & { id }` aligned with the body:
+- Update request body drops create-only fields explicitly: destructure them out (spread skips TS excess-property checks) and keep `UpdateRequest = Omit<CreateRequest, "loanType"> & { id }` aligned with the body:
   ```ts
-  const { revenueType: _revenueType, ...updateBody } = body;
+  const { loanType: _loanType, ...updateBody } = body;
   await mutate({ id, ...updateBody });
   ```

@@ -4,7 +4,7 @@ For frontend code, also Read `~/.claude/lib/coding/ui-frontend.md`.
 
 ## URL query as the source of truth
 
-- Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the param resolver (`const step = isValidStep(params.step) ? params.step : "settings";`); when a page moves from local state to URL params, that default is the old initial value.
+- Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the param resolver (`const step = isKnownStep(params.step) ? params.step : "cart";`); when a page moves from local state to URL params, that default is the old initial value.
 - Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, correct the address bar separately, and comment the split of roles.
 
 ## Copy and toasts

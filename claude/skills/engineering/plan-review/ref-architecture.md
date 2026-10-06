@@ -55,13 +55,13 @@ FE가 돈을 움직이거나 발송하는 비동기 서버 잡(202 Accepted)을 
 ```python
 # 잘된 예시: 레이어 의존성이 올바른 구조
 # domain/: 외부 의존 없음
-class Campaign:
-    def can_activate(self) -> bool: ...
+class Book:
+    def can_lend(self) -> bool: ...
 
 # application/: domain만 참조
-class ActivateCampaignUseCase:
-    def __init__(self, repo: CampaignRepository): ...  # port에 의존
+class LendBookUseCase:
+    def __init__(self, repo: BookRepository): ...  # port에 의존
 
 # infrastructure/: application, domain 참조
-class DjangoCampaignRepository(CampaignRepository): ...
+class DjangoBookRepository(BookRepository): ...
 ```

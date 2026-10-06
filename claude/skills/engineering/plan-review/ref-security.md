@@ -27,14 +27,14 @@
 ```python
 # 잘된 예시: 인증 + 입력 검증 + 안전한 에러
 @login_required
-@permission_required("campaign.edit")
-def update_campaign(request, campaign_id):
-    campaign = get_object_or_404(Campaign, id=campaign_id, owner=request.user)  # IDOR 방지
-    serializer = CampaignSerializer(data=request.data)
+@permission_required("book.edit")
+def update_book(request, book_id):
+    book = get_object_or_404(Book, id=book_id, owner=request.user)  # IDOR 방지
+    serializer = BookSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)  # 입력 검증
     try:
         ...
     except Exception:
-        logger.exception("campaign update failed")
+        logger.exception("book update failed")
         return Response({"error": "Internal Server Error"}, status=500)  # str(e) 노출 안 함
 ```
