@@ -15,7 +15,17 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
 
 리뷰어가 변경을 이해하는 데 필요한 것만 남긴다.
 
-- `## As-Is` → `## To-Be` → Background(Linear/RFC/PRD 링크) → 변경(파일·모듈마다 바뀐 것) → 호환성·영향 → Test plan. As-Is와 To-Be는 각각 문장 3개 이내로 쓴다.
+- 본문은 사용자가 직접 쓴 글 → 구분 줄 → AI가 쓴 글 순서로 둔다. 구분 줄 위에는 사용자가 쓴 글만, 쓴 그대로 둔다. 구분 줄은 아래 블록이고 앞뒤에 빈 줄을 둔다.
+
+  ```
+  ---
+
+  (여기서부터는 AI가 작성한 내용입니다.)
+
+  ---
+  ```
+
+- AI가 쓴 글은 `## As-Is` → `## To-Be` → Background(Linear/RFC/PRD 링크) → 변경(파일·모듈마다 바뀐 것) → 호환성·영향 → Test plan 순서로 쓴다. As-Is와 To-Be는 각각 문장 3개 이내로 쓴다.
 - 레포의 PR 템플릿(`.github/pull_request_template.md`)이 있어도 이 구조로 쓴다.
 - 진행 상황·설계 논의·중간 과정·멀티-PR 맥락은 코멘트로 쓴다.
 
