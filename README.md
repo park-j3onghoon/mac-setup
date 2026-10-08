@@ -14,7 +14,7 @@ mac-setup/
 │   ├── set-tab-title.sh  # 터미널 탭 제목과 세션 이름 설정
 │   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단) · SessionStart 훅 (/refresh-session 다음 명령 입력)
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
-│   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
+│   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, 다른 AI 교차 검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── private/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
 ├── codex/                # ~/.codex/ 로 symlink 대상
@@ -47,7 +47,7 @@ mac-setup/
 | [`/implement`](claude/skills/engineering/implement/SKILL.md) | 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만든다. |
 | [`/implement-review`](claude/skills/engineering/implement-review/SKILL.md) | 내 PR을 서브에이전트로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다. |
 | [`/investigate`](claude/skills/engineering/investigate/SKILL.md) | 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. |
-| [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·Codex 적대 검증으로 통과시킨다. |
+| [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다. |
 | [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다. |
 | [`/push-commit`](claude/skills/engineering/push-commit/SKILL.md) | 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. |
 
@@ -75,7 +75,7 @@ mac-setup/
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
 | [`lib/grill.md`](claude/lib/grill.md) | 결정 닫기 절차(결정 트리 · 사실 조사 · 질문 라운드) |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
-| [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
+| [`lib/cross-check.md`](claude/lib/cross-check.md) | 다른 AI 교차 검증(Claude면 Codex, Codex면 Claude) 실행·회수 |
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 · HTML 파일 백업·열기 |
 | [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/push-commit`·`/pr-create`·`/implement-review`·`/investigate`가 읽는다) |
