@@ -34,38 +34,31 @@ argument-hint: "[계획 파일 경로]"
 미결 갈림길이 없으면 바로 스코프를 고른다.
 
 스코프는 AskUserQuestion 1회, 3옵션:
-- A) SCOPE REDUCTION: 최소 버전을 제안하고 승인받은 뒤 B 또는 C로 재진입
-- B) BIG CHANGE (Recommended): 차원별 Agent 병렬 리뷰, 차원당 이슈 4개까지 자세히, 나머지는 한 줄씩
-- C) SMALL CHANGE: 인라인 압축 리뷰, 차원당 이슈 1개만 자세히, 나머지는 한 줄씩
+- SCOPE REDUCTION: 최소 버전을 제안하고 승인받은 뒤 BIG CHANGE 또는 SMALL CHANGE로 재진입
+- BIG CHANGE (Recommended): 차원별 Agent 병렬 리뷰, 차원당 이슈 4개까지 자세히, 나머지는 한 줄씩
+- SMALL CHANGE: 인라인 압축 리뷰, 차원당 이슈 1개만 자세히, 나머지는 한 줄씩
 
-C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
+SMALL CHANGE는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
-→ 완료: 미결 갈림길이 없거나, 모두 닫혀 계획에 반영됐거나, 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
+→ 완료: 미결 갈림길이 없거나, 모두 닫혀 계획에 반영됐거나, 사용자가 계속을 골랐고, 스코프 셋 중 하나가 정해졌다.
 
 ## Step 0.5: 차원 triage
 
-계획의 파일 경로·키워드·변경 유형으로 6차원의 ACTIVE/SKIP을 정한다.
+계획의 파일 경로·키워드·변경 유형으로 켤 차원을 고른다. 차원 뒤는 참고 파일(`~/.claude/skills/plan-review/` 아래)과 이슈 번호 머리글자다.
 
-| 차원 | 활성 조건 |
-|---|---|
-| Architecture | 항상 ACTIVE |
-| Coding Standards | 항상 ACTIVE |
-| Test Coverage | 항상 ACTIVE |
-| Performance | 항상 ACTIVE |
-| Data/Database | 모델, 마이그레이션, 쿼리, 스키마 변경 |
-| Security | 인증, 인가, API 엔드포인트 추가, 사용자 입력 처리 |
+- 항상: Architecture `ref-architecture.md` A · Coding Standards `ref-coding-standards.md` C · Test Coverage `ref-test.md` T · Performance `ref-performance.md` P
+- 모델·마이그레이션·쿼리·스키마를 바꾸면: Data/Database `ref-data-database.md` D
+- 인증·인가·API 엔드포인트 추가·사용자 입력 처리가 있으면: Security `ref-security.md` S
+
+이슈 번호는 머리글자 뒤에 1부터 매긴다.
 
 → 완료: 한 줄 출력. `DIMENSION RELEVANCE: 5/6 active (Security skipped: no auth/API changes)`
 
 ## Step 1: 리뷰 실행
 
-차원 → 참고 파일(모두 `~/.claude/skills/plan-review/` 아래): Architecture `ref-architecture.md` · Coding Standards `ref-coding-standards.md` · Test Coverage `ref-test.md` · Data/Database `ref-data-database.md` · Security `ref-security.md` · Performance `ref-performance.md`.
-
-이슈 번호는 차원 머리글자 뒤에 1부터 매긴다: Architecture A · Data/Database D · Security S · Performance P · Coding Standards C · Test Coverage T.
-
 ### 판단 기준
 
-B·C 모두 아래 기준으로 판단하고, 응답 형식의 이유에 연결한다.
+BIG CHANGE·SMALL CHANGE 모두 아래 기준으로 판단하고, 응답 형식의 이유에 연결한다.
 
 - 중복은 `~/.claude/lib/coding/design.md`를 Read하고 그 규칙을 따른다.
 - 테스트 범위는 `~/.claude/lib/coding/tests.md`를 Read하고 그 Cover the change와 Leave untested 항목을 따른다.
@@ -75,13 +68,13 @@ B·C 모두 아래 기준으로 판단하고, 응답 형식의 이유에 연결�
 - Systems over heroes: the system stays safe at 3 a.m. without anyone stepping in.
 - Two-week smell test: if a new feature cannot be added within two weeks, treat it as an architecture problem.
 
-### B) BIG CHANGE: 차원별 Agent 병렬
+### BIG CHANGE: 차원별 Agent 병렬
 
 ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
 1. 계획 전문
-2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 기준으로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
+2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 기준으로 계획을 훑어라". 경로는 Step 0.5 목록에서 골라 그대로 적는다
 3. "`~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 계획이 닿는 모듈을 Read해 그 규칙으로 판단하라"
-4. "이슈 번호를 {머리글자}1부터 매겨라". 머리글자는 위 이슈 번호 줄에서 그 차원 것을 골라 그대로 적는다
+4. "이슈 번호를 {머리글자}1부터 매겨라". 머리글자는 Step 0.5 목록에서 그 차원 것을 골라 그대로 적는다
 5. "이슈 4개까지 응답 형식으로 쓰고, 넘는 이슈는 `[Issue {번호}] {한 줄 요약}`으로 모두 덧붙여라. 없으면 `No issues found.` 반환"
 6. 판단 기준 절의 항목
 
@@ -93,9 +86,9 @@ ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. �
   → B 추천. 이유: {판단 기준 연결}
 ```
 
-### C) SMALL CHANGE: 인라인
+### SMALL CHANGE: 인라인
 
-Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 목록에서 계획이 닿는 모듈을 직접 Read하고 판단 기준 절로 판단한다. 차원마다 이슈 1개는 응답 형식으로, 나머지는 `[Issue {번호}] {한 줄 요약}`으로 쓰고, 번호는 B와 같은 머리글자로 매겨 한 번에 제시한다.
+Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 목록에서 계획이 닿는 모듈을 직접 Read하고 판단 기준 절로 판단한다. 차원마다 이슈 1개는 응답 형식으로, 나머지는 `[Issue {번호}] {한 줄 요약}`으로 쓰고, 번호는 Step 0.5의 머리글자로 매겨 한 번에 제시한다.
 
 → 완료: 통합 결과를 제시하고 AskUserQuestion 1회로 "어느 이슈를 계획에 반영할지"를 받았다.
 
