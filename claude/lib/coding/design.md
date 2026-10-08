@@ -1,8 +1,7 @@
-# Design: duplication, abstraction and scope
+# Design
 
-- Four rules: when design choices conflict, prefer in this order: tests pass, intention shows, no duplication, fewest elements.
+- Four rules: when design choices conflict, prefer in this order: passes the tests, reveals intention, no duplication, fewest elements.
 - DRY of knowledge: give every fact or decision one source of truth: when the same knowledge (a business decision, a discriminating rule) appears a second time, extract it into its domain module; keep code that only looks alike and changes for different reasons as separate copies.
-- Abstraction discipline: when a formatting/conversion function would become a cross-module util, wait until a third module needs it; for a service, util or layer the sibling modules lack, even once a third module needs it, first infer why they chose inline or duplication, confirm the benefit clearly beats resistance and learning curve, then start inside one module and propose spreading later; extracting shared code early for a planned later PR is allowed; keep a function with one call site when it is the single defence point (encapsulating an unsafe cast, a drift guard); extract step functions inside the module freely; in doubt, keep it local.
-- YAGNI: build only what the task asks for now, and ask before adding a class variable, function or layer outside the requested change; add defensive logic (a cancel-confirmation modal) only with a PRD/design basis or to prevent irreversible user loss.
+- Abstraction discipline: when a formatting/conversion function would become a cross-module util, wait until a third module needs it; extracting shared code early for a planned later PR is allowed; keep a function with one call site when it is the single defence point (encapsulating an unsafe cast, a drift guard); extract step functions inside the module freely; in doubt, keep it local.
+- YAGNI: build only what the task asks for now, and ask before adding a class variable, function or layer outside the requested change; add a user-facing safeguard only with a PRD/design basis or to prevent irreversible user loss.
 - KISS: choose the simplest thing that works, and remove accidental complexity before adding structure.
-- Extension by addition: when the same branch keeps being edited for each new case, introduce a strategy and add the next case as a new strategy class.

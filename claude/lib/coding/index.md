@@ -19,7 +19,7 @@ When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`,
 - `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, convention as the tie-breaker, entrypoints, use cases, command and event handlers, the unit of work, services, command or query use cases, CQRS read models, ports and adapters
 - `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, state and transitions, the validation ladder
 - `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
-- `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity, extension
+- `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity
 - `~/.claude/lib/coding/tests.md`: tests
 - `~/.claude/lib/coding/errors.md`: exceptions, failure aggregation, error messages, errors in async handlers, timeouts on calls to other systems
 - `~/.claude/lib/coding/functions.md`: writing or splitting functions and methods
