@@ -18,6 +18,13 @@ For frontend code, also Read `~/.claude/lib/coding/ui-frontend.md`.
 - UI defaults are FE responsibility: set the initial radio/select value in the FE.
 - i18n keys ship with the rendering component: add en + ko keys in the PR of the component that renders them and keep a data-layer PR (repo/model/store) at zero i18n; pre-extract only executable code for a planned later PR.
 
+## Server jobs and confirmations
+
+- Job state from the server: a screen that started a server job reads the job's state from the server on entry and on refresh, and shows every outcome the job can end in, partial and failed included (a side step failed while the main step succeeded).
+- Confirm with the scope: a confirmation for an action on many records shows the record count, the amount and the records already processed.
+- Fresh counts before confirming: right before confirming, re-read the count the action depends on from its authoritative source and stop at 0; reset cached guard values to unknown when the context changes, and treat unknown as blocked.
+- No dead controls: a switch or button that looks active has an action; until it has one, render it disabled with a tooltip or leave it out, also when a TODO comment marks it.
+
 ## CSS layout
 
 - Flex scroll container moved into a grid area: give the parent `grid-row` a fixed/bounded height and put `min-height: 0` on every link of the flex chain; an `auto` row grows without bound, and one missing `min-height: 0` breaks auto-scroll without an error.

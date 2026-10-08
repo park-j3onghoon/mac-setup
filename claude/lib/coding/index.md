@@ -26,6 +26,7 @@ When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`,
 - `~/.claude/lib/coding/file-layout.md`: imports, constants and function order inside a file
 - `~/.claude/lib/coding/comments.md`: comments and docstrings
 - `~/.claude/lib/coding/naming.md`: names and terms
-- `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks, repositories: return types, mapping and saving, pagination, dates, normalized values
+- `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks
+- `~/.claude/lib/coding/repositories.md`: repository return types, mapping and saving, pagination, dates, normalized values
 - `~/.claude/lib/coding/api.md`: HTTP responses, proto contracts, partial updates, request DTO defaults, OpenAPI docs
 - `~/.claude/lib/coding/ui.md`: frontend screens: URL state, copy, components and forms, CSS layout; for the company's main frontend projects (Vue or React), also Read `~/.claude/lib/coding-rules-frontend.md`

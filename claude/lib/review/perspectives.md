@@ -29,7 +29,7 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 트랜잭션 범위: `with uow` 조회만 하는 구간이면 제거
 - 동시성/멱등성: non-idempotent 이중 실행, timeout 파라미터화
 - dual-write: secondary 는 primary 성공 시에만? best-effort? 명시
-- `transaction.on_commit` 안 RPC 실패 시 응답 200 → 운영자 인지 불가. orphan 리소스 → 보상 삭제/outbox
+- `transaction.on_commit` 안 RPC 실패 시 응답 200 → 운영자 인지 불가. orphan 리소스 → 보상 삭제, 또는 보낼 요청을 같은 트랜잭션 안 테이블에 남기고 커밋 뒤 따로 보내는 outbox
 - Promise.all upsert 동시 실행 시 일부 누락
 - SELECT-then-DELETE race condition
 - 비결정성: `next(iter(...))`, `items[0]`, `ORDER BY event_time` 단독 → ROW_NUMBER + 보조 키

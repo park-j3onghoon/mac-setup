@@ -1,0 +1,3 @@
+# Repositories: Python
+
+- Timezone anchoring: when the repository anchors with `arrow.replace(tzinfo='Asia/Seoul').floor('day')`, pass `astimezone(tz).date()`.

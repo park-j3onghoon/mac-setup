@@ -32,7 +32,7 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 - `~/.claude/lib/coding/index.md`를 Read하고, 그 목록에서 이번 변경이 닿는 모듈을 모두 Read한다.
 - 작업 중인 레포에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그것도 Read한다.
 - `~/.claude/lib/{작업 중인 레포 이름}-rules.md`가 있으면 Read하고 그 규칙을 따른다.
-- API(proto·REST)를 새로 만들거나 기존 엔드포인트를 고치면 `~/.claude/lib/api-aip/index.md`를 Read하고 그 문서의 트랙과 현행 컨벤션 확정 절부터 수행한다.
+- proto 파일의 메시지·RPC나 REST 경로·요청·응답 필드를 추가하거나 바꾸면 `~/.claude/lib/api-aip/index.md`를 Read하고 그 문서의 트랙과 현행 컨벤션 확정 절부터 수행한다.
 
 → 완료: 이번 변경에 걸리는 규칙을 모듈별로 뽑아 뒀고, `~/.claude/lib/coding/process.md`의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
 
