@@ -1,5 +1,3 @@
-# Security 리뷰 기준
-
 ## 체크리스트
 
 - Least privilege: 각 컴포넌트는 필요한 최소 권한만. DB 사용자, API 키, 파일 접근 모두 해당.

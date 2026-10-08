@@ -1,5 +1,3 @@
-# Test Coverage 리뷰 기준
-
 `~/.claude/lib/coding/tests.md`를 Read하고 계획의 테스트를 그 규칙에 대어 본다.
 
 ## 체크리스트

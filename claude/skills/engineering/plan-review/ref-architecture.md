@@ -1,5 +1,3 @@
-# Architecture 리뷰 기준
-
 `~/.claude/lib/coding/architecture.md`와 `~/.claude/lib/coding/design.md`를 Read하고 계획의 층·의존 방향·범위를 그 규칙에 대어 본다. 계획이 도메인 객체나 상태 전이를 만들거나 바꾸면 `~/.claude/lib/coding/domain.md`, 종류·상태 값을 새로 두면 `~/.claude/lib/coding/types.md`도 Read해 대어 본다.
 
 ## 의존성 방향

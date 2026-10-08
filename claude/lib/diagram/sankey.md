@@ -1,5 +1,3 @@
-# 생키 도식
-
 틀 `~/.claude/lib/diagram/sankey.html`을 복사해 `diagram-data` JSON만 채운다.
 
 ## 1. 데이터 채우기

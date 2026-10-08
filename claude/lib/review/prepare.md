@@ -1,5 +1,3 @@
-# 리뷰 준비
-
 ## 1. PR 링크
 
 인자나 대화에 PR 링크(`https://github.com/{owner}/{repo}/pull/{number}`)가 없으면 "리뷰할 PR 링크를 보내 주세요."라고 묻고 기다린다. `{repo} {number}` 형태로 받았으면 그 레포 클론에서 `gh pr view {number} --json url`로 링크를 확정한다.

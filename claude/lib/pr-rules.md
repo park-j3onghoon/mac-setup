@@ -1,5 +1,3 @@
-# PR·브랜치·커밋 규칙
-
 PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 그 어투로 쓴다.
 
 ## 브랜치·커밋

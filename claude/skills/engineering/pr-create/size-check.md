@@ -1,5 +1,3 @@
-# PR 크기 검사
-
 ## base 확정
 
 레포 기본 브랜치(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`)가 base다. stacked PR이면 base는 직전 스택 브랜치다. 사용자가 base를 지정했으면 그 값을 쓴다.

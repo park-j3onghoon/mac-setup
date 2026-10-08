@@ -1,5 +1,3 @@
-# Data/Database 리뷰 기준
-
 `~/.claude/lib/coding/db.md`를 Read하고 계획의 스키마·쿼리를 그 규칙에 대어 본다. 계획이 리포지토리를 새로 만들거나 바꾸면 `~/.claude/lib/coding/repositories.md`와 `~/.claude/lib/coding/architecture.md`도 Read해 대어 본다.
 
 ## 체크리스트

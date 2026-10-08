@@ -1,5 +1,3 @@
-# Python
-
 ## 타입 안전성
 - 타입 힌트가 약해지지 않았는지 (`Any` 추가, 구체 타입 → Union 등)
 - `dict` 대신 `dataclass`, `NamedTuple` 사용 권장. sentinel 식 entity API의 dict kwargs는 `~/.claude/lib/coding/types-python.md`를 Read하고 그 dataclass vs dict 항목을 따른다

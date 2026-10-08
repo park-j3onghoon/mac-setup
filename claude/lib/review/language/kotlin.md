@@ -1,5 +1,3 @@
-# Kotlin / Spring Boot
-
 ## null safety
 - `!!` 대신 `?.let` / `?:` / `requireNotNull` 활용
 - data class 불변성, copy() 활용

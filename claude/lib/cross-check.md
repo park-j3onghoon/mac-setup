@@ -1,5 +1,3 @@
-# 다른 AI 교차 검증
-
 지금 도는 에이전트가 Claude면 Codex로, Codex면 Claude로 검증한다. 다른 AI는 읽기 전용으로 부른다. 대상에 따라 diff 리뷰, diff 적대 검증, diff가 없는 파일 적대 검증 가운데 한 행을 쓴다.
 
 ## Claude에서 Codex로

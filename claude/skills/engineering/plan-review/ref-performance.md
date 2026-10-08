@@ -1,5 +1,3 @@
-# Performance 리뷰 기준
-
 계획이 트랜잭션·락을 쓰거나 쿼리를 바꾸면 `~/.claude/lib/coding/db.md`, 다른 시스템을 부르거나 배치를 돌리면 `~/.claude/lib/coding/errors.md`를 Read하고 그 규칙에 대어 본다.
 
 ## 체크리스트

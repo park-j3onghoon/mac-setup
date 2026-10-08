@@ -1,5 +1,3 @@
-# 흐름 지도
-
 틀 `~/.claude/lib/diagram/flow-map.html`을 복사해 `diagram-data` JSON만 채운다.
 
 ## 1. 데이터 채우기

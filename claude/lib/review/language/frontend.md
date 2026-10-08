@@ -1,5 +1,3 @@
-# Frontend (JavaScript/TypeScript/Vue/React)
-
 ## React
 - useEffect 의존성 배열 누락 → Maximum update depth 에러
 
