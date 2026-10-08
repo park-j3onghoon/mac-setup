@@ -73,6 +73,7 @@ mac-setup/
 | [`lib/explain/`](claude/lib/explain/) | 개념 설명 서술 방식(공통 규칙 `index.md` · 상황에 맞을 때만 더 읽는 코드 · 비교 · 문서 분할) |
 | [`lib/coding/`](claude/lib/coding/) | 코드 규칙. 분야별 모듈(process·architecture·domain·types·design·tests·errors·functions·file-layout·comments·naming·db·api·ui)이고 스택 규칙은 `{분야}-{스택}.md` 파일(python·frontend·proto)에 있다. 목차 `index.md`가 작업마다 읽을 모듈을 고른다 |
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
+| [`lib/grill.md`](claude/lib/grill.md) | 결정 닫기 절차(결정 트리 · 사실 조사 · 질문 라운드) |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
 | [`lib/codex-adversarial.md`](claude/lib/codex-adversarial.md) | Codex 교차 검증 실행·회수 |
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |

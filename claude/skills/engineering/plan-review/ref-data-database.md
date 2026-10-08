@@ -1,6 +1,6 @@
 # Data/Database 리뷰 기준
 
-MySQL 스키마 관례(컬럼 타입·enum 컬럼·charset·컬럼 순서·카운터 캐시·`updated_at`)와 리포지토리 계약은 `~/.claude/lib/coding/db.md`, 레이어는 `~/.claude/lib/coding/architecture.md`에 있다.
+`~/.claude/lib/coding/db.md`를 Read하고 계획의 스키마·쿼리·리포지토리를 그 규칙에 대어 본다. 계획이 리포지토리를 새로 만들거나 다른 층으로 옮기면 `~/.claude/lib/coding/architecture.md`도 Read해 대어 본다.
 
 ## 체크리스트
 

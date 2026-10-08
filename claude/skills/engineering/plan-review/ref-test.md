@@ -1,10 +1,9 @@
 # Test Coverage 리뷰 기준
 
-TDD 사이클, 테스트 네이밍·구조, 프레임워크가 보장해 테스트 범위 밖인 대상, flaky 제거, fixture/`now` 주입은 `~/.claude/lib/coding/tests.md`, Django REST 테스트 함정은 `~/.claude/lib/coding/tests-python.md`에 있다.
+`~/.claude/lib/coding/tests.md`를 Read하고 계획의 테스트를 그 규칙에 대어 본다.
 
 ## 체크리스트
 
-- 회귀 테스트: 기존 동작 변경 + 기존 테스트 미커버 = 회귀 테스트 필수.
 - 계획 단계에서 각 새 코드패스가 어느 등급까지 커버되는지 미리 못 박는다.
 
 ### 코드패스 추적

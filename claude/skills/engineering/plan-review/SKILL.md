@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[계획 파일 경로]"
 ---
 
-이 스킬이 쓰는 파일은 `plan.md` 하나이고, 나머지 코드·문서는 읽기만 한다.
+이 스킬이 쓰는 파일은 `plan.md` 하나다.
 
 인자가 경로면 그 파일을, 없으면 대화에 마지막으로 나온 계획을 리뷰한다. 둘 다 없으면 계획 파일 경로를 묻는다.
 
@@ -28,7 +28,7 @@ argument-hint: "[계획 파일 경로]"
 ```
 
 미결 갈림길을 보고한 뒤 AskUserQuestion 1회로 처리를 받는다.
-- A) 멈춘다 (Recommended): 사용자가 `/grill`로 결정을 닫고 다시 온다
+- A) 닫고 이어간다 (Recommended): `~/.claude/lib/grill.md`를 Read하고 그 절차로 미결 갈림길을 닫은 뒤, 답을 계획에 반영하고 스코프를 고른다
 - B) 계속한다: 미결 갈림길을 `plan.md`의 미결정 항목에 그대로 적고 리뷰를 이어간다
 
 미결 갈림길이 없으면 바로 스코프를 고른다.
@@ -40,7 +40,7 @@ argument-hint: "[계획 파일 경로]"
 
 C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 안에서 낸다.
 
-→ 완료: 미결 갈림길이 없거나 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
+→ 완료: 미결 갈림길이 없거나, 모두 닫혀 계획에 반영됐거나, 사용자가 계속을 골랐고, 스코프 A/B/C 중 하나가 정해졌다.
 
 ## Step 0.5: 차원 triage
 
@@ -51,9 +51,9 @@ C는 3줄 이하 수정에만 권한다. 이후 모든 이슈는 그 스코프 �
 | Architecture | 항상 ACTIVE |
 | Coding Standards | 항상 ACTIVE |
 | Test Coverage | 항상 ACTIVE |
+| Performance | 항상 ACTIVE |
 | Data/Database | 모델, 마이그레이션, 쿼리, 스키마 변경 |
 | Security | 인증, 인가, API 엔드포인트 추가, 사용자 입력 처리 |
-| Performance | 쿼리, 루프, 대량 데이터, 외부 API, 동시성 |
 
 → 완료: 한 줄 출력. `DIMENSION RELEVANCE: 5/6 active (Security skipped: no auth/API changes)`
 
@@ -79,7 +79,7 @@ B·C 모두 아래 기준으로 판단하고, 응답 형식의 이유에 연결�
 
 ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
 1. 계획 전문
-2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 체크리스트로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
+2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 기준으로 계획을 훑어라". 경로는 위 매핑에서 골라 그대로 적는다
 3. "`~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 계획이 닿는 모듈을 Read해 그 규칙으로 판단하라"
 4. "이슈 번호를 {머리글자}1부터 매겨라". 머리글자는 위 이슈 번호 줄에서 그 차원 것을 골라 그대로 적는다
 5. "이슈 4개까지 응답 형식으로 쓰고, 넘는 이슈는 `[Issue {번호}] {한 줄 요약}`으로 모두 덧붙여라. 없으면 `No issues found.` 반환"
