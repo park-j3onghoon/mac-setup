@@ -96,6 +96,19 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME\"/.claude/hooks/refresh-session-continue.sh",
+            "timeout": 10,
+            "statusMessage": "/refresh-session 다음 명령 입력"
+          }
+        ]
+      }
     ]
   },
   "statusLine": {

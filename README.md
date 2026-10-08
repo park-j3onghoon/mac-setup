@@ -12,7 +12,7 @@ mac-setup/
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── set-tab-title.sh  # 터미널 탭 제목과 세션 이름 설정
-│   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단)
+│   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단) · SessionStart 훅 (/refresh-session 다음 명령 입력)
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
 │   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, codex 교차검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
@@ -58,7 +58,7 @@ mac-setup/
 | 스킬 | 하는 일 |
 |---|---|
 | [`/explain-html`](claude/skills/productivity/explain-html/SKILL.md) | 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다. |
-| [`/new-session`](claude/skills/productivity/new-session/SKILL.md) | 다음 작업을 새 세션에서 바로 시작할 셸 명령 한 줄을 모델·effort와 함께 만들어 보여 주고 클립보드에 복사한다. |
+| [`/refresh-session`](claude/skills/productivity/refresh-session/SKILL.md) | 다음 작업을 빈 컨텍스트에서 잇는다. 인자가 없으면 지금 탭의 대화를 /clear로 비우고 다음 명령을 이어서 실행하고, --tab이면 새 탭에서 시작할 셸 명령 한 줄을 모델·effort와 함께 만들어 복사한다. |
 | [`/skill-review`](claude/skills/productivity/skill-review/SKILL.md) | 스킬이 구조 규약과 실행 기준을 지키는지 점검하고, 어긋난 곳을 고칠 안을 낸다. |
 
 ### 공용 하위 모듈
