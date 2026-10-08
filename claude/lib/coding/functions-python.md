@@ -1,4 +1,5 @@
 - Inline length decides a nested call too: `return ResponseDTO(**repo.create(entity).dict())`.
+- Comprehensions: keep each to one `for` clause and at most one `if` filter, and write a loop or a named function when it needs more.
 - Falsy sentinel for absent scalars: when falsy means "no filter", use `search_id: int = 0`, `search_name: str = ''`.
 - Explicit fields after a spread: `Entity(**{**request_dto.dict(), 'explicit_field': value})`.
 - Immutable copy: `dict(input)` + the modification.

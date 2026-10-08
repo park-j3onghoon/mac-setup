@@ -7,7 +7,9 @@ For Python code, also Read `~/.claude/lib/coding/functions-python.md`; for front
 - Query or command: a function either returns a value without side effects or mutates and returns nothing; split one that does both. An entity method such as `entity.change()` may mutate in memory and return the result, and a repository `create`/`save` may return the id or entity it produces; for a command use case's return value, Read `~/.claude/lib/coding/architecture.md` and follow its Command or query use case item.
 - Same call N times → table + loop: turn 4+ explicit calls of one function with different arguments into a module-constant list of argument combinations iterated in a loop.
 - Inline an expression while its line stays within 110 characters; past that, give it a named variable.
+- One conditional expression per expression: keep at most one conditional expression (`a if c else b`, `c ? a : b`) in an expression, and write an if statement when the choice needs another condition.
 - Defaults only where a caller omits the value: remove a parameter default once every call site passes the value explicitly.
 - Collection parameters are non-nullable: pass an empty collection for "no filter"; scalars may be null.
+- Parameter object: when two or more values go together into two or more functions and together name one thing (`start_date` and `end_date` as a period), replace them with one value object by Introduce Parameter Object, and move the rules on those values into it (start before end).
 - Explicit fields after a spread: when an explicit value must win over a same-named key in the spread, put it after the spread.
 - Immutable copy: a function that would mutate an input map or list returns a modified copy as a new object.
