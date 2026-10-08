@@ -14,7 +14,7 @@ mac-setup/
 │   ├── set-tab-title.sh  # 터미널 탭 제목과 세션 이름 설정
 │   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단) · SessionStart 훅 (/refresh-session 다음 명령 입력)
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
-│   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, 리뷰 기준·절차, 다른 AI 교차 검증)
+│   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, API 설계, 리뷰 기준·절차, 다른 AI 교차 검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)
 ├── private/              # 회사 전용 설정 (gitignore, 클론에 포함되지 않음)
 ├── codex/                # ~/.codex/ 로 symlink 대상
@@ -72,6 +72,7 @@ mac-setup/
 | [`lib/diagram/`](claude/lib/diagram/) | 도식 형식 고르기(코드블록 · markdown 표 · HTML) · HTML 틀 둘(양의 이동을 보이는 생키 도식, 단계별 흐름과 경로를 비교하는 흐름 지도) |
 | [`lib/explain/`](claude/lib/explain/) | 개념 설명 서술 방식(공통 규칙 `index.md` · 상황에 맞을 때만 더 읽는 코드 · 비교 · 문서 분할) |
 | [`lib/coding/`](claude/lib/coding/) | 코드 규칙. 분야별 모듈(process·architecture·domain·types·design·tests·errors·functions·file-layout·comments·naming·db·repositories·api·ui)이고 스택 규칙은 `{분야}-{스택}.md` 파일(python·frontend·proto)에 있다. 목차 `index.md`가 작업마다 읽을 모듈을 고른다 |
+| [`lib/api-aip/`](claude/lib/api-aip/) | API 설계 규칙: 트랙(proto·REST) 선택, 적용/보류 정책, 트랙별 체크. `aip/`는 Google API Improvement Proposals(https://google.aip.dev, CC BY 4.0) 28개를 한국어로 요약한 것 |
 | [`lib/guard.md`](claude/lib/guard.md) | 위험 명령 경고·디렉토리 편집 제한 |
 | [`lib/grill.md`](claude/lib/grill.md) | 결정 닫기 절차(결정 트리 · 사실 조사 · 질문 라운드) |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |

@@ -15,3 +15,6 @@
 - Form field subscription (TanStack Form): wrap every value-driven toggle/conditional in the `form.Field name="hasDueDate"` render prop instead of reading `form.state.values.hasDueDate` directly.
 - Icon color prop: `({ color = "currentColor", size = 20, className }: IconProps)` with `fill={color}`.
 - bootstrap-vue `v-b-popover`: pass the object form `{ content, html: true }` instead of the `.html` modifier.
+- Vue components: write a new Vue component with the Composition API (`<script setup>`).
+- Vue `watch` handlers: extract the handler body into a named function and call it from the handler.
+- Route paths: navigate through the route definitions object (`router.push(routes.orders.detail.path)`) instead of a path string.
