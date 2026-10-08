@@ -1,5 +1,3 @@
-# Naming
-
 For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 
 - Ubiquitous language: use the term the codebase or glossary already uses, one word per concept and one concept per word, the same term in identifiers, comments, docstrings and API fields.

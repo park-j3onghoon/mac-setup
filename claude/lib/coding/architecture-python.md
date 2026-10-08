@@ -1,5 +1,3 @@
-# Architecture: Python
-
 - Cosmic Python by default: where neither these rules nor the project decide a structure, Read `~/.claude/lib/coding/cosmic-python.md` and build it that way.
 - Thin entrypoint as a Django REST framework view: `_read_requester(request)` → a command from `**request.query_params.dict()` / `**kwargs` and the user info → `id = bus.handle(command)` → `Response(data={'id': id}, status=...)`, or `Response(data=get_{resource}(id).dict(), status=...)` when the response carries the resource, with `bus` from `bootstrap.bootstrap()`.
 - Composition root: `bootstrap.bootstrap(uow=None, ...)` declares the default adapters (`uow or DjangoUnitOfWork()`), takes overrides for tests, injects the dependencies into the handlers and returns the message bus; an entrypoint or a management command calls it once.

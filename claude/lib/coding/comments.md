@@ -1,5 +1,3 @@
-# Comments and docstrings
-
 For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
 
 - Why, not what: write a comment only for context the code cannot show.

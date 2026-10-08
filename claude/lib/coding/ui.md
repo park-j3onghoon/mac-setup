@@ -1,5 +1,3 @@
-# UI: screens, copy and forms
-
 For frontend code, also Read `~/.claude/lib/coding/ui-frontend.md`.
 
 ## URL query as the source of truth

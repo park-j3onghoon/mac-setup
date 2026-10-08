@@ -1,5 +1,3 @@
-# Architecture: layers and what each holds
-
 For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for frontend code, `~/.claude/lib/coding/architecture-frontend.md`.
 
 ## Layers

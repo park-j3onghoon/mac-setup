@@ -1,5 +1,3 @@
-# Domain model: aggregates, entities, state and validation
-
 For Python code, also Read `~/.claude/lib/coding/domain-python.md`.
 
 ## Aggregates

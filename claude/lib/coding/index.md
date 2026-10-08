@@ -1,5 +1,3 @@
-# Coding rules
-
 ## Principles
 
 - One owner per business decision: the domain holds business rules, use cases and services hold the flow, and repositories, gateways and callers store, transform or forward.

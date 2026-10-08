@@ -1,5 +1,3 @@
-# File layout
-
 For Python code, also Read `~/.claude/lib/coding/file-layout-python.md`.
 
 - Imports go at the top of the file, test files included; resolve a circular import by restructuring modules.

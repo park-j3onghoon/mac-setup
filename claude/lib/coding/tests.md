@@ -1,5 +1,3 @@
-# Tests
-
 For Python code, also Read `~/.claude/lib/coding/tests-python.md`; for frontend code, `~/.claude/lib/coding/tests-frontend.md`.
 
 ## Cycle and scope

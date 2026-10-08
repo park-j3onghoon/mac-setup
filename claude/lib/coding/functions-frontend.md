@@ -1,3 +1,1 @@
-# Functions and methods: Frontend
-
 - Set-equality utils: state "inputs contain no duplicates" in the function comment of `hasSameMembers` and friends (`[A,A,B]` and `[A,B,B]` compare equal); when duplicates must count, compare sorted copies or count maps.

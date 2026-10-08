@@ -1,5 +1,3 @@
-# DB (MySQL)
-
 For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 
 ## Types

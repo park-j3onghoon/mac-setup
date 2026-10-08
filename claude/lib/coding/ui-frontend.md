@@ -1,5 +1,3 @@
-# UI: Frontend
-
 - Bare URL entry: when a page moves from `useState("...")` to URL params, the default in the hook is the old `useState` argument.
 - Render-time correction + URL correction: keep `useEffect` + `router.replace` only for the address bar and render from the corrected value; `useEffect` + `router.replace` alone renders one blank frame first:
   ```tsx

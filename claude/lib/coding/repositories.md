@@ -1,5 +1,3 @@
-# Repositories
-
 For Python code, also Read `~/.claude/lib/coding/repositories-python.md`.
 
 - Return types: a repository method returns entities or aggregates. When a caller needs only a count, an existence check or ids, add a method that returns only that: an int count (`count_by_status()`), a bool existence check, a list of int ids.

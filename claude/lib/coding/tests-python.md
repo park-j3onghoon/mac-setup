@@ -1,5 +1,3 @@
-# Tests: Python
-
 - Dedup and shared setup: the shared fixture file is `conftest.py`.
 - Use case tests through the bus: build the bus with `bootstrap.bootstrap(uow=FakeUnitOfWork(), ...)` and fakes for the other adapters, send commands with `bus.handle(...)`, and assert on the fakes' state.
 - Background work: an autouse fixture patches the submit function to run synchronously; a real-thread test waits with `threading.Event.wait(timeout)`.

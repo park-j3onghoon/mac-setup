@@ -1,5 +1,3 @@
-# Functions and methods: Python
-
 - Inline length decides a nested call too: `return ResponseDTO(**repo.create(entity).dict())`.
 - Falsy sentinel for absent scalars: when falsy means "no filter", use `search_id: int = 0`, `search_name: str = ''`.
 - Explicit fields after a spread: `Entity(**{**request_dto.dict(), 'explicit_field': value})`.

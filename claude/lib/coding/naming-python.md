@@ -1,4 +1,2 @@
-# Naming: Python
-
 - Functions and methods start with a verb: a conversion function may take the Python `to_X` form instead (`to_dict`, `to_entity`, `_to_order_entity`).
 - Intention-revealing, searchable names: `Decimal('0')` is a bare value.

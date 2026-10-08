@@ -1,5 +1,3 @@
-# Errors
-
 For Python code, also Read `~/.claude/lib/coding/errors-python.md`; for frontend code, `~/.claude/lib/coding/errors-frontend.md`.
 
 - Exception classes: raise the class the project already has for the role (not found, not allowed, invalid argument, already exists), such as `NotFoundError` or `{Entity}NotFoundError`.

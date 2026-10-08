@@ -1,5 +1,3 @@
-# Cosmic Python
-
 On a conflict, the other coding rules and the project's existing code win over this file. The sections follow Architecture Patterns with Python (Harry Percival and Bob Gregory); replace the book's example domain (`allocation`, `Product`, `Batch`, `OrderLine`, `sku`) with the project's.
 
 ## Project layout

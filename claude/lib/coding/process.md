@@ -1,5 +1,3 @@
-# Process: proposing and making a change
-
 For frontend code, also Read `~/.claude/lib/coding/process-frontend.md`.
 
 - Ideal first: Read `~/.claude/lib/coding/architecture.md`, `~/.claude/lib/coding/domain.md`, `~/.claude/lib/coding/types.md` and `~/.claude/lib/coding/design.md` and propose first the ideal structure they describe, compare candidates when several are ideal, state scope/legacy/schedule compromises separately afterwards, and give the grounds whenever you call a design excessive or complex.

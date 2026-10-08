@@ -1,5 +1,3 @@
-# API contracts
-
 For proto files, also Read `~/.claude/lib/coding/api-proto.md`; for Python code, `~/.claude/lib/coding/api-python.md`.
 
 - 404 vs 200 + null: `GET /resources/{id}` for a missing resource returns 404 (`NotFound`); a condition-based single lookup ("the in-progress amendment") with no match returns 200 with a null field.
