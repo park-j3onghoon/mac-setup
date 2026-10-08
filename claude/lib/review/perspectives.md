@@ -123,6 +123,8 @@ diff를 아래 카테고리의 관점으로 검증한다.
 - 인프라 설정 디테일: ServiceMonitor port, chart의 추가 service port 값, helm chart
 - 안 쓰는 좀비 step 제거: `snok/install-poetry` 등
 - 린트/CI 자동화 비용 (`go run` 매 커밋 컴파일, CODEOWNERS 매핑)
+- Kafka consumer: consumer lag, micro-batch 처리, 트랜잭션 producer가 쓴 토픽이면 `read_committed` 필요 여부, 클라이언트 라이브러리(confluent) 선택
+- Kafka producer batching: `linger.ms`·`batch.size`가 처리량·지연 요구에 맞는지
 
 ### 테스트
 - 회귀 가드: 빈 source padding, monthly aggregate 합산 누락
