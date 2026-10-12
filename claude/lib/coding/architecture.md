@@ -28,6 +28,6 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 
 ## Infrastructure
 
-- Adapters: a repository, a gateway, a notifier or a publisher implements a port.
+- Adapters: a repository, a gateway, a notifier or a publisher implements a port and raises the port's own exceptions in place of the errors of the client library it wraps; use cases and entrypoints handle only port exceptions.
 - Bounded context: when data comes from another system or module, translate it in the adapter into this domain's own entities and enums.
 - Gateway / BFF / adapter: transform and forward only; put defaults, field merge/preserve (including a read-modify-write that preserves missing fields) and invariants in the system that owns the domain.

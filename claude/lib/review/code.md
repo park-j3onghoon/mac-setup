@@ -19,7 +19,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 - 함수 시그니처 ↔ mock/fake 동기화: diff에서 함수 파라미터가 변경되면 테스트의 mock/fake를 Grep. `grep -rn "def mock_{함수명}\|def fake_{함수명}" tests/`
 - dataclass/VO 필드 추가 시 수동 생성자 동기화: 기본값 없는 필드 추가 시 `grep -rn "ClassName(" tests/`로 수동 dict 구성 테스트 검색. 빠진 필드를 자동으로 채우는 테스트 팩토리는 새 필드도 채우고 수동 dict만 깨진다.
 - SELECT ↔ INSERT 컬럼 동기화: 같은 데이터를 SELECT하는 함수와 INSERT하는 함수가 별도인 경우, SELECT에 새 컬럼을 추가했으면 INSERT에도 추가. SELECT하는 함수의 결과를 테이블을 비우고 INSERT하는 함수로 넣는 패턴이 이 경우다.
-- 하위 호환성: 기존 동작이 깨지지 않는지. proto 필드 번호, 직렬화 형식.
+- 하위 호환성: 기존 동작이 깨지지 않는지. proto 필드 번호, 직렬화 형식, 다른 시스템이 기대는 값의 형식(레코드 제목 접두어, ID 형식).
 - FE-BE 데이터 정합성: 응답 필드명/타입이 프론트 기대와 일치하는지.
 - proto ↔ cmd DTO 필드 매핑: `MessageToDict(request) → Cmd(**dict)` spread 패턴 사용 시, proto 메시지의 필드 구조와 cmd DTO 의 필드명/타입이 정확히 일치해야 함. proto 가 nested object (`customer: CustomerDetail`) 인데 cmd 가 lookup key (`customer_name: str`) 면 pydantic `extra='ignore'` 기본값에서 silent drop. proto + cmd 가 별도 PR/publish 일 때 publish 순서 의존성을 PR 본문에 머지 차단 조건으로 명시.
 
