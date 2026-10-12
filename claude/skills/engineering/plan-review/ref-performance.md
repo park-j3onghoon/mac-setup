@@ -1,61 +1,28 @@
-계획이 트랜잭션·락을 쓰거나 쿼리를 바꾸면 `~/.claude/lib/coding/db.md`, 다른 시스템을 부르거나 배치를 돌리면 `~/.claude/lib/coding/errors.md`를 Read하고 그 규칙에 대어 본다.
+계획이 트랜잭션·락을 쓰거나 쿼리를 바꾸면 `~/.claude/lib/coding/db.md`, 다른 시스템을 부르거나 배치를 돌리면 `~/.claude/lib/coding/errors.md`를 Read하고 그 규칙에 대어 본다. 계획이 Python 코드를 바꾸면 `~/.claude/skills/plan-review/ref-performance-python.md`, Kotlin 코드면 `~/.claude/skills/plan-review/ref-performance-kotlin.md`, 프런트엔드 코드면 `~/.claude/skills/plan-review/ref-performance-frontend.md`도 Read해 이 기준에 더한다.
 
 ## 체크리스트
 
-- 최적화는 측정된 병목에만: N+1은 측정 없이도 잡는다.
-- 캐싱을 쓰면 stale data 버그, invalidation 복잡도를 사전에 식별.
+### 쿼리·외부 호출
+- 루프 안에서 항목마다 DB를 읽거나 쓰면(N+1 포함) 측정 없이 이슈로 내고, 루프 밖 한 번의 조회나 일괄 쓰기로 바꾸게 한다.
+- 항목마다 외부 시스템을 부르면 그 시스템의 일괄 API를 쓰게 하고, 일괄 API가 없고 호출끼리 서로 기다릴 필요가 없으면 동시에 보내게 한다.
+- 한 요청 안에서 같은 행을 두 번 이상 읽으면 한 번 읽어 넘기게 한다.
 
-### 쿼리 패턴
-- N+1 쿼리: select_related/prefetch_related(Django), JOIN FETCH(JPA) 누락
-- 루프 안 DB 호출 → 배치 조회로 전환
-- 불필요한 쿼리 (같은 데이터 중복 조회)
+### 메모리·CPU
+- 상수배 최적화(타입 변환·복사 횟수 줄이기)는 측정된 병목에만 이슈로 낸다.
+- 행 수 상한이 없는 조회를 한 번에 메모리에 올리면 페이지 단위나 스트리밍으로 읽게 한다.
+- 데이터가 늘수록 커지는 목록 안에서 다른 목록을 순회해 찾으면 집합·맵으로 찾게 한다.
 
-### 메모리/CPU
-- 대량 데이터 한번에 로드 (iterator/pagination 필요)
-- 불필요한 리스트 변환 (list → set → list)
-- 대량 객체 생성 (루프 안 ORM create → bulk_create)
-
-### 알고리즘
-- O(n²) 이상 중첩 루프 탐지
-- 자료구조 선택 (list 순회 검색 → set/dict)
-- 정렬이 필요한 곳에 정렬 안 된 자료구조 사용
-
-### 비동기/배치
-- 직렬 외부 API 호출 → asyncio.gather / 병렬화
-- 대량 직렬 처리 → 배치 처리
-- 캐싱 기회 (반복 조회, 변경 빈도 낮은 데이터)
+### 캐싱
+- 요청마다 다시 읽는 값이 설정·코드 테이블처럼 배포나 관리자 수정 때만 바뀌면 캐시를 제안한다.
+- 캐시를 쓰는 계획이면 어떤 쓰기가 어떤 캐시 키를 지우는지와, 지우기 전까지 옛 값을 허용하는 시간을 계획에 적게 한다.
 
 ### 동시성
-- 레이스 컨디션: 여러 요청이 같은 레코드를 동시 수정 → select_for_update / optimistic lock
-- 데드락: 트랜잭션 내 락 순서 일관성
-- 트랜잭션 격리 수준: READ COMMITTED vs REPEATABLE READ 선택 근거
-- Kotlin 코루틴 / Django async: 공유 상태 접근 시 동기화 메커니즘
-- Read-after-write 전파 지연: eventual consistency 시스템(read replica, DynamoDB 기본 읽기, 외부 거래소 포지션 API)은 write 성공 후에도 read가 옛 상태를 반환한다. write 응답값 자체를 source of truth 로 판정하고 후속 read는 보조 확인으로만 쓴다. 별도 read로 판정하면 "체결인데 미체결" 같은 오판이 blast radius 큰 분기에서 터진다.
-- full-replace 쓰기 + 부분 수정 = lost-update 레이스: write API가 리소스를 전체 교체하면 한 필드만 바꾸려는 호출자가 read-modify-write를 하게 되고, 같은 레코드의 다른 필드를 동시 수정한 두 요청 중 나중 쓰기가 앞 변경을 덮는 silent lost-update 가 난다. 소유 서비스가 부분 업데이트(field-mask/PATCH) API를 제공해 각 수정이 자기 필드만 원자적으로 건드리게 한다.
+- 여러 요청이 같은 행을 동시에 고칠 수 있으면 비관적 락(`SELECT … FOR UPDATE`)이나 버전 컬럼으로 하는 낙관적 락을 계획에 적게 한다.
+- 한 트랜잭션이 여러 행을 잠그면 모든 경로가 같은 순서(예: PK 오름차순)로 잠그게 한다.
+- 격리 수준을 바꾸거나 거기에 기대는 계획이면 막으려는 이상 현상(non-repeatable read, phantom read)을 계획에 적게 한다.
+- 동시에 도는 작업(스레드, 코루틴, async 태스크)이 같은 메모리 상태를 고치면 동기화 수단을 계획에 적게 한다.
+- 쓰기 직후 그 결과로 분기하는데 읽기가 복제본·결과적 일관성 저장소·외부 시스템으로 가면, 쓰기 응답값으로 판정하고 뒤따르는 읽기는 확인용으로만 쓰게 한다.
+- 쓰기 API가 리소스를 통째로 바꾸는데 호출자가 한 필드만 고치려고 읽고-고치고-쓰면, 소유 서비스에 부분 수정 API(field mask, PATCH)를 두게 한다.
 
-### 멱등성 / dedup canonical 직렬화
-- exact-string dedup 은 직렬화 결정성에 의존: 수신 측이 정규화 없이 `body == stored_body`로 중복을 거르면 송신 측 직렬화가 재호출마다 byte-동일해야 매칭된다. 안 맞으면 중복 레코드 → 금액 경로면 더블 발송/결제.
-- `json.dumps(sort_keys=True)`는 dict 키만 정렬하고 리스트 원소 순서는 그대로 둔다. 상위(DB/gRPC)가 `ORDER BY` 없이 리스트를 주면 호출마다 순서가 흔들려 같은 내용도 다른 문자열이 된다 → dedup miss. 모든 리스트 섹션을 안정 키로 명시 정렬한 뒤 직렬화하고, "상위 row 셔플 → 동일 문자열" 테스트로 고정한다. (숫자는 포맷 문자열/Decimal로 고정해 float drift도 제거.)
-
-### React Query·TanStack Query 데이터 캐시
-- queryKey는 구조 보존 배열 사용. 배열을 comma-join(`values.join(",")`)하면 `['a','b']`와 `['a,b']`가 충돌한다. `[path, ...primitives, array]` 형태로 배열 그대로 포함한다.
-- `refetchOnMount: "always"`는 staleTime을 사실상 무력화. staleTime을 설정해놓고도 `"always"`면 매 mount마다 stale 표시 + 백그라운드 fetch가 돌아 캐시 의미가 사라진다. `true`(stale일 때만 refetch)를 기본값으로 쓴다.
-- mutation onSuccess invalidation은 모든 편집 경로를 커버해야 유효. 훅 하나의 onSuccess만 invalidate하면 다른 훅/다른 탭/외부 경로 편집 후 목록이 stale. 목록 페이지가 네비게이션 허브인 경우 `refetchOnWindowFocus`도 켠다.
-
-## 예시
-
-```python
-# 잘된 예시: N+1 방지
-campaigns = (
-    Campaign.objects
-    .select_related("advertiser")      # FK → JOIN
-    .prefetch_related("creatives")     # M2M → 별도 쿼리 1회
-    .filter(status="active")
-)
-
-# 잘된 예시: 레이스 컨디션 방지
-with transaction.atomic():
-    campaign = Campaign.objects.select_for_update().get(id=campaign_id)
-    campaign.budget -= amount
-    campaign.save()
-```
+### 멱등성·중복 제거
+- 받는 쪽이 본문 문자열을 그대로 비교해 중복을 거르면, 보내는 쪽이 같은 내용에 늘 같은 문자열을 내게 한다: 목록은 안정 키로 정렬하고 숫자는 정해진 형식으로 쓰며, 상위 행 순서를 섞어도 같은 문자열이 나오는지 테스트로 고정한다.

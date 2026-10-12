@@ -1,0 +1,5 @@
+- N+1: Django는 FK·1:1 관계를 `select_related`, 역참조·M2M을 `prefetch_related`로 미리 읽게 한다.
+- 일괄 쓰기는 `bulk_create`·`bulk_update`로, 행 수 상한이 없는 QuerySet은 `.iterator(chunk_size=...)`로 읽게 한다.
+- 서로 기다릴 필요 없는 외부 호출은 `asyncio.gather`로 동시에 보내게 한다.
+- async 코드가 공유 가변 상태를 고치면 `asyncio.Lock`으로 묶게 한다.
+- `json.dumps(sort_keys=True)`는 dict 키만 정렬한다: 목록은 직접 정렬한 뒤 넣게 한다.
