@@ -1,6 +1,6 @@
-- liveness probe가 있는 서비스에서 재시작으로 풀리는 장애(연결 끊김)를 코드가 재시도나 우회로 처리하면 지적하고, 예외로 멈춰 재시작되게 한다.
-- HPA의 최소·최대 replica나 리소스 요청을 줄이면, 그 값을 정한 최근 트래픽·사용량 수치가 PR에 있는지 보고 없으면 지적한다.
-- helm values, Istio VirtualService, 메시 라우팅을 바꾸면 영향받는 서비스가 PR에 적혀 있는지 보고 없으면 지적한다. canary 배포를 쓸 수 있는 서비스면 canary로 내보내게 한다.
-- ServiceMonitor의 port 이름이 Service의 port 이름과 다르면 지적한다.
-- chart의 추가 service port 값이 컨테이너가 여는 포트와 다르면 지적한다.
-- chart·configmap에 더는 쓰지 않는 배포 도구(Spinnaker)의 annotation이 남아 있으면 지적하고 지우게 한다.
+- liveness probe가 있는 서비스에서 재시작으로 풀리는 장애(연결 끊김)는 코드에서 재시도나 우회로 처리하는 대신 예외로 멈춰 재시작되게 둔다.
+- HPA의 최소·최대 replica나 리소스 요청을 줄이면 그 값을 정한 최근 트래픽·사용량 수치를 PR에 적는다.
+- helm values, Istio VirtualService, 메시 라우팅을 바꾸면 영향받는 서비스를 PR에 적고, canary 배포를 쓸 수 있는 서비스면 canary로 내보낸다.
+- ServiceMonitor의 port 이름은 Service의 port 이름과 같게 쓴다.
+- chart의 추가 service port 값은 컨테이너가 여는 포트와 같게 쓴다.
+- chart·configmap에 남은, 더는 쓰지 않는 배포 도구(Spinnaker)의 annotation은 지운다.

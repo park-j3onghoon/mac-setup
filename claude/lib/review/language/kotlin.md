@@ -1,5 +1,5 @@
 ## null safety
-- `!!` 대신 `?.let` / `?:` / `requireNotNull` 활용
-- data class 불변성, copy() 활용
-- `@field:NotBlank` 등 어노테이션 정확한 target 지정
-- sealed class/interface로 타입 안전 분기
+- nullable 값은 `!!` 대신 `?.let`·`?:`·`requireNotNull`로 다룬다.
+- data class는 `val` 필드로 두고, 바꿀 때는 `copy()`로 새 값을 만든다.
+- 필드 검증 어노테이션은 use-site target을 붙여 쓴다(`@field:NotBlank`).
+- 정해진 종류로 나뉘는 타입은 sealed class·interface로 두고 `when`으로 분기한다.

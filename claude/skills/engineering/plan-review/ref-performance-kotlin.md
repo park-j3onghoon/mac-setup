@@ -1,4 +1,4 @@
-- N+1: JPA는 관계를 `JOIN FETCH`나 `@EntityGraph`로 함께 읽게 한다.
-- 낙관적 락은 `@Version` 필드로, 비관적 락은 `@Lock(LockModeType.PESSIMISTIC_WRITE)`로 걸게 한다.
-- 서로 기다릴 필요 없는 호출은 `coroutineScope` 안에서 `async`로 띄우고 `awaitAll()`로 모으게 한다.
-- 코루틴이 공유 가변 상태를 고치면 `Mutex`(`kotlinx.coroutines.sync`)로 묶게 한다.
+- N+1을 막을 때 JPA는 관계를 `JOIN FETCH`나 `@EntityGraph`로 함께 읽는다.
+- 낙관적 락은 `@Version` 필드로, 비관적 락은 `@Lock(LockModeType.PESSIMISTIC_WRITE)`로 건다.
+- 서로 기다릴 필요 없는 호출은 `coroutineScope` 안에서 `async`로 띄우고 `awaitAll()`로 모은다.
+- 코루틴이 공유 가변 상태를 고치면 `Mutex`(`kotlinx.coroutines.sync`)로 묶는다.

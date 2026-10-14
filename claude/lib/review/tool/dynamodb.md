@@ -1,4 +1,4 @@
-- Query·Scan에 `Limit`과 `FilterExpression`을 함께 쓰면 지적하고, 필터를 키 조건으로 옮기거나 `LastEvaluatedKey`로 다음 페이지를 이어 읽게 한다.
-- `TransactWriteItems` 실패를 처리하는 코드가 `CancellationReasons`를 읽지 않으면 지적하고, 항목마다 실패 이유를 로그에 남기게 한다.
-- 읽기 비용을 필터 뒤 응답 크기로 추정하면 지적하고 `ConsumedCapacity`를 쓰게 한다.
-- 테이블·인덱스 정의에 hash key와 range key가 밝혀져 있지 않으면 지적한다.
+- Query·Scan에 `Limit`과 `FilterExpression`을 함께 쓰면, 필터를 키 조건으로 옮기거나 `LastEvaluatedKey`로 다음 페이지를 이어 읽는다.
+- `TransactWriteItems` 실패를 처리하는 코드는 `CancellationReasons`를 읽어 항목마다 실패 이유를 로그에 남긴다.
+- 읽기 비용은 필터 뒤 응답 크기 대신 `ConsumedCapacity`로 잰다.
+- 테이블·인덱스 정의에는 hash key와 range key를 밝혀 둔다.

@@ -1,3 +1,3 @@
-- TanStack Query의 queryKey에 배열 값을 넣을 때는 이어 붙인 문자열 대신 배열 그대로 넣게 한다(`[path, ...primitives, array]`).
-- `staleTime`을 둔 쿼리의 `refetchOnMount`는 `true`로 두게 한다.
-- 목록을 바꾸는 편집 경로마다(다른 훅, 다른 탭, 외부 경로) 그 목록 쿼리를 invalidate하게 하고, 목록 페이지가 이동의 중심이면 `refetchOnWindowFocus`도 켜게 한다.
+- TanStack Query의 queryKey에 배열 값을 넣을 때는 이어 붙인 문자열 대신 배열 그대로 넣는다(`[path, ...primitives, array]`).
+- `staleTime`을 둔 쿼리의 `refetchOnMount`는 `true`로 둔다.
+- 목록을 바꾸는 편집 경로마다(다른 훅, 다른 탭, 외부 경로) 그 목록 쿼리를 invalidate하고, 목록 페이지가 이동의 중심이면 `refetchOnWindowFocus`도 켠다.

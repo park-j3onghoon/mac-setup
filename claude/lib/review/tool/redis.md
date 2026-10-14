@@ -1,4 +1,4 @@
-- cluster 모드에서 한 명령이 여러 key를 다루면 key들이 같은 slot에 있는지(hashtag `{…}`) 보고, 아니면 지적한다.
-- 새 key를 쓰는 코드에 TTL이 없으면 지적한다.
-- `SCAN`·`KEYS` 패턴으로 찾은 key를 코드에서 다시 거르면 지적하고 패턴을 좁히게 한다.
-- pipeline에 같은 명령을 두 번 넣으면 지적한다.
+- cluster 모드에서 한 명령이 여러 key를 다루면 hashtag(`{…}`)로 그 key들을 같은 slot에 둔다.
+- 새 key를 쓰는 코드는 TTL을 정한다.
+- `SCAN`·`KEYS`로 찾은 key를 코드에서 다시 거르는 대신 패턴을 좁힌다.
+- pipeline에는 같은 명령을 한 번만 넣는다.
