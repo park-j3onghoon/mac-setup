@@ -3,7 +3,7 @@ model_reasoning_effort = "xhigh"
 service_tier = "fast"
 
 [features]
-codex_hooks = true
+hooks = true
 [projects."/Users/teddy.park/git/mac-setup"]
 trust_level = "trusted"
 
