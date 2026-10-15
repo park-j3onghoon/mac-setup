@@ -1,13 +1,13 @@
 ---
 name: implement-review
-description: 내 PR을 서브에이전트로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다.
+description: 내 PR이나 push 안 한 커밋을 서브에이전트로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다.
 disable-model-invocation: true
-argument-hint: "[PR URL]"
+argument-hint: "[PR URL, 없으면 push 안 한 커밋]"
 ---
 
 ## 1. 리뷰 준비
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 그 문서 리뷰 worktree 절의 worktree는 아래처럼 만든다. 먼저 head가 체크아웃된 트리 `{T}`를 찾는다.
+인자나 대화에 PR 링크가 있으면 `~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 없으면 범위 모드 절을 수행해 현재 디렉토리 레포의 push 안 한 커밋을 리뷰한다. 두 경우 모두 리뷰 worktree는 아래처럼 만든다. 먼저 head가 체크아웃된 트리 `{T}`를 찾는다.
 
 ```bash
 git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이 든 블록의 "worktree" 줄이 {T}다
@@ -18,11 +18,11 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 작업 디렉토리나 `review/{head}` 브랜치가 이미 있으면, `review/{head}`가 없거나 `git -C {클론} merge-base --is-ancestor review/{head} {head}`가 참일 때만 지우고 다시 만든다. 작업 디렉토리는 `git -C {클론} worktree remove {작업 디렉토리}`로 지우고, `{T}`가 있으면 `review/{head}`를 `git -C {T} branch -d review/{head}`로 지운다. 그 밖의 경우나 remove나 `branch -d`가 거절하면 사용자에게 묻는다.
 
-→ 완료: 그 문서의 완료 기준을 만족했고, `{T}` 유무가 정해졌다.
+→ 완료: prepare.md나 범위 모드 절의 완료 기준을 만족했고, `{T}` 유무가 정해졌다.
 
 ## 2. 문제 지점 찾기
 
-`~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 PR 제목·본문, 대상은 1단계의 작업 디렉토리다.
+`~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 PR 제목·본문(범위 모드는 커밋 메시지), 대상은 1단계의 작업 디렉토리다.
 
 → 완료: 그 문서의 완료 기준을 만족했다.
 
@@ -70,7 +70,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V (보류 · 기각 · �
 리뷰어별: 코드 A · 언어 B · 관점 C · 보안 S · 교차 리뷰 D · 교차 적대 검증 E
 ```
 
-반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 그 문서의 커밋 규칙대로 커밋한다. 이 PR과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다.
+반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 그 문서의 커밋 규칙대로 커밋한다. 리뷰 대상과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다.
 
 1단계에서 `{T}`가 있었으면 리뷰 브랜치를 head에 ff로 반영하고 리뷰 worktree를 지운다. ff가 실패하면 멈추고 묻는다.
 
@@ -82,4 +82,24 @@ git -C {T} branch -d review/{head}
 
 `{T}`가 없었거나 사용자가 커밋을 미뤘으면 리뷰 worktree를 그대로 두고 그 경로를 알린다.
 
-→ 완료: 요약을 냈고, 반영분이 head에 들어갔거나(`{T}`가 있었으면 ff 반영과 리뷰 worktree 정리까지) 사용자가 커밋을 미뤘다.
+범위 모드는 커밋까지로 마치고, 리뷰한 범위를 `{base}..{리뷰를 마친 커밋의 짧은 해시}`로 알린다.
+
+→ 완료: 요약을 냈고, 반영분이 head에 들어갔거나(`{T}`가 있었으면 ff 반영과 리뷰 worktree 정리까지) 사용자가 커밋을 미뤘다. 범위 모드면 리뷰한 범위를 알렸다.
+
+## 범위 모드
+
+1단계에서 PR 링크가 없을 때 prepare.md 대신 수행한다.
+
+1. 현재 디렉토리의 레포로 정한다: `{클론}`은 `git rev-parse --show-toplevel`, `{repo}`는 `{클론}`의 디렉토리 이름, `{head}`는 `git branch --show-current`, `{base}`는 `git rev-parse --abbrev-ref '@{upstream}'`의 출력이다. upstream이 없으면 "push 안 한 커밋을 가를 upstream이 없습니다."라고 알리고 멈춘다.
+2. 작업 디렉토리는 `{클론}/.claude/worktrees/review-{head}`이고, 1단계의 worktree 지시로 만든다.
+3. 커밋 목록과 diff를 만든다. 커밋 목록이 비면 "리뷰할 커밋이 없습니다. 모두 push됐습니다."라고 알리고, `git -C {클론} worktree remove {작업 디렉토리}`와 `git -C {클론} branch -d review/{head}`로 작업 디렉토리와 리뷰 브랜치를 지운 뒤 멈춘다.
+
+```bash
+git -C {작업 디렉토리} log --format='%h %s%n%n%b' {base}..HEAD    # 커밋 목록이자 2단계의 의도
+git -C {작업 디렉토리} diff {base}..HEAD --stat
+git -C {작업 디렉토리} diff {base}..HEAD > {스크래치}/{repo}-{head}.diff
+```
+
+`{스크래치}`는 이 세션의 임시 디렉토리다. diff가 1000줄을 넘으면 파일별로 나눠 저장한다.
+
+→ 완료: `{base}`·`{head}`·작업 디렉토리·커밋 목록·diff 파일 경로와 `--stat`의 파일 수가 정해졌다.
