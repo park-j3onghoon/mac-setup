@@ -2,6 +2,7 @@
 name: pr-create
 description: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다.
 disable-model-invocation: true
+effort: xhigh
 ---
 
 ## 1. 대상 확정
