@@ -24,14 +24,16 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 `~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 PR 제목·본문(범위 모드는 커밋 메시지), 대상은 1단계의 작업 디렉토리다.
 
-→ 완료: 그 문서의 완료 기준을 만족했다.
+`~/.claude/lib/review/find-issues.md` 다른 AI 교차 검증 절의 건너뛰기 조건에 해당하지 않으면, 서브에이전트 병렬 리뷰 절의 리뷰어와 같은 배치에서 Skill 도구로 `code-review`를 부른다. 인자는 `max` 뒤에 대상(PR 링크, 범위 모드면 `{base}..HEAD`)과 작업 디렉토리 절대경로를 붙인다. 결과 통합 절은 code-review 결과가 돌아온 뒤 수행하고, 그 발견을 다른 리뷰어의 발견과 합쳐 출처를 `code-review`로 적는다.
+
+→ 완료: 그 문서의 완료 기준을 만족했고, code-review를 불렀으면 그 발견도 이슈 리포트에 합쳐졌다.
 
 ## 3. 수정 적용
 
 모든 발견에 조치한다: 고치거나, 묻거나, 남기는 이유를 적는다. 편집과 명령은 1단계의 작업 디렉토리에서 한다.
 
 1. 기존 패턴 확인: `~/.claude/lib/coding/process.md`를 Read하고 Existing patterns first를 2단계 발견에 적용한다.
-2. 분류: AUTO-FIX = 기존 패턴과 일치하는 기계적 수정(import 정리, 오타, 누락 필드). ASK = 판단이 필요한 것(아키텍처 결정, 트레이드오프, 기존 패턴과 다른 방향). 새로 넣는 방어 코드(assert, 중복 `updated_count` 검사, 손으로 넣는 `updated_at`)도 ASK이고, 그 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣는다. 남김 = 고치지 않을 INFO. 남김은 이유를 한 줄로 적는다.
+2. 분류: AUTO-FIX = 기존 패턴과 일치하는 기계적 수정(import 정리, 오타, 누락 필드). ASK = 판단이 필요한 것(아키텍처 결정, 트레이드오프, 기존 패턴과 다른 방향). 새로 넣는 방어 코드(assert, 중복 `updated_count` 검사, 손으로 넣는 `updated_at`)도 ASK이고, 그 설명에는 DB 스키마(`ON UPDATE CURRENT_TIMESTAMP`)나 프레임워크(Django `auto_now`)가 이미 처리하는지 확인한 결과를 넣는다. 남김 = 고치지 않을 INFO. 남김은 이유를 한 줄로 적는다. 출처가 `code-review`뿐인 발견은 `~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 발견이 닿는 모듈을 Read해, 그 규칙과 어긋나면 남김으로 두고 이유에 그 규칙을 적는다.
 3. AUTO-FIX 적용: 주석은 줄이거나 지우기만 한다. 수정마다 한 줄: `[AUTO-FIXED] [file:line] 문제 → 조치`.
 4. ASK는 한 번에 하나씩 묻는다. 사용자가 발견 원문을 보지 못했다고 가정하고 설명한다.
    1. 목록: 묻기 전에 ASK 전체를 번호 목록으로 한 번 보여 준다(`ASK 2/5 · orders/refund.py:42 · 부분 환불 누적 초과`).
@@ -67,7 +69,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 ```
 Review: N 이슈 (CRITICAL X · INFO Y)
 Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V (보류 · 기각 · 남김)
-리뷰어별: 코드 A · 언어 B · 관점 C · 보안 S · 교차 리뷰 D · 교차 적대 검증 E
+리뷰어별: 코드 A · 언어 B · 관점 C · 보안 S · code-review R · 교차 리뷰 D · 교차 적대 검증 E
 ```
 
 반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 그 문서의 커밋 규칙대로 커밋한다. 리뷰 대상과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다.
