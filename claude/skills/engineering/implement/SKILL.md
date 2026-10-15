@@ -1,6 +1,6 @@
 ---
 name: implement
-description: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만든다.
+description: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만들고, 끝에 simplify로 바뀐 코드를 정리한다.
 disable-model-invocation: true
 argument-hint: "[계획 파일 경로 | 구현 범위]"
 ---
@@ -40,6 +40,12 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 
 범위를 `~/.claude/lib/coding/process.md`의 Tracer bullet대로 슬라이스로 나눠 하나씩 끝내고, 슬라이스마다 `~/.claude/lib/coding/tests.md`를 따라 테스트를 먼저 쓰고 통과시킨다. 슬라이스 경계는 계획의 항목을 따른다.
 
+→ 완료: 슬라이스마다 red를 본 테스트가 green이고, 변경한 모듈의 테스트 전체와 파일을 옮겼을 때의 빌드가 통과했고, plan.md에 이번 범위 항목 체크와 구현 중 미룬 판단이 적혔다.
+
+## 5. 정리
+
+4단계에서 새로 만든 파일을 `git add -N`으로 diff에 넣고, Skill 도구로 `simplify`를 인자 `git diff HEAD`와 함께 부른다. simplify의 발견이 3단계에서 뽑은 규칙과 어긋나면 그 발견은 건너뛰고, 건너뛴 이유에 그 규칙을 적는다. simplify가 파일을 고쳤으면 4단계 완료 조건의 테스트와 빌드를 다시 통과시킨다.
+
 이 스킬은 변경을 작업 트리에 남기고 끝난다.
 
-→ 완료: 슬라이스마다 red를 본 테스트가 green이고, 변경한 모듈의 테스트 전체와 파일을 옮겼을 때의 빌드가 통과했고, plan.md에 이번 범위 항목 체크와 구현 중 미룬 판단이 적혔다.
+→ 완료: simplify가 고친 것과 건너뛴 것이 요약됐고, 규칙과 어긋나 건너뛴 발견마다 그 규칙이 적혔고, simplify 뒤에도 4단계 완료 조건의 테스트와 빌드가 통과한다.
