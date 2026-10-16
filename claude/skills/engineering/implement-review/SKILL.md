@@ -24,6 +24,8 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 `~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 PR 제목·본문(범위 모드는 커밋 메시지), 대상은 1단계의 작업 디렉토리다.
 
+레이어·예외 위치 발견은 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`의 소유권 기준으로 확인한다. 현재 판정이 업무 불변식인지 실행 절차 정책인지 설명하고, 이동 제안은 판정과 예외를 함께 다루며 domain → usecase 의존을 만들지 않는지 본다.
+
 `~/.claude/lib/review/find-issues.md` 다른 AI 교차 검증 절의 건너뛰기 조건에 해당하지 않으면, 서브에이전트 병렬 리뷰 절의 리뷰어와 같은 배치에서 Skill 도구로 `code-review`를 부른다. 인자는 `max` 뒤에 대상(PR 링크, 범위 모드면 `{base}..HEAD`)과 작업 디렉토리 절대경로를 붙인다. 결과 통합 절은 code-review 결과가 돌아온 뒤 수행하고, 그 발견을 다른 리뷰어의 발견과 합쳐 출처를 `code-review`로 적는다.
 
 → 완료: 그 문서의 완료 기준을 만족했고, code-review를 불렀으면 그 발견도 이슈 리포트에 합쳐졌다.

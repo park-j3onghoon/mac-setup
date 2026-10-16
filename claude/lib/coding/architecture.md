@@ -17,13 +17,13 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 - Command and event handlers: each command has one handler, and a failing command handler raises to the caller; after the unit of work commits, each domain event goes to every handler registered for it, and a failing event handler is logged while the other handlers still run; add a reaction to an event as a new event handler.
 - Unit of work: a use case runs as one unit of work over the repositories it uses, which saves all of its changes when the use case completes and none when it fails; the unit of work interface and its implementation sit in the application; "transaction" names only the database mechanism inside that implementation.
 - Use cases call no other use case and share no base class: put the steps several use cases share in a service; a service calls domain methods and ports in a fixed order and runs inside the calling use case's unit of work; calls between use cases and services go one way: use case → service.
-- What a use case holds: a use case or service holds only the call order, the access check (tenant, ownership, held role), the unit of work and port calls.
+- What a use case holds: a use case or service holds the call order, access checks (tenant, ownership, held role), the unit of work, port calls and scenario execution checks. Comparing a preview with the current plan and deciding whether this request may proceed with only eligible items belong here; entity eligibility and business invariants stay in the domain.
 - Command or query use case: a command use case has side effects and returns only an id/status; a query use case has none.
 - CQRS read models: when a query needs a shape the aggregates do not have (fields from several aggregates, computed totals) or reads from another store (a replica, a denormalized table), serve it from a read model, a query that returns DTOs straight from storage without loading aggregates; give a query endpoint that other systems call its own read model rather than a repository method.
 
 ## Domain
 
-- Business rules in the domain: put every business rule in the domain, including one that only a single operation checks. A constant or exception lives with the rule that uses it: the domain holds those of business rules, the application those of the use case flow.
+- Business rules in the domain: put business calculations, eligibility and invariants in the domain, including those checked by only one operation. Classify a check by the decision it owns, not by whether it is pure or reads several objects. A scenario execution check belongs in the application even when all its inputs are domain values. Constants and exceptions live with the rule that uses them; moving an exception also moves its check, without an upward domain → application import.
 - Ports: each outside resource has a port, defined next to its adapter in the infrastructure or in the domain, and use cases and services reach the ORM, HTTP clients and email rendering only through ports.
 
 ## Infrastructure

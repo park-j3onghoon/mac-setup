@@ -37,7 +37,7 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 
 ## 6. 아키텍처
 
-- 에러 처리 레이어: infra vs usecase 레이어 분리. 에러 반환 vs 값 기반 분기.
+- 에러 처리 레이어: infra 실패, domain의 업무 제약, usecase의 실행 절차 검증을 구분하고 판정과 예외의 소유자가 같은지 본다. preview/apply 불일치와 요청의 부분 실행 허용 여부는 usecase, 개별 항목의 업무상 처리 가능 여부는 domain이다. 순수 함수이거나 domain 값만 읽는다는 이유만으로 domain 이동을 요구하지 않는다.
 - 설계 의도 일치: secondary write가 primary 성공과 무관하게 실행되어야 하는지 등.
 - API 설계: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 - 패키지 구조: 순환참조. 코드 위치는 `~/.claude/lib/coding/architecture.md`를 Read하고 그 레이어 규칙으로 판정한다.

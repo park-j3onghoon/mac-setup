@@ -2,6 +2,7 @@ For Python code, also Read `~/.claude/lib/coding/errors-python.md`; for frontend
 
 - Exception classes: raise the class the project already has for the role (not found, not allowed, invalid argument, already exists), such as `NotFoundError` or `{Entity}NotFoundError`.
 - Access control vs business rule: an access-control failure raises the use case's not-allowed exception; a business-rule failure raises a domain exception.
+- Exception ownership: define an exception beside the rule that fails. Domain eligibility/invariant failures belong in the domain; scenario execution failures (preview changed before apply, a request disallows partial execution) belong in the application. Neither a business term in the error name nor domain values in its payload determines its layer.
 - Not found: when existence is a precondition (`update`/`delete`), raise the not-found exception and keep the return type non-nullable; when the caller expects absence (`find`/`search`), return null.
 - Catch-all handlers return a fixed response and log the original error.
 - Unreachable branch: in a pure function, return a safe fallback with the comment `정상 경로 도달 불가: ...`; in an async or event handler, throw an error naming the branch (`unreachable: ...`).

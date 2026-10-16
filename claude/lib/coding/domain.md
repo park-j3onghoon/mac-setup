@@ -24,4 +24,5 @@ Place each check on the rung below, in simple CRUD too.
 
 1. Type and format → entrypoint; (de)serialize here and keep the request's JSON and HTTP objects inside the entrypoint.
 2. Single-value invariant → value object constructor.
-3. Rule over several objects' state → domain behaviour: a `can_*()` query or a guard that raises a domain exception, which the entrypoint maps to an HTTP status.
+3. Business eligibility or invariant over several objects' state → domain behaviour: a `can_*()` query or a guard that raises a domain exception, which the entrypoint maps to an HTTP status.
+4. Scenario execution check → use case: preview/apply consistency and a request's partial-execution policy, with exceptions owned by the application. The domain still decides each item's eligibility and enforces business invariants, including any business requirement for all-or-nothing execution.
