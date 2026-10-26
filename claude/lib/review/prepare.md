@@ -28,6 +28,6 @@ git -C {클론} fetch origin --quiet
 
 ## 4. diff
 
-`{스크래치}`는 이번 리뷰의 임시 디렉토리이고, `{diff 파일}`은 `{스크래치}/{repo}-{number}.diff`다. `~/.claude/lib/review/diff.md`를 Read하고 메인 클론·작업 디렉토리·base_ref로 diff를 한 번 생성한다.
+`{스크래치}`는 이번 리뷰의 임시 디렉토리이고, `{diff 파일}`은 `{스크래치}/{repo}-{number}.diff`다. `~/.claude/lib/review/diff.md`를 Read하고 메인 클론·작업 디렉토리·base_ref로 diff를 한 번 생성한다. 호출한 쪽이 직전 리뷰의 끝 커밋을 넘기면 그 커밋도 넘겨 증분 diff로 만든다.
 
 → 완료: 기준 커밋·대상 커밋·커밋 목록·diff 파일 경로와 `--stat`의 파일 수가 정해졌다.

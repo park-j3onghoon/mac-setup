@@ -8,7 +8,7 @@
 - **[grill](./grill/SKILL.md)**: 결정을 끝까지 캐묻는다. 사실은 내가 찾고, 갈림길만 라운드로 묶어 묻고, 합의된 결정을 decisions.md로 남긴다.
 - **[guard](./guard/SKILL.md)**: 이번 세션에 안전 모드를 건다. 위험 명령 경고 + 지정 디렉토리 밖 편집 확인. `off` 로 편집 제한을 푼다.
 - **[implement](./implement/SKILL.md)**: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드와 코드 규칙을 적용하고, 슬라이스마다 테스트 통과 후 커밋하며, 끝에 simplify로 정리한 변경도 검증 후 별도 커밋한다.
-- **[implement-review](./implement-review/SKILL.md)**: 내 PR이나 구현 커밋을 같은 diff로 병렬 리뷰한다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
+- **[implement-review](./implement-review/SKILL.md)**: 내 PR이나 구현 커밋을 위험도에 맞춘 리뷰어로 리뷰하고, 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
 - **[investigate](./investigate/SKILL.md)**: 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다.
 - **[plan-review](./plan-review/SKILL.md)**: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다.
 - **[pr-create](./pr-create/SKILL.md)**: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다.
