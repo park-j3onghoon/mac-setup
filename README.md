@@ -12,7 +12,7 @@ mac-setup/
 │   ├── settings.json     # MCP 권한, hook, 플러그인 목록
 │   ├── statusline-command.sh
 │   ├── set-tab-title.sh  # 터미널 탭 제목과 세션 이름 설정
-│   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단) · SessionStart 훅 (/refresh-session 다음 명령 입력)
+│   ├── hooks/            # PreToolUse 훅 (되돌릴 수 없는 git 명령 차단) · PostToolUse 훅 (함수·줄 길이 검사) · SessionStart 훅 (/refresh-session 다음 명령 입력)
 │   ├── skills/           # engineering/ · productivity/ 버킷 (스킬 목록은 아래 표)
 │   └── lib/              # 스킬이 포인터로 읽는 하위 공용 모듈 (코드 규칙, API 설계, 리뷰 기준·절차, 다른 AI 교차 검증)
 ├── scripts/              # 설정 검사 (check-layers · verify · check-pair)

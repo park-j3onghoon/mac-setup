@@ -97,6 +97,19 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$HOME\"/.claude/hooks/code-limits.py",
+            "timeout": 10,
+            "statusMessage": "함수·줄 길이 검사"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "clear",

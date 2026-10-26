@@ -33,11 +33,11 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 
 ## 3. 규칙 적재
 
-`~/.claude/lib/coding/load-rules.md`를 Read하고 작업 경로·변경 범위·1단계의 계획 파일로 규칙을 적재한다.
+`~/.claude/lib/coding/load-rules.md`를 Read하고 작업 경로·변경 범위·1단계의 계획 파일로 규칙을 적재한다. 뽑아 둘 규칙은 이번 변경에서 판단이 갈리는 것이다: 레이어·소유권, 오류 처리, API 컨벤션, 레포 전용 규칙, 계획의 승인된 판단. 함수 본문 길이와 줄 길이는 뽑지 않는다. 편집할 때마다 `~/.claude/hooks/code-limits.py`가 알리고, 알리면 `~/.claude/lib/coding/functions.md`대로 고친다.
 
 - 타입·예외·추상화를 추가하거나 옮기면 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`·`~/.claude/lib/coding/types.md`·`~/.claude/lib/coding/design.md`의 소유권과 선택 기준을 적용한다. 소유자와 생산자→소비자 경로를 확인하고, 더 직접적인 대안과 비교한 근거를 짧게 남긴다.
 
-→ 완료: 이번 변경에 걸리는 규칙을 모듈별로 뽑아 뒀고, `~/.claude/lib/coding/process.md`의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
+→ 완료: 이번 변경에서 판단이 갈리는 규칙을 모듈별로 뽑아 뒀고, `~/.claude/lib/coding/process.md`의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
 
 ## 4. 슬라이스 구현
 

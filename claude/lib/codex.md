@@ -7,6 +7,7 @@
 - Skill 도구를 쓰라는 지시는 해당 스킬의 `SKILL.md`를 읽어 수행한다. `allowed-tools`는 현재 세션의 실제 권한 안에서 해석한다.
 - `disable-model-invocation: true`인 스킬은 `agents/openai.yaml`의 `policy.allow_implicit_invocation: false`로 같은 호출 제한을 유지한다. 이미 사용자가 호출한 스킬의 하위 모듈은 그 단계에서 읽는다.
 - MCP 도구 이름은 현재 도구 목록과 스키마로 확인한다. 같은 서비스의 Codex 도구를 쓰고, 이름이 다른 도구의 인자는 실제 스키마로 옮긴다. ToolSearch가 없으면 제공된 도구 목록이나 `ALL_TOOLS`에서 이름·설명을 찾는다. 연결되지 않은 서비스는 미확인으로 남기고 연결이 필요한 작업을 알린다.
+- Claude의 편집 훅 `~/.claude/hooks/code-limits.py`는 Codex에서 돌지 않는다. 코드 파일을 고친 뒤 `python3 ~/.claude/hooks/code-limits.py --file {파일}`을 실행하고, 알린 위반을 고친다.
 - `! 명령`은 사용자가 직접 실행할 명령으로 표시한다. 스킬이 사용자 실행을 요구하면 그 실행 결과를 받은 뒤 이어간다.
 
 ## 추가 검토

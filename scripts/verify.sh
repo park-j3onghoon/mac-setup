@@ -107,6 +107,8 @@ jq -e '.hooks.PreToolUse[] | select(.matcher=="Bash")' "$HOME/git/mac-setup/clau
   && note "push/PR 훅 있음" || { note "push/PR 훅 없음"; fail=1; }
 jq -e '.hooks.PreToolUse[] | select(.matcher=="ExitPlanMode")' "$HOME/git/mac-setup/claude/settings.json" >/dev/null 2>&1 \
   && note "plan 훅 있음" || { note "plan 훅 없음"; fail=1; }
+jq -e '.hooks.PostToolUse[] | select(.matcher | test("Edit"))' "$HOME/git/mac-setup/claude/settings.json" >/dev/null 2>&1 \
+  && note "길이 훅 있음" || { note "길이 훅 없음"; fail=1; }
 
 echo "== 6. 회사 트리 git 미추적"
 tracked=$(git -C "$HOME/git/mac-setup" ls-files private | head -3)
@@ -123,6 +125,9 @@ done
 
 echo "== 8. Claude/Codex 공용 스킬 연결"
 python3 "$HOME/git/mac-setup/scripts/sync-codex-skills.py" --check || fail=1
+
+echo "== 9. 길이 훅 기준 읽기 (functions.md 문장)"
+if limits=$(python3 "$HOME/git/mac-setup/claude/hooks/code-limits.py" --check-rules 2>&1); then note "$limits"; else note "$limits"; fail=1; fi
 
 [ "$fail" -eq 0 ] && { echo "PASS"; exit 0; }
 echo "FAIL"; exit 1
