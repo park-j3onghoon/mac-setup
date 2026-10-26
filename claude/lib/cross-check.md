@@ -1,5 +1,16 @@
 지금 도는 에이전트가 Claude면 Codex로, Codex면 Claude로 검증한다. 다른 AI는 읽기 전용으로 부른다. 대상에 따라 diff 리뷰, diff 적대 검증, diff가 없는 파일 적대 검증 가운데 한 행을 쓴다.
 
+## 고정한 diff 파일
+
+호출자가 diff 파일을 전달했으면 그 파일 전부·기준 커밋·대상 커밋·대상 경로·적용 규칙과 승인 출처를 작업 지시에 넣는다. PR 링크나 ref에서 diff를 다시 계산하는 대신 같은 파일을 읽고 대상 경로의 코드로 확인하게 한다.
+
+| 에이전트 | 명령 |
+|---|---|
+| Claude에서 Codex로 | 대상 경로에서 `node "$CODEX_SCRIPT" task --background "{diff 파일 경로 전부}를 읽고 {기준 커밋}..{대상 커밋}의 변경을 검증하라. 코드는 {대상 경로}에서 확인하라. {적용 규칙과 승인 출처} {리뷰 초점}"` |
+| Codex에서 Claude로 | 대상 경로에서 `claude -p "{diff 파일 경로 전부}를 읽고 {기준 커밋}..{대상 커밋}의 변경을 검증하라. 코드는 {대상 경로}에서 확인하라. {적용 규칙과 승인 출처} {리뷰 초점}" --allowedTools "Read,Grep,Glob"` |
+
+리뷰 초점은 diff 리뷰면 버그·회귀·빠진 테스트를 file:line으로 찾기, diff 적대 검증이면 운영 실패 경로와 전제 검증으로 쓴다. Claude에서 Codex로 실행할 때의 스크립트 경로와 실행·회수는 아래 해당 절을 따른다. 파일 없이 ref로 diff 검증을 시작하면 기준 ref의 완전한 이름을 `{base_ref}`로 확정하고 아래 명령을 쓴다.
+
 ## Claude에서 Codex로
 
 codex-companion 플러그인을 Bash로 부른다.
@@ -37,7 +48,7 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 ### 대상 경로
 
-diff 리뷰와 diff 적대 검증은 호출한 쪽이 준 대상 경로에서 실행한다: `(cd {대상 경로} && node "$CODEX_SCRIPT" review --background --base origin/{base})`.
+diff 리뷰와 diff 적대 검증은 호출한 쪽이 준 대상 경로에서 실행한다. 고정한 diff 파일이 있으면 고정한 diff 파일 절의 명령을 쓰고, 파일 없이 ref로 리뷰하면 `(cd {대상 경로} && node "$CODEX_SCRIPT" review --background --base {base_ref})`를 쓴다.
 
 ## Codex에서 Claude로
 
@@ -45,8 +56,8 @@ diff 리뷰와 diff 적대 검증은 호출한 쪽이 준 대상 경로에서 �
 
 | 대상 | 명령 |
 |---|---|
-| diff 리뷰 | `(cd {대상 경로} && git diff origin/{base}...HEAD \| claude -p "이 diff를 리뷰하라. 버그·회귀·빠진 테스트를 file:line과 함께 낸다." --allowedTools "Read,Grep,Glob")` |
-| diff 적대 검증 | `(cd {대상 경로} && git diff origin/{base}...HEAD \| claude -p "이 diff가 실제 운영에서 어떻게 깨질 수 있는지 공격적으로 검증하라. {리뷰 초점}" --allowedTools "Read,Grep,Glob")` |
+| diff 리뷰 | `(cd {대상 경로} && git diff {base_ref}...HEAD \| claude -p "이 diff를 리뷰하라. 버그·회귀·빠진 테스트를 file:line과 함께 낸다." --allowedTools "Read,Grep,Glob")` |
+| diff 적대 검증 | `(cd {대상 경로} && git diff {base_ref}...HEAD \| claude -p "이 diff가 실제 운영에서 어떻게 깨질 수 있는지 공격적으로 검증하라. {리뷰 초점}" --allowedTools "Read,Grep,Glob")` |
 | diff가 없는 파일(계획서 등) 적대 검증 | `claude -p "<절대경로>를 읽고 설계 선택·가정·트레이드오프·실패 모드를 공격적으로 검증하라." --allowedTools "Read,Grep,Glob"` |
 
 10분 안에 끝나지 않거나 0이 아닌 코드로 끝나면, 그 사실과 오류 원문을 사용자에게 알리고 자체 적대 점검으로 대체한다.

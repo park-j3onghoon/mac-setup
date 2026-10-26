@@ -1,7 +1,7 @@
 ## Principles
 
 - One owner per business decision: the domain holds business rules, use cases and services hold the flow, and repositories, gateways and callers store, transform or forward.
-- Change by addition: shape code so that a new case, reaction or implementation arrives as new code (a strategy class, an event handler, an adapter wired in the composition root), and an unavoidable edit stays inside the module that owns the decision; accept the extra indirection this costs.
+- Change by addition: at an established extension boundary, add a strategy, event handler or adapter and wire it in the composition root; otherwise keep the edit inside the module that owns the decision. Do not introduce dispatch or indirection solely for hypothetical future cases.
 - Build on verified behaviour: before relying on another system, a repository, the DB schema or a library, read its code or DDL.
 - Checks on every path, in layers: put a check that must always hold where every entrypoint (HTTP, CLI, queue, batch, tests) passes, and back it with another layer (a schema constraint, authorization, output encoding).
 - Invalid values unrepresentable: shape types and schema constraints so a wrong value cannot enter (an enum over a free string, NOT NULL, UNIQUE, CHECK).

@@ -9,5 +9,6 @@ For Python code, also Read `~/.claude/lib/coding/naming-python.md`.
 - Positive predicates: `can_*`/`is_*`/`has_*` (entity `can_retrigger()`); when negation is needed, keep the predicate positive and negate at the call-site guard (`if not …: continue`).
 - Booleans: when reading one, name the axis it answers and read false as the opposite pole of that axis.
 - Intention-revealing, searchable names: `remaining_budget`; name a constant when its value means something, in place of a magic number, and keep a bare value such as zero inline; use single letters only in lambdas and comprehensions.
+- Value-shape names: make it clear whether an object represents a value, collection, summary or history; use temporal modifiers when they distinguish a meaningful concept, not merely the object's role in the current call. Do not ban a particular word regardless of its meaning.
 - Model field names follow the DB column names; name every enum column `{enum_type}_type`.
 - Enum naming: model enum without suffix (`LoanStatus`) vs domain enum with a `Type` suffix (`LoanStatusType`).

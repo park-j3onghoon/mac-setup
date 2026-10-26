@@ -3,7 +3,7 @@ On a conflict, the other coding rules and the project's existing code win over t
 ## Project layout
 
 - Package: put all app code in one installable package `src/allocation/` (minimal `setup.py`, `pip install -e`) and keep `tests/` next to `src/`.
-- Domain: keep entities, value objects, aggregates, domain services and domain exceptions in `domain/model.py`, and message dataclasses in `domain/commands.py` and `domain/events.py`.
+- Domain: keep entities, value objects, aggregates, domain services and domain exceptions in `domain/model.py`, and domain events in `domain/events.py`. The book places commands in `domain/commands.py`; treat that as a layout example, not a reason to put application-owned request/command shapes in domain. Follow `architecture.md` for ownership.
 - Service layer: keep use-case functions, `EVENT_HANDLERS`, `COMMAND_HANDLERS` and service exceptions such as `InvalidSku` in `service_layer/handlers.py`, next to `unit_of_work.py` and `messagebus.py`.
 - Adapters: put driven adapters for outbound I/O in `adapters/` (`orm.py`, `repository.py`, `notifications.py`, `redis_eventpublisher.py`) and keep each abstract port in the same file as its implementations.
 - Entrypoints: put driving adapters in `entrypoints/` (`flask_app.py`, `redis_eventconsumer.py`); they turn input into a command, call `bus.handle`, and turn the outcome into a response.
@@ -17,7 +17,7 @@ On a conflict, the other coding rules and the project's existing code win over t
 - Mapped value object: when SQLAlchemy maps `OrderLine`, declare it `@dataclass(unsafe_hash=True)` instead of `frozen=True`.
 - Entity: give objects with lasting identity an `__eq__` that compares the identifier (`Batch.reference`, False for other types) and a `__hash__` of that identifier, or no hash if they never go in sets or dict keys; treat the identifier as read-only.
 - Entity state: keep internals underscored (`_purchased_quantity`, `_allocations: Set[OrderLine]`), expose derived values as properties (`allocated_quantity`, `available_quantity`), and write rules as methods (`can_allocate`, `allocate`, `deallocate`).
-- Domain service: write logic that belongs to no entity or value object as a plain function in `model.py`, such as `allocate(line, batches) -> str` returning the chosen `batch.reference`.
+- Domain service: after checking entity/value-object ownership, write an independent business rule that has no such owner as a plain function in the domain module (`model.py` in the book), such as `allocate(line, batches) -> str` returning the chosen `batch.reference`; ownerless workflow or formatting code is not thereby a domain service.
 - Magic methods: express domain ordering with dunders, such as `Batch.__gt__` on `eta` where `None` (warehouse stock) sorts before any date, so `sorted(batches)` yields the preferred batch first.
 - Domain exception: name exceptions in the business language and raise them from the model (`class OutOfStock(Exception)`).
 
@@ -122,7 +122,7 @@ def allocate(
 
 ## Commands and events
 
-- Definition: write both as behavior-free `@dataclass` messages, commands subclassing `Command` in `domain/commands.py` and events subclassing `Event` in `domain/events.py`; type them together as `Message = Union[commands.Command, events.Event]`.
+- Definition: write behavior-free `@dataclass` messages, commands subclassing `Command` and domain events subclassing `Event`; type them together as `Message = Union[commands.Command, events.Event]`. Place domain events in `domain/events.py` and commands according to `architecture.md` and the project convention; `domain/commands.py` is the book's example layout, not a universal ownership rule.
 - Commands: name them imperatively (`Allocate(orderid, sku, qty)`, `CreateBatch(ref, sku, qty, eta: Optional[date] = None)`, `ChangeBatchQuantity(ref, qty)`) and map each to exactly one handler in `COMMAND_HANDLERS: Dict[Type[commands.Command], Callable]`.
 - Events: name them in the past tense (`Allocated(orderid, sku, qty, batchref)`, `Deallocated(orderid, sku, qty)`, `OutOfStock(sku)`) and map each to a list of any number of handlers in `EVENT_HANDLERS: Dict[Type[events.Event], List[Callable]]`.
 - Retries and replay: log each message before handling it (dataclass reprs can be pasted back to reproduce a failure), and optionally wrap event handlers in tenacity `Retrying(stop=stop_after_attempt(3), wait=wait_exponential())`, logging `RetryError`.
@@ -228,4 +228,4 @@ def inject_dependencies(handler, dependencies):
 - Tolerant reader: read only the fields you use, ignore extra keys, treat identifiers such as SKUs and order IDs as opaque strings, keep message-validation code inside each service, and be strict about what you emit.
 - Semantics in handlers: put preconditions in an `ensure` module (`ensure.product_exists(event, uow)` raising `ProductNotFound`, a `MessageUnprocessable` subclass carrying the message and `sku`), call them inside the handler's `with uow:` on the same uow, and map them to responses (`ProductNotFound` to 404).
 - Idempotency: raise `SkipMessage(reason)` for duplicate or outdated messages (a batch that already exists) and have the bus log a warning and skip them.
-- Pragmatics in the domain: keep business-rule refusals (out of stock) in the aggregate, and put any rule the domain model can test there rather than in a precondition.
+- Pragmatics in the domain: keep business-rule refusals (out of stock) and business invariants in the aggregate; classify by the decision's meaning under `architecture.md`, not whether the model has enough data to test it. Application execution preconditions remain in handlers.

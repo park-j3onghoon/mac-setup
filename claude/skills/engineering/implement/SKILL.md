@@ -1,6 +1,6 @@
 ---
 name: implement
-description: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만들고, 끝에 simplify로 바뀐 코드를 정리한다.
+description: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드와 코드 규칙을 적용하고, 슬라이스마다 테스트 통과 후 커밋하며, 끝에 simplify로 정리한 변경도 검증 후 별도 커밋한다.
 disable-model-invocation: true
 argument-hint: "[계획 파일 경로 | 구현 범위]"
 ---
@@ -19,34 +19,40 @@ argument-hint: "[계획 파일 경로 | 구현 범위]"
 
 계획이 여러 PR로 쪼개져 있으면 이번에 어디까지 할지 확정한다.
 
-→ 완료: 구현할 항목 목록과 이번 범위의 끝이 한 문단으로 적혔고 사용자가 동의했다.
+작업 트리의 `git status --short`로 기존 변경을 확인하고 이번 범위에 포함할 변경과 제외할 변경을 구분한다. 제외할 변경이 있으면 그 변경을 보존하고 별도의 깨끗한 worktree에서 구현한다. 구현을 시작할 작업 트리의 `git rev-parse HEAD`를 `{구현 시작 커밋}`으로 기록한다.
+
+정리 기준 ref `{base_ref}`는 사용자가 지정하거나 승인된 계획에 적힌 기준 브랜치, 현재 PR의 base, 원격 기본 브랜치 순으로 정한다. 여러 PR을 쌓은 작업은 의존하는 PR의 브랜치를 기준으로 쓴다. 현재 브랜치 자신을 추적하는 upstream 대신 병합 대상 브랜치를 고르고, 기준을 특정할 수 없을 때만 사용자에게 묻는다. 정리 범위는 이 기준과 갈라진 지점부터 현재 브랜치의 전체 변경으로 정한다.
+
+→ 완료: 구현할 항목 목록과 이번 범위의 끝이 한 문단으로 적혔고 사용자가 동의했으며, 작업 트리·기존 변경의 포함 여부·구현 시작 커밋·정리 기준 ref가 정해졌다.
 
 ## 2. 안전 모드
 
-`~/.claude/lib/guard.md`를 Read하고, 계획이 가리키는 레포 경로로 careful·freeze를 건다. 그 문서의 활성화 메시지를 출력한다. 이미 `/guard`가 걸려 있으면 범위만 확인하고 넘어간다.
+`~/.claude/lib/guard.md`를 Read하고, 구현할 레포·작업용 worktree·이번 작업의 계획 문서 디렉토리를 편집 범위로 careful·freeze를 건다. 그 문서의 활성화 메시지를 출력한다. 이미 `/guard`가 걸려 있으면 이 경로들이 포함됐는지 확인하고 이번 범위에 맞춰 갱신한다.
 
 → 완료: 위험 명령 경고와 편집 범위가 적용 중이고 사용자가 범위를 봤다.
 
 ## 3. 규칙 적재
 
-- `~/.claude/lib/coding/index.md`를 Read하고, 그 목록에서 이번 변경이 닿는 모듈을 모두 Read한다.
-- 작업 중인 레포에 CLAUDE.md·AGENTS.md가 있고 거기서 레포 전용 규칙 파일을 가리키면 그것도 Read한다.
-- `~/.claude/lib/{작업 중인 레포 이름}-rules.md`가 있으면 Read하고 그 규칙을 따른다.
-- 레이어나 예외를 추가·이동하면 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`의 소유권 기준을 함께 적용한다. 업무상 처리 가능 여부·불변식과 실행 절차의 전제조건을 구분해 판정과 예외를 같은 레이어에 둔다.
-- proto 파일의 메시지·RPC나 REST 경로·요청·응답 필드를 추가하거나 바꾸면 `~/.claude/lib/api-aip/index.md`를 Read하고 그 문서의 트랙과 현행 컨벤션 확정 절부터 수행한다.
+`~/.claude/lib/coding/load-rules.md`를 Read하고 작업 경로·변경 범위·1단계의 계획 파일로 규칙을 적재한다.
+
+- 타입·예외·추상화를 추가하거나 옮기면 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`·`~/.claude/lib/coding/types.md`·`~/.claude/lib/coding/design.md`의 소유권과 선택 기준을 적용한다. 소유자와 생산자→소비자 경로를 확인하고, 더 직접적인 대안과 비교한 근거를 짧게 남긴다.
 
 → 완료: 이번 변경에 걸리는 규칙을 모듈별로 뽑아 뒀고, `~/.claude/lib/coding/process.md`의 Existing patterns first에 따라 참고할 형제 파일 경로를 적었고, API 변경이면 트랙과 엔벨로프·페이지네이션·에러 shape·필드 케이스 컨벤션이 확정됐다.
 
 ## 4. 슬라이스 구현
 
-범위를 `~/.claude/lib/coding/process.md`의 Tracer bullet대로 슬라이스로 나눠 하나씩 끝내고, 슬라이스마다 `~/.claude/lib/coding/tests.md`를 따라 테스트를 먼저 쓰고 통과시킨다. 슬라이스 경계는 계획의 항목을 따른다.
+범위를 `~/.claude/lib/coding/process.md`의 Tracer bullet대로 슬라이스로 나눠 하나씩 끝낸다. 새 동작·버그 수정은 `~/.claude/lib/coding/tests.md`의 red/green을 따르고, 구조 변경은 같은 문서의 Refactoring equivalence 기준으로 유지할 동작과 승인된 차이를 구분해 검증한다. 슬라이스 경계는 계획의 항목을 따른다.
 
-→ 완료: 슬라이스마다 red를 본 테스트가 green이고, 변경한 모듈의 테스트 전체와 파일을 옮겼을 때의 빌드가 통과했고, plan.md에 이번 범위 항목 체크와 구현 중 미룬 판단이 적혔다.
+`~/.claude/lib/pr-rules.md`를 Read하고 슬라이스마다 그 문서의 커밋 전 검증과 커밋 규칙을 따른다. 구조 변경과 동작 변경은 `~/.claude/lib/coding/process.md`의 Two hats대로 나눈다. 구조를 먼저 바꿔야 하면 테스트가 green인 구조 변경을 커밋한 뒤 동작을 추가하고, 그 테스트도 통과시킨 뒤 새 커밋으로 남긴다.
+
+→ 완료: 새 동작·버그 수정은 테스트 예외에 해당하지 않는 한 red를 본 테스트가 green이고, 구조 변경은 동작 보존 근거가 있으며, 슬라이스마다 커밋 전 검증을 통과한 새 커밋이 있다. plan.md에 이번 범위 항목 체크·구현 시작 커밋·구현 커밋·기준 ref와 승인된 동작 차이·미확인 사항·미룬 판단이 적혔다.
 
 ## 5. 정리
 
-4단계에서 새로 만든 파일을 `git add -N`으로 diff에 넣고, Skill 도구로 `simplify`를 인자 `git diff HEAD`와 함께 부른다. simplify의 발견이 3단계에서 뽑은 규칙과 어긋나면 그 발견은 건너뛰고, 건너뛴 이유에 그 규칙을 적는다. simplify가 파일을 고쳤으면 4단계 완료 조건의 테스트와 빌드를 다시 통과시킨다.
+메인 클론에서 1단계의 기준 ref를 최신화하고 `~/.claude/lib/review/diff.md`를 Read해 기준 ref와 현재 HEAD의 merge-base부터 현재 커밋까지의 diff를 한 번 생성한다. 이번 실행을 시작한 HEAD는 진행 기록으로만 쓰고, 정리 범위에는 이 브랜치에서 이전 실행으로 커밋한 구현도 포함한다.
 
-이 스킬은 변경을 작업 트리에 남기고 끝난다.
+Skill 도구로 `simplify`를 인자 `git diff {기준 커밋} {대상 커밋}`과 생성한 diff 파일 경로·작업 트리 절대경로·그 diff의 전체 변경 파일 목록·3단계의 적용 규칙과 승인된 판단을 함께 주어 부른다. simplify의 발견이 그 규칙이나 승인된 판단과 어긋나면 그 발견은 건너뛰고, 건너뛴 이유에 해당 규칙이나 승인 출처를 적는다.
 
-→ 완료: simplify가 고친 것과 건너뛴 것이 요약됐고, 규칙과 어긋나 건너뛴 발견마다 그 규칙이 적혔고, simplify 뒤에도 4단계 완료 조건의 테스트와 빌드가 통과한다.
+simplify가 파일을 고쳤으면 커밋 전 검증을 다시 통과시키고, 4단계의 커밋 규칙대로 정리 변경을 별도 새 커밋으로 남긴다. 변경이 없으면 빈 커밋을 만들지 않는다. plan.md에 기준 ref·기준 커밋·최종 커밋과 정리 결과를 갱신하고, 마감 설명에 구현·정리 커밋과 유지된 동작·승인된 변경·미확인 사항을 적는다.
+
+→ 완료: 구현과 정리 변경이 커밋 전 검증을 통과한 커밋으로 남았고, simplify가 고친 것과 건너뛴 것이 요약됐고, 건너뛴 발견마다 적용 규칙이나 승인 출처가 적혔다. 이번 범위의 미커밋 변경이 없고 최종 커밋이 plan.md와 마감 설명에 적혔다.

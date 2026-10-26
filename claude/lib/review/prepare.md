@@ -10,13 +10,15 @@ gh pr view {링크} --json number,title,body,author,baseRefName,headRefName,addi
 
 ## 2. 클론
 
-클론은 `~/{owner 소문자}/{repo}`다. 없으면 `gh repo clone {owner}/{repo} ~/{owner 소문자}/{repo}`로 받는다. 그다음 base와 head를 받아 온다.
+클론은 `~/{owner 소문자}/{repo}`의 메인 클론이다. 없으면 `gh repo clone {owner}/{repo} ~/{owner 소문자}/{repo}`로 받는다. 그다음 메인 클론에서 원격 ref를 받아 온다.
 
 ```bash
-git -C {클론} fetch origin {base} {head} --quiet
+git -C {클론} fetch origin --quiet
 ```
 
-→ 완료: 클론이 있고 base와 head를 받아 왔다.
+`{base_ref}`는 `refs/remotes/origin/{base}`로 정한다. 로컬 head의 구현 커밋은 보존하고, head가 로컬에 없으면 받아 온 원격 head에서 준비한다.
+
+→ 완료: 메인 클론의 원격 ref가 최신화됐고 base_ref와 리뷰할 head가 정해졌다.
 
 ## 3. 리뷰 worktree
 
@@ -26,15 +28,6 @@ git -C {클론} fetch origin {base} {head} --quiet
 
 ## 4. diff
 
-diff는 PR 화면과 같은 범위, 곧 head가 base에서 갈라진 지점부터 HEAD까지다.
+`{스크래치}`는 이번 리뷰의 임시 디렉토리이고, `{diff 파일}`은 `{스크래치}/{repo}-{number}.diff`다. `~/.claude/lib/review/diff.md`를 Read하고 메인 클론·작업 디렉토리·base_ref로 diff를 한 번 생성한다.
 
-```bash
-MB=$(git -C {작업 디렉토리} merge-base origin/{base} HEAD)
-git -C {작업 디렉토리} diff $MB --stat
-git -C {작업 디렉토리} log --oneline $MB..HEAD
-git -C {작업 디렉토리} diff $MB > {스크래치}/{repo}-{number}.diff
-```
-
-`{스크래치}`는 이 세션의 임시 디렉토리다. diff가 1000줄을 넘으면 파일별로 나눠 저장한다.
-
-→ 완료: diff 파일 경로와 `--stat`의 파일 수가 정해졌다.
+→ 완료: 기준 커밋·대상 커밋·커밋 목록·diff 파일 경로와 `--stat`의 파일 수가 정해졌다.
