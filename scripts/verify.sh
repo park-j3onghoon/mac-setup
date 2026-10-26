@@ -28,7 +28,9 @@ while IFS= read -r f; do
   head=$(awk 'NR>1 && /^---/{exit} NR>1{print}' "$f")
   grep -q '^name:' <<<"$head"        || { note "name 없음: $f"; fail=1; }
   grep -q '^description:' <<<"$head" || { note "description 없음: $f"; fail=1; }
-  grep -q '^disable-model-invocation: true' <<<"$head" || { note "disable-model-invocation 없음: $f"; fail=1; }
+  if grep -q '^disable-model-invocation:' <<<"$head" && ! grep -qE '^disable-model-invocation: (true|false)$' <<<"$head"; then
+    note "disable-model-invocation 은 true/false: $f"; fail=1
+  fi
   grep -qE '^argument-hint: *[^" ]' <<<"$head" && { note "argument-hint 값에 큰따옴표 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }
@@ -118,6 +120,9 @@ echo "== 7. 항상 로드되는 파일 크기"
 for f in "$HOME/.claude/CLAUDE.md"; do
   [ -e "$f" ] && note "$(wc -c <"$f" | tr -d ' ') bytes  $f"
 done
+
+echo "== 8. Claude/Codex 공용 스킬 연결"
+python3 "$HOME/git/mac-setup/scripts/sync-codex-skills.py" --check || fail=1
 
 [ "$fail" -eq 0 ] && { echo "PASS"; exit 0; }
 echo "FAIL"; exit 1

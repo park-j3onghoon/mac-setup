@@ -27,7 +27,7 @@ argument-hint: "[스킬 이름 | 전체]"
 - 회사 스킬은 `private/claude/skills/` 바로 아래에 두고 목록도 그 트리 안에서만 관리한다.
 
 호출 방식
-- 모든 `SKILL.md`는 user-invoked다: `disable-model-invocation: true`. 프론트매터에 두는 것은 이 다섯뿐이다: `name`·`description`(사람이 읽을 한 줄)·`disable-model-invocation`, 필요하면 `argument-hint`(값은 큰따옴표), 그리고 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`.
+- 사용자 호출 전용인 스킬은 `disable-model-invocation: true`를 둔다. 자동 선택하는 스킬은 그 필드를 생략하거나 `false`로 둔다. Codex의 `agents/openai.yaml` 호출 정책은 같은 설정을 따른다. 프론트매터에는 `name`·`description`(사람이 읽을 한 줄)과 호출 정책을 두고, 필요하면 `argument-hint`(값은 큰따옴표), 전역 allow에 없는 도구를 그 스킬 범위에서만 열 때의 `allowed-tools`를 둔다.
 - user-invoked 스킬은 하위 모듈만 포인터로 읽는다.
 
 하위 모듈
@@ -79,7 +79,7 @@ SKILL REVIEW: {스킬} ({N}줄)
 스킬을 추가·개명·제거하는 수정이면 아래도 같이 처리한다.
 
 1. 버킷 `README.md`(`claude/skills/{engineering,productivity}/README.md`)와 최상위 `README.md`의 스킬 목록.
-2. Codex에도 둘 스킬이면 `install.sh`의 Codex 절에 이름을 넣는다. 같은 `SKILL.md`를 링크한다.
+2. `python3 ~/git/mac-setup/scripts/sync-codex-skills.py`로 공개·회사 스킬 전체를 Codex에 같은 원본으로 연결하고, `agents/openai.yaml` 호출 정책을 Claude 설정과 맞춘다.
 3. 기계 검사 셋이 다시 PASS인지.
 
 `~/.claude/lib/skill-writing.md`의 규칙 24에 드는 수정이면 같은 커밋에서 규칙 24가 정한 곳을 함께 고친다.

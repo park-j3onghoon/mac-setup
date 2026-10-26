@@ -1,6 +1,6 @@
 ---
 name: refresh-session
-description: 다음 작업을 빈 컨텍스트에서 잇는다. 인자가 없으면 지금 탭의 대화를 /clear로 비우고 다음 명령을 이어서 실행하고, --tab이면 새 탭에서 시작할 셸 명령 한 줄을 모델·effort와 함께 만들어 복사한다.
+description: 다음 작업을 빈 컨텍스트에서 잇는다. Claude Code는 같은 탭의 대화를 비우거나 새 탭 명령을 만들고, Codex는 새 세션 명령과 이어갈 프롬프트를 만든다.
 disable-model-invocation: true
 argument-hint: "[--tab] [--model 모델] [--effort 레벨] [/스킬 인자 | 할 일]"
 allowed-tools:
@@ -11,6 +11,8 @@ allowed-tools:
   - Bash(cmux send-key *)
   - Bash(rm -f ~/.claude/state/refresh-session/*)
 ---
+
+Codex에서 실행하면 `~/.claude/skills/refresh-session/codex.md`를 Read하고 그 절차를 수행한다. Claude Code에서는 아래 절차를 수행한다.
 
 ## 1. 값 확정
 

@@ -21,7 +21,7 @@ mac-setup/
 │   ├── AGENTS.md
 │   ├── config.toml
 │   ├── hooks.json
-│   └── skills/           # .system만 추적(install.sh가 링크하지 않음). Codex 스킬은 install.sh의 CODEX_SKILLS 목록대로 claude/skills를 링크
+│   └── skills/           # .system만 추적(install.sh가 링크하지 않음). 공개·회사 스킬 전체는 같은 Claude 원본을 링크
 ├── vscode/               # ~/Library/Application Support/Code/User/ 로 symlink 대상
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
 │   ├── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
@@ -35,7 +35,7 @@ mac-setup/
 
 ## 스킬
 
-전부 사용자 호출이다. `/이름`으로 실행한다. 회사 전용 스킬은 git이 추적하지 않는 `private/` 트리에 있어 이 목록에 없다.
+Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공개·회사 스킬 전체가 같은 원본을 공유하며, 사용자 호출 전용인 스킬은 Codex에서도 같은 제한을 유지한다. 회사 전용 스킬은 git이 추적하지 않는 `private/` 트리에 있어 이 목록에 없다.
 
 ### engineering
 
@@ -44,21 +44,21 @@ mac-setup/
 | [`/cso`](claude/skills/engineering/cso/SKILL.md) | Read-only 보안 감사. 시크릿·공급망·CI/CD·OWASP·STRIDE를 훑어 exploitable한 발견만 보고서로 낸다. |
 | [`/grill`](claude/skills/engineering/grill/SKILL.md) | 결정을 끝까지 캐묻는다. 사실은 내가 찾고, 갈림길만 라운드로 묶어 묻고, 합의된 결정을 decisions.md로 남긴다. |
 | [`/guard`](claude/skills/engineering/guard/SKILL.md) | 이번 세션에 안전 모드를 건다. 위험 명령 경고 + 지정 디렉토리 밖 편집 확인. `off` 로 편집 제한을 푼다. |
-| [`/implement`](claude/skills/engineering/implement/SKILL.md) | 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드를 걸고, 코드 규칙을 적재하고, 슬라이스마다 테스트를 green으로 만들고, 끝에 simplify로 바뀐 코드를 정리한다. |
-| [`/implement-review`](claude/skills/engineering/implement-review/SKILL.md) | 내 PR이나 push 안 한 커밋을 서브에이전트로 병렬 리뷰하고, 발견마다 고치거나 하나씩 물어 반영한 뒤 커밋까지 끝낸다. |
+| [`/implement`](claude/skills/engineering/implement/SKILL.md) | 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드와 코드 규칙을 적용하고, 슬라이스마다 테스트 통과 후 커밋하며, 끝에 simplify로 정리한 변경도 검증 후 별도 커밋한다. |
+| [`/implement-review`](claude/skills/engineering/implement-review/SKILL.md) | 내 PR이나 구현 커밋을 같은 diff로 병렬 리뷰한다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다. |
 | [`/investigate`](claude/skills/engineering/investigate/SKILL.md) | 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. |
 | [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다. |
 | [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다. |
 | [`/push-commit`](claude/skills/engineering/push-commit/SKILL.md) | 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. |
 
-구현 뒤 흐름은 `/push-commit` → `/pr-create`(Draft 생성과 크기 검사) → `/implement-review` → `/push-commit`이다.
+기본 흐름은 `/implement`(테스트·구현 커밋) → `/implement-review`(테스트·별도 수정 커밋) → `/push-commit` → `/pr-create`(Draft 생성과 크기 검사)다.
 
 ### productivity
 
 | 스킬 | 하는 일 |
 |---|---|
 | [`/explain-html`](claude/skills/productivity/explain-html/SKILL.md) | 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다. |
-| [`/refresh-session`](claude/skills/productivity/refresh-session/SKILL.md) | 다음 작업을 빈 컨텍스트에서 잇는다. 인자가 없으면 지금 탭의 대화를 /clear로 비우고 다음 명령을 이어서 실행하고, --tab이면 새 탭에서 시작할 셸 명령 한 줄을 모델·effort와 함께 만들어 복사한다. |
+| [`/refresh-session`](claude/skills/productivity/refresh-session/SKILL.md) | 다음 작업을 빈 컨텍스트에서 잇는다. Claude Code는 같은 탭의 대화를 비우거나 새 탭 명령을 만들고, Codex는 새 세션 명령과 이어갈 프롬프트를 만든다. |
 | [`/skill-review`](claude/skills/productivity/skill-review/SKILL.md) | 스킬이 구조 규약과 실행 기준을 지키는지 점검하고, 어긋난 곳을 고칠 안을 낸다. |
 
 ### 공용 하위 모듈
@@ -77,9 +77,10 @@ mac-setup/
 | [`lib/grill.md`](claude/lib/grill.md) | 결정 닫기 절차(결정 트리 · 사실 조사 · 질문 라운드) |
 | [`lib/explain-html.md`](claude/lib/explain-html.md) | HTML 해설서 작성 규칙 |
 | [`lib/cross-check.md`](claude/lib/cross-check.md) | 다른 AI 교차 검증(Claude면 Codex, Codex면 Claude) 실행·회수 |
+| [`lib/codex.md`](claude/lib/codex.md) | 공유 스킬의 도구·질문·서브에이전트 호출을 Codex에 맞추는 규칙 |
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 · HTML 파일 백업·열기 |
-| [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/push-commit`·`/pr-create`·`/implement-review`·`/investigate`가 읽는다) |
+| [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/implement`·`/implement-review`·`/push-commit`·`/pr-create`·`/investigate`가 읽는다) |
 | [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·도구별·관점·보안 게이트) · 리뷰 준비(PR 링크 → diff) · 문제 지점 찾기(리뷰 공통 절차) · 주장 검증 |
 | [`lib/skill-writing.md`](claude/lib/skill-writing.md) | 스킬·모듈 작성 규칙 25개 (`/skill-review` 4단계가 읽는다) |
 
@@ -105,7 +106,11 @@ codex login
 
 ## 설치 방식: symlink
 
-`bash install.sh`는 멱등입니다. 레포의 `claude/*.md`·`claude/*.sh`·`settings.json`·`claude/lib/*`·`claude/hooks/*`와 버킷 안 스킬을 각각 symlink하고, 대상이 사라진 symlink는 지웁니다. 이 목록에 드는 파일·스킬·버킷은 새로 만들어도 `install.sh`를 고칠 필요가 없고, 목록 밖의 파일 종류나 디렉토리를 링크할 때와 Codex에 둘 스킬을 바꿀 때(`install.sh`의 `CODEX_SKILLS`)만 고칩니다.
+`bash install.sh`는 멱등입니다. 레포의 `claude/*.md`·`claude/*.sh`·`settings.json`·`claude/lib/*`·`claude/hooks/*`와 버킷 안 스킬을 각각 symlink하고, 대상이 사라진 symlink는 지웁니다. 공개·회사 스킬은 Codex에도 같은 원본으로 연결합니다. 스킬을 추가하면 이름 목록을 수정할 필요 없이 다음 설치 때 반영됩니다.
+
+전체 맥 셋업 없이 스킬 연결만 갱신할 때는 `python3 scripts/sync-codex-skills.py`를 실행합니다. `--dry-run`은 변경 예정 목록, `--check`는 동기화 상태를 확인합니다. `--project <경로>`를 붙이면 같은 이름의 프로젝트 사본을 해당 프로젝트의 `.codex/skill-backups/` 또는 `.agents/skill-backups/`로 백업하고 공용 스킬을 사용합니다. 프로젝트 전용 이름의 스킬과 Codex 시스템 스킬은 유지합니다.
+
+공유 대상은 이 레포의 공개·회사 스킬입니다. Claude 앱이 자동 배포하는 `synced/` 스킬과 플러그인은 각 제품의 설치·연결 방식으로 관리합니다. `refresh-session`은 Codex에서 새 세션 명령과 이어갈 프롬프트를 만들어 전달하며, Claude 전용 훅을 실행하지 않습니다.
 
 레포 파일이 `~/.claude/CLAUDE.md`, `~/.zshrc` 등으로 symlink 됩니다. 실 파일을 에디팅하면 레포가 자동으로 바뀌므로 git으로 변경 추적이 바로 됩니다. 로그·캐시(`~/.claude/sessions/`, `~/.codex/history.jsonl` 등)는 `~/.claude`·`~/.codex` 내에 실물 디렉토리로 남아 레포에는 섞이지 않습니다.
 
