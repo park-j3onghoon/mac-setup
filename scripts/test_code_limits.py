@@ -158,6 +158,16 @@ class CodeLimitsTest(unittest.TestCase):
         # then
         self.assertFalse(checked)
 
+    def test_skips_file_outside_repository(self):
+        """git 저장소 밖 파일은 기준을 넘어도 알리지 않는다."""
+        # given: 저장소 바깥 임시 디렉토리의 일회용 스크립트에 긴 줄이 있다
+        path = self.root / "script.py"
+        path.write_text(LONG_LINE)
+        # when
+        exit_code, _ = self.check(path)
+        # then
+        self.assertEqual(exit_code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

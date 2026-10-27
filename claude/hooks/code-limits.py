@@ -3,7 +3,8 @@
 
 기준 숫자는 ~/.claude/lib/coding/functions.md에서 읽는다. Claude는 PostToolUse 훅으로 stdin JSON을 넘기고,
 훅이 없는 에이전트는 `--file 경로`로 직접 실행한다. HEAD와 비교해 아직 커밋하지 않은 줄과,
-HEAD에서 기준 이하였다가 넘은 함수만 알린다. 위반이 있으면 stderr로 알리고 2로 끝난다.
+HEAD에서 기준 이하였다가 넘은 함수만 알린다. git 저장소 밖 파일(일회용 스크립트 등)은 보지 않는다.
+위반이 있으면 stderr로 알리고 2로 끝난다.
 """
 
 import argparse
@@ -94,12 +95,14 @@ def is_checked(path):
 
 def check_file(path):
     """파일의 위반을 찾아 stderr로 알리고 종료 코드를 돌려준다."""
+    repo = find_repo(path)
+    if repo is None:
+        return 0
     limits = read_limits()
     if limits is None:
         return RULES_ERROR_EXIT_CODE
     body_limit, line_limit = limits
     source = path.read_text(encoding="utf-8", errors="replace")
-    repo = find_repo(path)
     head_source = read_head_source(repo, path)
     messages = find_long_lines(path, source, find_changed_lines(repo, path, head_source), line_limit)
     if path.suffix == ".py":
@@ -119,9 +122,7 @@ def find_repo(path):
 
 
 def read_head_source(repo, path):
-    """HEAD에 있는 같은 파일의 내용. 저장소 밖이거나 HEAD에 없는 새 파일이면 None."""
-    if repo is None:
-        return None
+    """HEAD에 있는 같은 파일의 내용. HEAD에 없는 새 파일이면 None."""
     relative = path.resolve().relative_to(repo.resolve())
     return run_git(repo, "show", f"HEAD:{relative.as_posix()}")
 
