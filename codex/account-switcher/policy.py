@@ -3,6 +3,9 @@
 import math
 
 
+THRESHOLD = 90
+
+
 class UsageUnavailable(ValueError):
     pass
 
@@ -37,7 +40,7 @@ def utilization(result):
     return max(values)
 
 
-def choose(usages, threshold=90):
+def choose(usages, threshold=THRESHOLD):
     for name in ("company", "personal"):
         if name not in usages:
             raise UsageUnavailable(f"Cannot verify {name} plan usage")
