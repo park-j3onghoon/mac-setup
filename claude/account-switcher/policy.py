@@ -4,6 +4,20 @@ from dataclasses import dataclass
 import math
 
 
+# (headroom below the threshold in percentage points, seconds until the next usage lookup).
+# The longest stays under the 10 minutes the workspace dashboard trusts runtime.json
+# (its usage.py SWITCHER_FRESH_SECONDS); past that it queries usage itself.
+POLL_TIERS = ((30, 540), (15, 300), (5, 120))
+
+
+def poll_seconds(highest_percent: float | None, threshold: float, shortest: float) -> float:
+    """Look up usage less often the further the active account is from the threshold."""
+    if highest_percent is None:
+        return shortest
+    headroom = threshold - highest_percent
+    return next((seconds for floor, seconds in POLL_TIERS if headroom >= floor), shortest)
+
+
 @dataclass(frozen=True)
 class Window:
     name: str

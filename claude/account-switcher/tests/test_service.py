@@ -227,6 +227,19 @@ class ServiceTests(unittest.TestCase):
         # then
         self.assertEqual(delay, 12)
 
+    def test_poll_interval_uses_the_active_account_usage(self):
+        """다음 조회 시각은 지금 쓰는 계정의 사용률로 정한다. 쓰지 않는 계정이 기준에 가까워도 앞당기지 않는다."""
+        # given
+        app = self.app
+        later = NOW + 86400
+        app.state.save('runtime', {'active': 'personal@example.com', 'usage': {
+            'personal@example.com': {'windows': [{'percent': 20, 'resets_at': later}]},
+            'work@example.com': {'windows': [{'percent': 88, 'resets_at': later}]}}})
+        # when
+        delay = app.next_delay(NOW)
+        # then
+        self.assertEqual(delay, 540)
+
     def test_metadata_rate_limit_is_backed_off(self):
         """조회 서버의 제한 응답은 계정 한도 소진으로 오해하지 않는다."""
         # given
