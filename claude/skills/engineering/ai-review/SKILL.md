@@ -7,7 +7,7 @@ argument-hint: "[PR URL]"
 
 ## 1. 리뷰 준비
 
-코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 결과는 3단계의 초안과 4단계의 한 줄로만 낸다.
+코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 스코프 체크·보안 레벨·이슈 리포트는 3단계 초안으로만 보여 준다.
 
 `~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 그 문서 리뷰 worktree 절의 worktree는 `git -C {클론} worktree add --detach {작업 디렉토리} origin/{head}`로 만들고, 이미 있으면 `git -C {작업 디렉토리} checkout --detach origin/{head}`로 최신 head에 맞춰 그대로 쓴다.
 
@@ -55,7 +55,7 @@ argument-hint: "[PR URL]"
 4. 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주고 AskUserQuestion으로 올릴지 묻는다. 고칠 곳을 답하면 고친 초안으로 다시 묻고, 보류하면 4단계로 건너뛴다.
 5. 올리기 직전에 `gh pr view {number} -R {owner}/{repo} --json state,headRefOid`를 읽는다.
    - state가 `OPEN`이 아니면 4단계로 건너뛴다.
-   - headRefOid가 1단계의 대상 커밋과 다르면 `git -C {클론} fetch origin --quiet` 뒤 `git -C {클론} log --oneline {대상 커밋}..{headRefOid}`로 새 커밋을 보여 주고, 1단계부터 다시 리뷰할지 리뷰한 커밋에 그대로 올릴지 AskUserQuestion으로 묻는다.
+   - headRefOid가 1단계의 대상 커밋과 다르면 새 커밋이 올라왔다고 한 줄로 알리고 1단계부터 다시 한다.
 6. 리뷰를 `{스크래치}/review.json`으로 쓰고 올린다. 줄 코멘트는 `path`·`line`·`side: "RIGHT"`·`body`로 쓰고, 여러 줄 코멘트는 `start_line`·`start_side: "RIGHT"`를 더한다.
 
    ```bash
