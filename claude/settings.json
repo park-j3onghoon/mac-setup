@@ -90,22 +90,9 @@
           },
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command // empty' | tr '\\\\\\n' '  ' | grep -qE 'git([[:space:]]+-[^[:space:]]+([[:space:]]+(\"[^\"]*\"|[^-[:space:]][^[:space:]]*))?)*[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"리뷰 전 Draft PR을 처음 올리는 push면 그대로 진행하세요. 리뷰 반영분 push면 /implement-review 를 마쳤나요? 인증·권한·시크릿·결제 변경이면 /cso 도.\"}}'; true",
+            "command": "jq -r '.tool_input.command // empty' | tr '\\\\\\n' '  ' | grep -qE 'git([[:space:]]+-[^[:space:]]+([[:space:]]+(\"[^\"]*\"|[^-[:space:]][^[:space:]]*))?)*[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+create' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"구현 뒤 첫 push·PR 생성이면 /implement-review 를 마쳤나요? 리뷰 대응 커밋은 사람 리뷰 요청 전에 /implement-review 로 다시 봅니다. 인증·권한·시크릿·결제 변경이면 /cso 도.\"}}'; true",
             "timeout": 5,
             "statusMessage": "push/PR 사전 체크"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "clear",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME\"/.claude/hooks/refresh-session-continue.sh",
-            "timeout": 10,
-            "statusMessage": "/refresh-session 다음 명령 입력"
           }
         ]
       }
