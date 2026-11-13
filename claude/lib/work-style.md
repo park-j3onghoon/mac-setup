@@ -16,6 +16,7 @@
 
 - 코드를 설계·작성·리뷰할 때는 `~/.claude/lib/coding/index.md`를 Read하고, 그 목록에서 변경이 닿는 모듈을 Read해 따른다.
 - 문제의 원인을 찾을 때는 `~/.claude/lib/debug.md`를 Read하고 그 순서를 따른다.
+- 로컬 docker가 데몬에 연결하지 못하면 `~/.rd/bin/rdctl start`로 Rancher Desktop을 켜고 `docker info`가 될 때까지 기다린 뒤 다시 실행한다. Rancher Desktop은 30분 동안 쓰지 않으면 저절로 꺼진다(mac-setup `rancher/`).
 
 ## 요청 읽기
 
