@@ -33,11 +33,14 @@ class Usage:
     checked_at: float
     windows: tuple[Window, ...]
 
+    def verified(self, now: float, max_age: float) -> bool:
+        """A fresh reading that reports every window's percentage."""
+        return (bool(self.windows) and 0 <= now - self.checked_at <= max_age
+                and all(w.percent is not None for w in self.windows))
+
     def available(self, now: float, threshold: float, max_age: float) -> bool:
-        if not self.windows or not 0 <= now - self.checked_at <= max_age:
-            return False
-        return all(
-            w.percent is not None and w.percent < threshold
+        return self.verified(now, max_age) and all(
+            w.percent < threshold
             and not w.blocked
             and (w.resets_at is None or w.resets_at > now)
             for w in self.windows
@@ -57,10 +60,18 @@ class Decision:
 def choose_account(active: str, primary: str, fallback: str,
                    readings: dict[str, Usage], now: float,
                    threshold: float, max_age: float) -> Decision:
-    """The primary always wins when freshly verified below every quota line."""
-    for email, reason in ((primary, 'primary_available'),
-                          (fallback, 'fallback_available')):
-        reading = readings.get(email)
-        if reading is not None and reading.available(now, threshold, max_age):
-            return Decision(email, reason)
+    """The primary always wins when freshly verified below every quota line.
+
+    Without a verified primary reading the active account stays: the usage endpoint answers
+    HTTP 429 to about half the lookups, and reading that as a reached limit switched accounts
+    every minute (2026-11-13 17:13~17:38).
+    """
+    reading = readings.get(primary)
+    if reading is None or not reading.verified(now, max_age):
+        return Decision(active, 'primary_unverified')
+    if reading.available(now, threshold, max_age):
+        return Decision(primary, 'primary_available')
+    reading = readings.get(fallback)
+    if reading is not None and reading.available(now, threshold, max_age):
+        return Decision(fallback, 'fallback_available')
     return Decision(None, 'no_verified_capacity')
