@@ -103,6 +103,15 @@ class PolicyTests(unittest.TestCase):
         # then
         self.assertEqual(result.target, 'work')
 
+    def test_failed_primary_read_does_not_leave_the_primary(self):
+        """개인 계정을 쓰는 중 개인 조회가 실패(HTTP 429)해도 한도 도달로 보지 않고 개인 계정을 유지한다."""
+        # given
+        readings = {'work': usage(20)}
+        # when
+        result = choose_account('personal', 'personal', 'work', readings, NOW, 95, 90)
+        # then
+        self.assertEqual(result.target, 'personal')
+
 
 if __name__ == '__main__':
     unittest.main()
