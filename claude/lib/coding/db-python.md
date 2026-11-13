@@ -1,2 +1,3 @@
 - `updated_at`: `auto_now` fires on `save()` only, and on `save(update_fields=[...])` only when the list names it (`model.save(update_fields=['status'])` leaves `updated_at` as it was); a `queryset.update()` such as `Foo.objects.filter(id=...).update(name='x')` is complete where the DDL has `ON UPDATE`; set it by hand only on a legacy table with neither `auto_now` nor `ON UPDATE`.
 - Lock across the network by workload: `SELECT … FOR UPDATE` is Django `select_for_update`.
+- New Django models: name the timestamp fields `created` and `updated` (`auto_now_add=True`, `auto_now=True`); set `related_name` only where two relations clash; fold consecutive model changes of one task into one migration.

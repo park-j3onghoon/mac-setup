@@ -1,3 +1,5 @@
+- Framework defaults with Bootstrap: small text is `small`, the framework JavaScript is `bootstrap.js` and the server-driven library is HTMX.
+- HTMX: keep it to server-rendered links and forms; the server answers HTMX and plain requests the same way, without HTMX-only response headers such as `HX-Redirect`.
 - Bare URL entry: when a page moves from `useState("...")` to URL params, the default in the hook is the old `useState` argument.
 - Render-time correction + URL correction: keep `useEffect` + `router.replace` only for the address bar and render from the corrected value; `useEffect` + `router.replace` alone renders one blank frame first:
   ```tsx

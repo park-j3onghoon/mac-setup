@@ -5,7 +5,6 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 - Dependency direction: presentation calls application; domain imports neither application, presentation nor concrete adapters; application depends on domain and port contracts rather than concrete adapters. Infrastructure implements those contracts and the composition root wires it in. Follow the project's port placement convention; between modules of the same layer, keep dependencies one way too.
 - Composition root: only the composition root creates adapters and hands them to use cases and services, so application code uses adapters only through ports; it sits outside the layers, and entrypoints get what they call from it.
 - Utils: a function with no business term and no port is a util; it sits outside the layers. A util called by domain must not import application, presentation or concrete adapters, including transitively.
-- Convention breaks ties: when these rules allow several placements or structures, follow the one the project already uses.
 
 ## Presentation
 

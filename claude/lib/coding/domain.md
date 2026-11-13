@@ -12,6 +12,7 @@ For Python code, also Read `~/.claude/lib/coding/domain-python.md`.
 - Domain service: use a domain service or module function for an independent business rule with no appropriate entity/value-object owner. Do not force unrelated helpers onto an entity or put workflow/serialization helpers in domain merely because they use business terms.
 - Actor rules: when a business rule names who may act (an approver other than the requester), the domain method takes the actor's id and decides; the use case passes the id from the session.
 - Factory method: when creating a new entity has rules (initial state, defaults, checks at creation), put them in a named creation method on the entity and create through it; a repository rebuilds a stored entity with the constructor; add a separate factory object only when one creation gathers values from several aggregates.
+- External identifiers: keep another system's unique identifiers out of this system's models.
 
 ## State
 

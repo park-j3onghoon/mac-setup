@@ -1,7 +1,13 @@
 For frontend code, also Read `~/.claude/lib/coding/ui-frontend.md`.
 
+## Framework defaults
+
+- Build screens from the UI framework's default components with their default spacing, set text only as body, small or heading, and add a custom class only where the defaults cannot do the job.
+- For behaviour, use the framework's JavaScript first, then a server-driven library, then hand-written code.
+
 ## URL query as the source of truth
 
+- Links carry every parameter the target needs.
 - Bare URL entry: give `/path` without a query (bookmark, refresh, external link) a default in the param resolver (`const step = isKnownStep(params.step) ? params.step : "cart";`); when a page moves from local state to URL params, that default is the old initial value.
 - Render-time correction + URL correction: when a URL step page corrects the step on deep link/refresh, compute the corrected value for rendering, correct the address bar separately, and comment the split of roles.
 

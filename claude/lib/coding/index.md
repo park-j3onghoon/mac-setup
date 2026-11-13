@@ -1,30 +1,31 @@
 ## Principles
 
+- Repository convention first: the working repository's convention wins over every rule here: its CLAUDE.md or AGENTS.md, its rules files, `~/.claude/lib/{repository name}-rules.md` when it exists, and the established form of sibling code.
+- Simple Design: Read `~/Downloads/Obsidian Vault/Simple Design.md` and judge code by its two criteria, duplication and the number of syntax elements, and by its checklist. Every other rule here is a default: when following one would add duplication or syntax elements or defeat the task's goal, choose the simpler option, name the rule you set aside, and ask the user only when the choice is a system- or data-level decision (`~/.claude/lib/work-style.md` 묻는 것과 정하는 것 절).
 - One owner per business decision: the domain holds business rules, use cases and services hold the flow, and repositories, gateways and callers store, transform or forward.
 - Change by addition: at an established extension boundary, add a strategy, event handler or adapter and wire it in the composition root; otherwise keep the edit inside the module that owns the decision. Do not introduce dispatch or indirection solely for hypothetical future cases.
-- Build on verified behaviour: before relying on another system, a repository, the DB schema or a library, read its code or DDL.
+- Build on verified behaviour: before designing on or relying on another system, a repository, the DB schema or a library, read its code or DDL and look at its real data.
 - Checks on every path, in layers: put a check that must always hold where every entrypoint (HTTP, CLI, queue, batch, tests) passes, and back it with another layer (a schema constraint, authorization, output encoding).
 - Invalid values unrepresentable: shape types and schema constraints so a wrong value cannot enter (an enum over a free string, NOT NULL, UNIQUE, CHECK).
 - Reversible steps: split a change so each step rolls back on its own, schema and code separately.
 - Queryable storage: store values in shapes a query can analyse later (typed columns and enums rather than free text, a map or a JSON union).
-- When following a rule would defeat one of these principles, show both options and let the user decide.
 
 ## Rule files
 
 When two rules conflict, a rule in a stack file (`*-python.md`, `*-frontend.md`, `*-proto.md`) wins over the general rule it narrows; otherwise the one listed higher wins: first by the file order below, then by the order inside a file.
 
-- `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, verifying another system before compensating for it, file state, moves and builds, slices and commits
-- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, convention as the tie-breaker, entrypoints, use cases, command and event handlers, the unit of work, services, command or query use cases, CQRS read models, ports and adapters
-- `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, state and transitions, the validation ladder
+- `~/.claude/lib/coding/process.md`: proposing a change, following existing patterns, verifying another system before compensating for it, file state, moves and builds, slices and commits, the final review
+- `~/.claude/lib/coding/architecture.md`: layers and dependency direction, the composition root and utils, entrypoints, use cases, command and event handlers, the unit of work, services, command or query use cases, CQRS read models, ports and adapters
+- `~/.claude/lib/coding/domain.md`: aggregates, domain events, value objects, entities and factory methods, external identifiers, state and transitions, the validation ladder
 - `~/.claude/lib/coding/types.md`: enums and booleans, constrained types, type forms per stack
-- `~/.claude/lib/coding/design.md`: duplication, abstraction and extraction, scope, simplicity
-- `~/.claude/lib/coding/tests.md`: tests
-- `~/.claude/lib/coding/errors.md`: exceptions, failure aggregation, error messages, errors in async handlers, timeouts on calls to other systems
-- `~/.claude/lib/coding/functions.md`: writing or splitting functions and methods
+- `~/.claude/lib/coding/design.md`: scope, simplicity, duplication, the server deciding, abstraction and extraction, model reuse, official ways, optimization and concurrency
+- `~/.claude/lib/coding/tests.md`: tests, verification before commit and before deploy
+- `~/.claude/lib/coding/errors.md`: handling only what can happen, trusting contracts, exceptions, failure aggregation, error messages, errors in async handlers, timeouts on calls to other systems
+- `~/.claude/lib/coding/functions.md`: function units, local variables, branches, writing or splitting functions and methods
 - `~/.claude/lib/coding/file-layout.md`: imports, constants and function order inside a file
 - `~/.claude/lib/coding/comments.md`: comments and docstrings
 - `~/.claude/lib/coding/naming.md`: names and terms
 - `~/.claude/lib/coding/db.md`: MySQL column types, charset and order, counters, `updated_at`, transactions and locks
 - `~/.claude/lib/coding/repositories.md`: repository return types, mapping and saving, pagination, dates, normalized values
 - `~/.claude/lib/coding/api.md`: HTTP responses, proto contracts, partial updates, request DTO defaults, OpenAPI docs
-- `~/.claude/lib/coding/ui.md`: frontend screens: URL state, copy, components and forms, CSS layout
+- `~/.claude/lib/coding/ui.md`: frontend screens: framework defaults, URL state and links, copy, components and forms, CSS layout

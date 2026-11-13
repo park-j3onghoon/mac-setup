@@ -1,6 +1,6 @@
 For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
 
-- Why, not what: write a comment only for context the code cannot show.
+- Why, not what: write a comment only for a reason the code cannot show, such as why the code had to take an unusual way.
 - Keep:
   - external standard references (AIP-XXX, RFC NNNN, company RFC links)
   - security rationale (enumeration prevention, capability token, XSS vector blocking)
