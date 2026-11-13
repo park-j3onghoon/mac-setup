@@ -1,0 +1,5 @@
+interface:
+  display_name: "Mastery Tutor"
+  short_description: "HTML 공부방에서 개념별 진척을 보고 문제·채점·복습을 이어간다"
+policy:
+  allow_implicit_invocation: true
