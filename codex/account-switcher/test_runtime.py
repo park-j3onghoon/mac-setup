@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from policy import UsageUnavailable
-from runtime import CONTINUE_PROMPT, Runtime, all_idle
+from runtime import CONTINUE_PROMPT, Runtime, all_idle, prepare_home
 from state import load, poll_delay, record, save, snapshot
 from supervisor import monitor
 
@@ -45,6 +45,31 @@ class StateTest(unittest.TestCase):
             self.assertEqual(load(path), value)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertNotIn("token", path.read_text())
+
+
+class HomeTest(unittest.TestCase):
+    def test_shared_server_opens_with_the_company_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            company = root / "company.toml"
+            company.write_text("model = 'company'\n")
+            shared = root / "shared"
+            shared.mkdir()
+            (shared / "config.toml").write_text("model = 'personal'\n")
+            home = root / "auto"
+            home.mkdir()
+            (home / "config.toml").symlink_to(shared / "config.toml")
+            prepare_home(home, shared=shared, config=company)
+            self.assertEqual((home / "config.toml").read_text(), "model = 'company'\n")
+
+    def test_company_workspace_lock_is_lifted_only_on_the_shared_server(self):
+        runtime = Runtime({}, home=Path("/auto"))
+        with patch("runtime.prepare_home"), patch("runtime.subprocess.Popen") as popen, \
+             patch.object(Path, "exists", return_value=False):
+            popen.return_value.poll.return_value = 1
+            with self.assertRaises(UsageUnavailable):
+                runtime.start()
+        self.assertEqual(popen.call_args.args[0][1:4], ["app-server", "-c", 'forced_chatgpt_workspace_id=""'])
 
 
 class IdleTest(unittest.TestCase):
