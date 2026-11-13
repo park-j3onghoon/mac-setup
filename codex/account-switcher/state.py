@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import time
 
-from policy import utilization
+from policy import poll_seconds, utilization
 
 
 RUNTIME = Path.home() / ".codex-auto"
@@ -50,13 +50,14 @@ def record(previous, current):
     return current
 
 
-def poll_delay(accounts, now=None):
+def poll_delay(accounts, active=None, now=None):
     now = time.time() if now is None else now
     future = [window["resets_at"] - now + 1
               for account in accounts.values()
               for window in account.get("windows", {}).values()
               if window.get("resets_at") and window["resets_at"] > now]
-    return max(1, min([60, *future]))
+    interval = poll_seconds((accounts.get(active) or {}).get("used_percent"))
+    return max(1, min([interval, *future]))
 
 
 def load(path=STATE_FILE):

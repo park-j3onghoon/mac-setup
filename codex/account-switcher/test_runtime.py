@@ -37,6 +37,13 @@ class StateTest(unittest.TestCase):
         self.assertEqual(poll_delay({"company": usage(91, 110, 100)}, now=100), 11)
         self.assertEqual(poll_delay({"company": usage(91, 90, 100)}, now=100), 60)
 
+    def test_poll_interval_follows_the_active_account_headroom(self):
+        later = 10_000_000
+        for percent, seconds in ((20, 540), (61, 300), (80, 120), (88, 60)):
+            with self.subTest(percent=percent):
+                accounts = {"company": usage(percent, later, 100), "personal": usage(95, later, 100)}
+                self.assertEqual(poll_delay(accounts, active="company", now=100), seconds)
+
     def test_only_metadata_is_written_with_private_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
