@@ -1,0 +1,115 @@
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import launcher
+from policy import UsageUnavailable, choose, utilization
+from usage import handle_message, read_usage
+
+
+class PolicyTest(unittest.TestCase):
+    def test_company_preferred_until_threshold(self):
+        self.assertEqual(choose({"company": 89.9}), "company")
+        self.assertEqual(choose({"company": 90, "personal": 12}), "personal")
+
+    def test_no_fallback_when_company_usage_unknown(self):
+        with self.assertRaises(UsageUnavailable):
+            choose({"personal": 0})
+
+    def test_both_near_limit_prefer_company(self):
+        self.assertEqual(choose({"company": 90, "personal": 95}), "company")
+        self.assertEqual(choose({"company": 100, "personal": 100}), "company")
+
+    def test_resets_are_decided_by_reported_usage(self):
+        self.assertEqual(choose({"company": 0, "personal": 50}), "company")
+
+    def test_highest_usage_window_wins(self):
+        self.assertEqual(utilization({"rateLimits": {
+            "primary": {"usedPercent": 10}, "secondary": {"usedPercent": 91},
+        }}), 91)
+
+    def test_invalid_or_missing_usage_cannot_select_an_account(self):
+        for value in (None, "0", True, -1, 101, float("nan")):
+            with self.subTest(value=value), self.assertRaises(UsageUnavailable):
+                utilization({"rateLimits": {"primary": {"usedPercent": value}}})
+        with self.assertRaises(UsageUnavailable):
+            utilization({})
+
+    def test_workspace_spend_control_blocks_usage(self):
+        self.assertEqual(utilization({"rateLimits": {"spendControlReached": True}}), 100)
+        self.assertEqual(utilization({"ordinaryUsageAllowed": False}), 100)
+
+    def test_server_errors_do_not_echo_secrets(self):
+        with self.assertRaises(UsageUnavailable) as error:
+            handle_message(None, b'{"id":2,"error":{"message":"secret-token"}}')
+        self.assertNotIn("secret-token", str(error.exception))
+
+
+class LauncherTest(unittest.TestCase):
+    def test_explicit_home_is_preserved(self):
+        with patch.dict(launcher.os.environ, {"CODEX_HOME": "/chosen"}), \
+             patch.object(launcher.os, "execv", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.main(["resume", "my-thread"])
+        self.assertEqual(run.call_args.args[1][1:], ["resume", "my-thread"])
+
+    def test_company_management_does_not_query_or_select_personal(self):
+        with patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(Path, "is_file", return_value=True), \
+             patch.object(launcher, "read_usage") as query, \
+             patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.main(["login", "status"])
+        query.assert_not_called()
+        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(launcher.PROFILES["company"]))
+
+    def test_resume_uses_same_automatic_runtime_history(self):
+        with patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(launcher, "launch_automatic", return_value=0) as run:
+            self.assertEqual(launcher.main(["resume", "--last"]), 0)
+        run.assert_called_once_with(["resume", "--last"])
+
+    def test_full_company_falls_back_without_rewriting_credentials(self):
+        with patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(Path, "is_file", return_value=True), \
+             patch.object(launcher, "read_usage", side_effect=[90, 5]), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.main(["--cd", "/project", "exec", "do work"])
+        self.assertEqual(run.call_args.args[1][1:], ["--cd", "/project", "exec", "do work"])
+        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(launcher.PROFILES["personal"]))
+
+    def test_interactive_session_uses_automatic_runtime(self):
+        with patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(launcher, "launch_automatic", return_value=0) as run:
+            self.assertEqual(launcher.main(["--model", "chosen-model"]), 0)
+        run.assert_called_once_with(["--model", "chosen-model"])
+
+    def test_management_after_global_options_is_recognized(self):
+        self.assertFalse(launcher.interactive(["-c", "model=chosen", "login", "status"]))
+        self.assertFalse(launcher.interactive(["--cd=/project", "exec", "do work"]))
+
+
+class ProtocolTest(unittest.TestCase):
+    def test_real_subprocess_handshake_and_notification_handling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "auth.json").write_text("{}")
+            fake = root / "codex"
+            fake.write_text("#!" + sys.executable + "\n" + '''import json, sys
+for line in sys.stdin:
+    message = json.loads(line)
+    if message["method"] == "initialize":
+        print('{"id":1,"result":{}}', flush=True)
+    elif message["method"] == "account/rateLimits/read":
+        print('{"method":"account/updated","params":{}}', flush=True)
+        print('{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":42}}}}', flush=True)
+''')
+            fake.chmod(0o700)
+            self.assertEqual(read_usage(fake, root, timeout=2), 42)
+
+
+if __name__ == "__main__":
+    unittest.main()
