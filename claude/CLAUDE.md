@@ -7,3 +7,7 @@
 사용자에게 답할 때는 아래 규칙을 따른다.
 
 @~/.claude/lib/answer-style.md
+
+회사 업무에는 아래 회사 전용 지침도 따른다.
+
+@~/.claude/instructions/company.md
