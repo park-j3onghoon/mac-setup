@@ -1,6 +1,6 @@
 import unittest
 
-from policy import Decision, Usage, Window, choose_account
+from policy import Decision, Usage, Window, choose_account, poll_seconds
 
 
 NOW = 2_000_000_000.0
@@ -102,6 +102,17 @@ class PolicyTests(unittest.TestCase):
         result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
         # then
         self.assertEqual(result.target, 'work')
+
+    def test_poll_interval_follows_headroom(self):
+        """기준까지 여유가 클수록 사용량 조회 간격을 늘리고, 기준에 가까우면 가장 짧은 간격으로 조회한다."""
+        # given
+        cases = ((20, 540), (60, 540), (61, 300), (75, 300), (76, 120), (85, 120), (86, 60), (None, 60))
+        for percent, seconds in cases:
+            with self.subTest(percent=percent):
+                # when
+                result = poll_seconds(percent, 90, 60)
+                # then
+                self.assertEqual(result, seconds)
 
     def test_failed_primary_read_does_not_leave_the_primary(self):
         """개인 계정을 쓰는 중 개인 조회가 실패(HTTP 429)해도 한도 도달로 보지 않고 개인 계정을 유지한다."""

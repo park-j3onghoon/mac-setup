@@ -6,7 +6,7 @@ import time
 
 from api import ApiError
 from compatibility import check as check_compatibility
-from policy import choose_account
+from policy import choose_account, poll_seconds
 from storage import SwitcherError, fingerprint
 
 
@@ -233,7 +233,13 @@ class Switcher:
 
     def next_delay(self, now):
         runtime = self.state.load('runtime')
-        wake = now + self.config['poll_seconds']
+        # A failed lookup keeps the last windows (marked stale); they still tell how close the
+        # account is, so 429 answers do not shrink the interval.
+        active = runtime.get('usage', {}).get(runtime.get('active'), {})
+        percents = [w['percent'] for w in active.get('windows', [])
+                    if isinstance(w.get('percent'), (int, float))]
+        wake = now + poll_seconds(max(percents, default=None), self.config['threshold'],
+                                  self.config['poll_seconds'])
         for usage in runtime.get('usage', {}).values():
             for window in usage.get('windows', []):
                 reset = window.get('resets_at')
