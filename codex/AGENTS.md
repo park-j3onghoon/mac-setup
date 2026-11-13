@@ -8,6 +8,6 @@
 
 사용자 화면·포커스를 건드리지 않고 백그라운드에서 작업한다. 앱 활성화, 화면에 보이는 메뉴·탭 조작, 브라우저 재시작, cmux 포커스 이동·경고 칸 열기는 사용자가 그 화면 조작을 별도로 요청했을 때만 한다. 스킬의 화면 전환 지시보다 이 규칙을 우선한다. 필요한 설정은 가능한 백그라운드 방식으로 직접 처리하고 적용 여부를 검증한다. 화면 조작 없이 처리할 수 없는 부분은 완료한 작업과 구분해 보고한다.
 
-Chrome 브라우저 작업은 Codex에 등록된 `chrome-devtools` MCP를 우선 사용한다. 기존 Chrome에 연결하는 `--autoConnect` 설정을 유지한다. `new_page`는 `background: true`, `select_page`는 `bringToFront: false`로 호출하고, 페이지 작업에는 대상 `pageId`를 명시한다. 사용자는 2026-11-05에 승인된 작업에 필요한 Chrome 원격 디버깅 설정·연결 허용과 그에 필요한 설정·허용 화면 조작을 앞으로도 매번 묻지 않고 진행하도록 허용했다. 이 범위에서는 재확인하지 않고 처리한 뒤 백그라운드 작업으로 돌아간다. 다른 화면·포커스 조작에는 위 제한을 유지한다. Chrome이 직접 사용자 확인을 요구하는 경우에는 우회하지 않고 남은 조작을 구체적으로 알린다.
+Chrome 브라우저 작업은 Codex에 등록된 `chrome-devtools` MCP를 우선 사용한다. 기존 Chrome에 연결하는 `--autoConnect` 설정을 유지한다. `new_page`는 `background: true`, `select_page`는 `bringToFront: false`로 호출하고, 페이지 작업에는 대상 `pageId`를 명시한다. `new_page`로 연 작업 페이지는 확인을 마치면 바로 `close_page`로 닫고, 사용자에게 보여 주려고 앞으로 가져온 페이지는 남긴다. 사용자는 2026-11-05에 승인된 작업에 필요한 Chrome 원격 디버깅 설정·연결 허용과 그에 필요한 설정·허용 화면 조작을 앞으로도 매번 묻지 않고 진행하도록 허용했다. 이 범위에서는 재확인하지 않고 처리한 뒤 백그라운드 작업으로 돌아간다. 다른 화면·포커스 조작에는 위 제한을 유지한다. Chrome이 직접 사용자 확인을 요구하는 경우에는 우회하지 않고 남은 조작을 구체적으로 알린다.
 
 사용자는 2026-11-06에 승인받은 Chrome 연결을 계속 재사용하도록 요청했다. 등록된 `chrome-devtools` MCP는 `~/git/mac-setup/codex/chrome-devtools/bridge.mjs`를 통해 같은 사용자 전용 백그라운드 연결을 공유한다. 작업·대화 종료 때 공유 프로세스를 중지하거나, 별도의 `chrome-devtools-mcp`·직접 디버깅 연결을 새로 실행하지 않는다. 연결 상태는 `/opt/homebrew/bin/node ~/git/mac-setup/codex/chrome-devtools/bridge.mjs --status`로 확인한다. Chrome 종료·연결 해제·공유 프로세스 종료 뒤 새 연결에는 Chrome 승인이 다시 필요할 수 있다.
