@@ -68,7 +68,15 @@
     "command": "workbench.action.navigateToLastEditLocation"
   },
 
-  // ───── 4. Cmd+Shift+[ / Cmd+Shift+]: 탭 좌우 이동 ─────
+  // ───── 4. Cmd+F2 / Cmd+F3: 이전 / 다음 파일 탭 (Cmd+Shift+[ / ]도 유지) ─────
+  {
+    "key": "cmd+f2",
+    "command": "workbench.action.previousEditor"
+  },
+  {
+    "key": "cmd+f3",
+    "command": "workbench.action.nextEditor"
+  },
   {
     "key": "cmd+shift+[",
     "command": "workbench.action.previousEditor"
