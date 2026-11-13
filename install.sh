@@ -159,9 +159,15 @@ fi
 log "~/.codex/ 설정 symlink"
 mkdir -p "$HOME/.codex/skills" "$HOME/.codex/rules"
 
-for f in AGENTS.md config.toml hooks.json; do
+for f in AGENTS.md hooks.json; do
   link_file "$REPO_DIR/codex/$f" "$HOME/.codex/$f"
 done
+
+# config.toml은 Codex가 고쳐 쓰면서 심링크를 일반 파일로 바꾸고 회사 값도 쌓이므로, 없을 때만 공개 사본을 복사한다.
+if [ ! -e "$HOME/.codex/config.toml" ]; then
+  cp "$REPO_DIR/codex/config.toml" "$HOME/.codex/config.toml"
+  ok "copy: $HOME/.codex/config.toml"
+fi
 
 # Codex 승인 규칙은 사내 경로가 쌓이므로 private/ 에만 둔다.
 if [ -f "$REPO_DIR/private/codex/rules/default.rules" ]; then
