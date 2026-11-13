@@ -12,5 +12,5 @@
 - **[implement-review](./implement-review/SKILL.md)**: 내 PR이나 구현 커밋을 위험도에 맞춘 리뷰어로 리뷰하고, 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
 - **[investigate](./investigate/SKILL.md)**: 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다.
 - **[plan-review](./plan-review/SKILL.md)**: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다.
-- **[pr-create](./pr-create/SKILL.md)**: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다.
+- **[pr-create](./pr-create/SKILL.md)**: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고, 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다.
 - **[push-commit](./push-commit/SKILL.md)**: 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다.

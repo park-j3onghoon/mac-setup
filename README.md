@@ -49,10 +49,10 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | [`/implement-review`](claude/skills/engineering/implement-review/SKILL.md) | 내 PR이나 구현 커밋을 같은 diff로 병렬 리뷰한다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다. |
 | [`/investigate`](claude/skills/engineering/investigate/SKILL.md) | 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. |
 | [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다. |
-| [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 Draft PR을 만든다. 크기를 검사하고 제목·본문 초안을 승인받아 만든다. |
+| [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 Draft PR을 만든다. 크기를 검사하고, 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다. |
 | [`/push-commit`](claude/skills/engineering/push-commit/SKILL.md) | 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. |
 
-기본 흐름은 `/implement`(테스트·구현 커밋) → `/implement-review`(테스트·별도 수정 커밋) → `/push-commit` → `/pr-create`(Draft 생성과 크기 검사)다.
+기본 흐름은 `/implement`(테스트·구현 커밋) → `/implement-review`(테스트·별도 수정 커밋) → `/push-commit` → `/pr-create`(Draft 생성과 크기 검사, 고른 경우 CodeRabbit → 사내 AI 리뷰 봇 리뷰를 받고 지적 대응)다.
 
 ### productivity
 
@@ -84,7 +84,8 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | [`lib/owasp.md`](claude/lib/owasp.md) | OWASP 5종 점검 항목·source→sink 증명 |
 | [`lib/plans-path.md`](claude/lib/plans-path.md) | 작업 산출물 저장 경로 규칙 · HTML 파일 백업·열기 |
 | [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/implement`·`/implement-review`·`/push-commit`·`/pr-create`·`/investigate`가 읽는다) |
-| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·도구별·관점·보안 게이트) · 리뷰 준비(PR 링크 → diff) · 문제 지점 찾기(리뷰 공통 절차) · 주장 검증 |
+| [`lib/push.md`](claude/lib/push.md) | push(사람 리뷰 여부로 push할 사람을 정함·stacked 전파)와 PR 제목·본문 갱신 절차 (`/push-commit`·`/pr-create`가 읽는다) |
+| [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·도구별·관점·보안 게이트) · 리뷰 준비(PR 링크 → diff) · 문제 지점 찾기(리뷰 공통 절차) · 지적 반영(AUTO-FIX·ASK, `/implement-review`·`/pr-create`가 읽는다) · 주장 검증 |
 | [`lib/skill-writing.md`](claude/lib/skill-writing.md) | 스킬·모듈 작성 규칙 25개 (`/skill-review` 4단계가 읽는다) |
 
 ## 새 맥에서 사용법
