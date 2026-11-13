@@ -4,6 +4,17 @@ import math
 
 
 THRESHOLD = 90
+# (headroom below THRESHOLD in percentage points, seconds until the next usage lookup); the same
+# tiers as the Claude account switcher.
+POLL_TIERS = ((30, 540), (15, 300), (5, 120))
+SHORTEST_POLL = 60
+
+
+def poll_seconds(used):
+    """Look up usage less often the further the active account is from the threshold."""
+    if used is None:
+        return SHORTEST_POLL
+    return next((seconds for floor, seconds in POLL_TIERS if THRESHOLD - used >= floor), SHORTEST_POLL)
 
 
 class UsageUnavailable(ValueError):

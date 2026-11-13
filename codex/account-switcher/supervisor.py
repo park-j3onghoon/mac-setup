@@ -47,7 +47,7 @@ def monitor(runtime, profiles, stop, state):
                 desired = choose({name: value["used_percent"] for name, value in fresh.items()})
             except UsageUnavailable:
                 desired = None
-            next_poll = time.time() + poll_delay(state.get("accounts", {}))
+            next_poll = time.time() + poll_delay(state.get("accounts", {}), runtime.active)
             state["next_check_at"] = next_poll
             check_limited = True
         state["desired"] = desired
