@@ -8,7 +8,7 @@ import signal
 import threading
 import time
 
-from policy import UsageUnavailable, choose
+from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile
 from runtime import Runtime, prepare_home
 from state import RUNTIME, load, poll_delay, record, save
@@ -30,6 +30,7 @@ def monitor(runtime, profiles, stop, state):
     next_poll = 0
     retry_switch_at = 0
     desired = None
+    check_limited = False
     while not stop.is_set():
         if runtime.process.poll() is not None:
             raise UsageUnavailable("Automatic runtime exited")
@@ -48,6 +49,7 @@ def monitor(runtime, profiles, stop, state):
                 desired = None
             next_poll = time.time() + poll_delay(state.get("accounts", {}))
             state["next_check_at"] = next_poll
+            check_limited = True
         state["desired"] = desired
         if desired is not None and time.time() >= retry_switch_at:
             try:
@@ -56,6 +58,10 @@ def monitor(runtime, profiles, stop, state):
                 if changed and old != runtime.active:
                     state["last_switch_at"] = time.time()
                     state["switch_count"] = state.get("switch_count", 0) + 1
+                if (changed and check_limited
+                        and state["accounts"][runtime.active]["used_percent"] < THRESHOLD):
+                    runtime.continue_limited()
+                    check_limited = False
                 state["status"] = "ready" if changed else "waiting_for_idle"
                 state.pop("runtime_error", None)
             except Exception as error:

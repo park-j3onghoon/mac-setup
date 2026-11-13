@@ -13,6 +13,10 @@ from state import RUNTIME
 
 
 SOCKET = RUNTIME / "auto.sock"
+CONTINUE_PROMPT = "이어서 해줘"
+# A thread in systemError runs nothing; leaving it out of the wait keeps one failed thread
+# from blocking every later switch.
+QUIET = ("idle", "notLoaded", "systemError")
 
 
 def prepare_home(home=RUNTIME):
@@ -27,7 +31,8 @@ def prepare_home(home=RUNTIME):
             target.symlink_to(source / name, target_is_directory=(source / name).is_dir())
 
 
-def all_idle(client):
+def loaded_threads(client):
+    """Yield (thread id, status type) for every thread loaded in the runtime."""
     cursor = None
     while True:
         response = client.request("thread/loaded/list", {"cursor": cursor})
@@ -35,11 +40,25 @@ def all_idle(client):
             thread = client.request("thread/read", {
                 "threadId": thread_id, "includeTurns": False,
             }).get("thread", {})
-            if thread.get("status", {}).get("type") not in ("idle", "notLoaded"):
-                return False
+            yield thread_id, thread.get("status", {}).get("type")
         cursor = response.get("nextCursor")
         if not cursor:
-            return True
+            return
+
+
+def all_idle(client):
+    return all(status in QUIET for _, status in loaded_threads(client))
+
+
+def newest_turn(client, thread_id):
+    try:
+        turns = client.request("thread/turns/list", {
+            "threadId": thread_id, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
+        }).get("data", [])
+    except UsageUnavailable:
+        # A thread whose first turn has not been written yet has no rollout to list.
+        return None
+    return turns[0] if turns else None
 
 
 class Runtime:
@@ -48,6 +67,7 @@ class Runtime:
         self.socket = self.home / "auto.sock"
         self.process = self.client = None
         self.active = None
+        self.continued = set()
 
     def start(self):
         prepare_home(self.home)
@@ -111,6 +131,22 @@ class Runtime:
                 except Exception:
                     pass
             raise
+
+    def continue_limited(self):
+        """Start CONTINUE_PROMPT once on each quiet thread whose newest turn hit the usage limit.
+
+        A turn started from this connection still sends its approval requests to the terminal
+        that opened the thread (measured on 0.168.0, 2026-11-13).
+        """
+        for thread_id, status in loaded_threads(self.client):
+            turn = newest_turn(self.client, thread_id) if status in QUIET else None
+            if (not turn or turn["id"] in self.continued or turn["status"] != "failed"
+                    or (turn.get("error") or {}).get("codexErrorInfo") != "usageLimitExceeded"):
+                continue
+            self.client.request("turn/start", {
+                "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
+            })
+            self.continued.add(turn["id"])
 
     def close(self):
         if self.client:

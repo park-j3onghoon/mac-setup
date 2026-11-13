@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from policy import UsageUnavailable
-from runtime import Runtime, all_idle
+from runtime import CONTINUE_PROMPT, Runtime, all_idle
 from state import load, poll_delay, record, save, snapshot
 from supervisor import monitor
 
@@ -62,6 +62,57 @@ class IdleTest(unittest.TestCase):
         client = Mock()
         client.request.side_effect = [{"data": ["a"]}, {"thread": {}}]
         self.assertFalse(all_idle(client))
+
+    def test_thread_stopped_by_an_error_does_not_block_switch(self):
+        client = Mock()
+        client.request.side_effect = [{"data": ["a"]}, {"thread": {"status": {"type": "systemError"}}}]
+        self.assertTrue(all_idle(client))
+
+
+LIMITED = {"data": [{"id": "turn-1", "status": "failed",
+                     "error": {"codexErrorInfo": "usageLimitExceeded"}}]}
+
+
+class ContinueTest(unittest.TestCase):
+    def setUp(self):
+        self.runtime = Runtime({})
+        self.runtime.client = Mock()
+
+    def answer(self, threads):
+        def request(method, params=None, timeout=30):
+            if method == "thread/loaded/list":
+                return {"data": list(threads)}
+            status, turns = threads.get(params.get("threadId"), (None, None))
+            if method == "thread/read":
+                return {"thread": {"status": {"type": status}}}
+            if method == "thread/turns/list" and isinstance(turns, Exception):
+                raise turns
+            return turns if method == "thread/turns/list" else {}
+
+        self.runtime.client.request.side_effect = request
+
+    def started(self):
+        return [call.args[1] for call in self.runtime.client.request.call_args_list
+                if call.args[0] == "turn/start"]
+
+    def test_turn_stopped_by_the_usage_limit_is_continued_once(self):
+        self.answer({"t1": ("idle", LIMITED)})
+        self.runtime.continue_limited()
+        self.runtime.continue_limited()
+        self.assertEqual(self.started(), [
+            {"threadId": "t1", "input": [{"type": "text", "text": CONTINUE_PROMPT}]},
+        ])
+
+    def test_running_threads_and_other_endings_are_left_alone(self):
+        self.answer({
+            "running": ("active", LIMITED),
+            "done": ("idle", {"data": [{"id": "turn-2", "status": "completed"}]}),
+            "crashed": ("systemError", {"data": [{"id": "turn-3", "status": "failed",
+                                                  "error": {"codexErrorInfo": "other"}}]}),
+            "unprompted": ("idle", UsageUnavailable("Codex thread/turns/list failed")),
+        })
+        self.runtime.continue_limited()
+        self.assertEqual(self.started(), [])
 
 
 class SwitchingTest(unittest.TestCase):
@@ -141,6 +192,7 @@ class MonitorTest(unittest.TestCase):
         with patch("supervisor.time.time", side_effect=lambda: clock[0]), \
              patch("supervisor.collect", side_effect=batches), patch("supervisor.save"):
             monitor(runtime, {}, stop, state)
+        self.runtime = runtime
         return selected, state
 
     def test_running_monitor_applies_fallback_and_both_high_policy(self):
@@ -150,6 +202,14 @@ class MonitorTest(unittest.TestCase):
         selected, state = self.run_monitor(batches)
         self.assertEqual(selected, ["company", "personal", "company", "company"])
         self.assertEqual(state["active"], "company")
+
+    def test_limit_stopped_work_continues_only_on_an_account_below_the_threshold(self):
+        batches = [({"company": usage(company, 9999, 1000),
+                     "personal": usage(personal, 9999, 1000)}, {})
+                   for company, personal in ((95, 20), (95, 95))]
+        selected, _ = self.run_monitor(batches)
+        self.assertEqual(selected, ["personal", "company"])
+        self.runtime.continue_limited.assert_called_once_with()
 
     def test_lookup_failure_keeps_current_account_and_old_reset_record(self):
         first = {"company": usage(5, 9999, 1000), "personal": usage(20, 9999, 1000)}
