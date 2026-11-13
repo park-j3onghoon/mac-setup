@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>공부방 · Mastery Tutor</title>
+  <style>/* STUDY_CSS */</style>
+</head>
+<body>
+  <aside id="study-sidebar" class="sidebar">
+    <header class="brand"><span class="brand-mark">m.</span><div>공부방<small>MASTERY TUTOR</small></div></header>
+    <label class="search-label" for="search">공부 찾기</label>
+    <input id="search" type="search" placeholder="주제 이름으로 검색" autocomplete="off">
+    <div class="nav-heading">진행 중인 공부 <span id="session-count"></span></div>
+    <nav id="sessions" aria-label="학습 주제"></nav>
+    <footer>조금씩, 확실하게.<br><span>학습 기록은 이 컴퓨터에 저장됩니다.</span></footer>
+  </aside>
+  <main id="main">
+    <div class="display-toolbar" role="region" aria-label="화면 보기 설정">
+      <div class="panel-controls">
+        <button id="toggle-sidebar" type="button" aria-controls="study-sidebar" aria-expanded="true">
+          공부 목록 접기
+        </button>
+        <button id="toggle-map" type="button" aria-controls="learning-map" aria-expanded="true">
+          학습 지도 접기
+        </button>
+      </div>
+      <div class="font-controls" role="group" aria-label="글자 크기 조절">
+        <label for="font-size">글자 크기</label>
+        <button id="font-smaller" type="button" aria-label="글자 작게">−</button>
+        <input id="font-size" type="range" min="18" max="36" step="2" value="22">
+        <button id="font-larger" type="button" aria-label="글자 크게">+</button>
+        <output id="font-size-value" for="font-size" aria-live="polite">22px</output>
+        <button id="font-reset" type="button">기본 크기</button>
+      </div>
+    </div>
+    <div class="topbar"><span>나의 학습 공간</span>
+      <label class="provider-picker" for="provider">보낼 AI
+        <select id="provider"><option value="codex">Codex</option><option value="claude">Claude</option></select>
+      </label><span id="connection">연결 중</span></div>
+    <div id="content"><div class="empty">학습 기록을 불러오고 있습니다.</div></div>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script>const STUDY_TOKEN = '__STUDY_TOKEN__';</script>
+  <script>/* STUDY_JS */</script>
+</body>
+</html>
