@@ -43,7 +43,7 @@ def is_vm_running():
 def is_in_use():
     if subprocess.run(['/usr/bin/pgrep', '-xq', CLIENT_PROCESS_NAMES]).returncode == 0:
         return True
-    # docker 기본 context는 없는 /var/run/docker.sock을 가리켜서 Rancher 소켓을 직접 준다.
+    # 현재 docker context가 default(없는 /var/run/docker.sock)로 남아 있을 때가 있어 Rancher 소켓을 직접 준다.
     docker_env = {**os.environ, 'DOCKER_HOST': f'unix://{Path.home()}/.rd/docker.sock'}
     containers = subprocess.run([RD_BIN / 'docker', 'ps', '-q'], capture_output=True, text=True,
                                 env=docker_env, timeout=COMMAND_TIMEOUT_SECONDS)
