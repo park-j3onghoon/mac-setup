@@ -64,7 +64,7 @@ def choose_account(active: str, primary: str, fallback: str,
 
     Without a verified primary reading the active account stays: the usage endpoint answers
     HTTP 429 to about half the lookups, and reading that as a reached limit switched accounts
-    every minute (2026-11-13 17:13~17:38).
+    every minute or two (36 switches, 2026-11-13 16:47~17:38).
     """
     reading = readings.get(primary)
     if reading is None or not reading.verified(now, max_age):
