@@ -7,7 +7,7 @@ import subprocess
 import time
 
 from policy import UsageUnavailable
-from profiles import BINARY
+from profiles import BINARY, PROFILES
 from rpc import Rpc
 from state import RUNTIME
 
@@ -19,16 +19,23 @@ CONTINUE_PROMPT = "이어서 해줘"
 QUIET = ("idle", "notLoaded", "systemError")
 
 
-def prepare_home(home=RUNTIME):
+def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
+                 config=PROFILES["company"] / "config.toml"):
     home = Path(home)
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     home.chmod(0o700)
-    source = Path.home() / ".codex"
-    for name in ("config.toml", "AGENTS.md", "skills", "agents", "rules",
+    # Company comes first, so the shared server opens with the company setup (MCP servers,
+    # model); earlier versions linked the personal config here.
+    target = home / "config.toml"
+    if target.is_symlink() and target.readlink() != config:
+        target.unlink()
+    if not target.exists() and not target.is_symlink():
+        target.symlink_to(config)
+    for name in ("AGENTS.md", "skills", "agents", "rules",
                  "plugins", "packages", "hooks.json", ".hook-trust"):
         target = home / name
-        if not target.exists() and not target.is_symlink() and (source / name).exists():
-            target.symlink_to(source / name, target_is_directory=(source / name).is_dir())
+        if not target.exists() and not target.is_symlink() and (shared / name).exists():
+            target.symlink_to(shared / name, target_is_directory=(shared / name).is_dir())
 
 
 def loaded_threads(client):
@@ -81,8 +88,12 @@ class Runtime:
                 raise UsageUnavailable("An existing automatic runtime is still listening")
             finally:
                 probe.close()
+        # The company config locks logins to the company workspace; the shared server must also
+        # accept the personal workspace. A terminal attached to it does not enforce the lock
+        # (both measured on 0.168.0, 2026-11-13).
         self.process = subprocess.Popen(
-            [str(self.binary), "app-server", "--listen", "unix://" + str(self.socket)],
+            [str(self.binary), "app-server", "-c", 'forced_chatgpt_workspace_id=""',
+             "--listen", "unix://" + str(self.socket)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=dict(os.environ, CODEX_HOME=str(self.home)),
         )

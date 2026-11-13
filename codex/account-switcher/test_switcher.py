@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import launcher
 from policy import UsageUnavailable, choose, utilization
+from runtime import SOCKET
 from usage import handle_message, read_usage
 
 
@@ -86,6 +87,22 @@ class LauncherTest(unittest.TestCase):
              patch.object(launcher, "launch_automatic", return_value=0) as run:
             self.assertEqual(launcher.main(["--model", "chosen-model"]), 0)
         run.assert_called_once_with(["--model", "chosen-model"])
+
+    def test_automatic_session_runs_in_the_terminal_directory(self):
+        with patch("service.ensure", return_value={"active": "company"}), \
+             patch.object(launcher.os, "getcwd", return_value="/project"), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.launch_automatic(["resume", "--last"])
+        self.assertEqual(run.call_args.args[1][1:],
+                         ["--remote", "unix://" + str(SOCKET), "-C", "/project", "resume", "--last"])
+
+    def test_directory_given_by_the_user_is_kept(self):
+        with patch("service.ensure", return_value={"active": "company"}), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.launch_automatic(["--cd", "/chosen"])
+        self.assertEqual(run.call_args.args[1][1:], ["--remote", "unix://" + str(SOCKET), "--cd", "/chosen"])
 
     def test_management_after_global_options_is_recognized(self):
         self.assertFalse(launcher.interactive(["-c", "model=chosen", "login", "status"]))

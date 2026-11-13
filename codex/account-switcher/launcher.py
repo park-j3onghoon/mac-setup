@@ -96,7 +96,10 @@ def launch_automatic(arguments):
     print(f"[codex] {state['active']}; automatic switching enabled (90%, idle turns)",
           file=sys.stderr)
     environment = dict(os.environ, CODEX_HOME=str(RUNTIME))
-    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(SOCKET), *arguments],
+    # A remote terminal sends no directory unless told, and the thread then runs in the
+    # server's own directory (measured on 0.168.0, 2026-11-13).
+    directory = [] if any(arg.startswith(("-C", "--cd")) for arg in arguments) else ["-C", os.getcwd()]
+    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(SOCKET), *directory, *arguments],
               environment)
 
 
