@@ -26,6 +26,7 @@ mac-setup/
 │   ├── settings.json     # PyCharm 스타일, JDK 21, Kotlin/TS/Python 포매터, 파일 중첩 등
 │   ├── keybindings.json  # PyCharm 단축키 (Cmd+B 토글, Cmd+1/2/4 패널 토글, Cmd+Esc 등)
 │   └── extensions/       # 로컬 확장 소스 (goto-declaration-or-usages: Cmd+B 정의 ↔ 사용처). 설치는 setup-notes.md
+├── rancher/              # Rancher Desktop을 쉬는 동안 끄는 launchd 에이전트 (설치는 rancher/README.md)
 └── mac/
     ├── zshrc             # oh-my-zsh + 플러그인 + alias + PATH
     ├── zprofile          # brew shellenv
