@@ -4,6 +4,7 @@
 
 전부 **User-invoked** 다. 사람이 `/이름` 을 칠 때만 실행되고(`disable-model-invocation: true`), 모델이나 다른 스킬은 부를 수 없다.
 
+- **[ai-review](./ai-review/SKILL.md)**: PR을 위험도에 맞춘 리뷰어로 리뷰하고, 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다.
 - **[cso](./cso/SKILL.md)**: Read-only 보안 감사. 시크릿·공급망·CI/CD·OWASP·STRIDE를 훑어 exploitable한 발견만 보고서로 낸다.
 - **[grill](./grill/SKILL.md)**: 결정을 끝까지 캐묻는다. 사실은 내가 찾고, 갈림길만 라운드로 묶어 묻고, 합의된 결정을 decisions.md로 남긴다.
 - **[guard](./guard/SKILL.md)**: 이번 세션에 안전 모드를 건다. 위험 명령 경고 + 지정 디렉토리 밖 편집 확인. `off` 로 편집 제한을 푼다.

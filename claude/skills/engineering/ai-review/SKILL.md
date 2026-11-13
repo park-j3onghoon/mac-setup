@@ -1,0 +1,74 @@
+---
+name: ai-review
+description: PR을 위험도에 맞춘 리뷰어로 리뷰하고, 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다.
+disable-model-invocation: true
+argument-hint: "[PR URL]"
+---
+
+## 1. 리뷰 준비
+
+코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 결과는 3단계의 초안과 4단계의 한 줄로만 낸다.
+
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 그 문서 리뷰 worktree 절의 worktree는 `git -C {클론} worktree add --detach {작업 디렉토리} origin/{head}`로 만들고, 이미 있으면 `git -C {작업 디렉토리} checkout --detach origin/{head}`로 최신 head에 맞춰 그대로 쓴다.
+
+→ 완료: 그 문서의 완료 기준을 만족했다.
+
+## 2. 문제 지점 찾기
+
+`~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 PR 제목·본문, 대상은 1단계의 작업 디렉토리다.
+
+→ 완료: 그 문서의 완료 기준을 만족했다.
+
+## 3. GitHub 리뷰 올리기
+
+2단계 이슈 리포트에서 남김을 뺀 발견으로 리뷰 한 건을 만들고, 승인받은 뒤 올린다.
+
+1. event와 달 발견을 정한다.
+   - CRITICAL 발견이 있으면 event는 `REQUEST_CHANGES`이고 CRITICAL 발견만 단다.
+   - CRITICAL 발견이 없으면 event는 `APPROVE`이고 INFO 발견을 모두 단다.
+   - 1단계에서 읽은 PR author의 login이 `gh api user --jq .login`과 같으면 event만 `COMMENT`로 바꾼다.
+   - PR 제목·본문이나 문서가 코드와 다르다는 발견은 머지 판단을 바꾸는 것만 단다.
+2. 자리를 정한다. 발견의 `file:line`이 가리키는 새 파일 줄이 1단계 diff 파일 hunk의 `+` 줄이나 문맥 줄이면 줄 코멘트로 단다. 줄 범위면 두 끝이 같은 hunk에 들 때 여러 줄 코멘트로 단다. 나머지 발견은 리뷰 본문 목록에 단다.
+3. `~/.claude/lib/document-tone.md`를 Read하고 그 어투로 줄 코멘트와 리뷰 본문을 쓴다. 발견 원문의 압축 용어(불변식, 필드명만 쓴 표현)는 풀어 쓴다.
+
+   줄 코멘트:
+
+   ```
+   [CRITICAL|INFO] {문제 한 문장}
+   {틀어지는 경우: 실제 값이 든 입력과 결과, 또는 근거 file:line}
+   {고칠 방법 한 문장}
+   ```
+
+   리뷰 본문:
+
+   ```
+   🤖 ai-review가 작성한 리뷰입니다.
+   CRITICAL {x} · INFO {y}
+   <!-- (선택) event가 REQUEST_CHANGES일 때 -->
+   INFO는 CRITICAL을 고친 뒤 다시 리뷰할 때 답니다.
+   <!-- (선택) 리뷰 본문 목록에 단 발견이 있을 때 -->
+
+   - [CRITICAL|INFO] {file:line} · {설명}
+   ```
+
+   x·y는 이슈 리포트에서 남김을 뺀 CRITICAL·INFO 발견 수다.
+4. 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주고 AskUserQuestion으로 올릴지 묻는다. 고칠 곳을 답하면 고친 초안으로 다시 묻고, 보류하면 4단계로 건너뛴다.
+5. 올리기 직전에 `gh pr view {number} -R {owner}/{repo} --json state,headRefOid`를 읽는다.
+   - state가 `OPEN`이 아니면 4단계로 건너뛴다.
+   - headRefOid가 1단계의 대상 커밋과 다르면 `git -C {클론} fetch origin --quiet` 뒤 `git -C {클론} log --oneline {대상 커밋}..{headRefOid}`로 새 커밋을 보여 주고, 1단계부터 다시 리뷰할지 리뷰한 커밋에 그대로 올릴지 AskUserQuestion으로 묻는다.
+6. 리뷰를 `{스크래치}/review.json`으로 쓰고 올린다. 줄 코멘트는 `path`·`line`·`side: "RIGHT"`·`body`로 쓰고, 여러 줄 코멘트는 `start_line`·`start_side: "RIGHT"`를 더한다.
+
+   ```bash
+   # review.json = {"commit_id": "{대상 커밋}", "event": "{event}", "body": "{리뷰 본문}", "comments": [...]}
+   gh api -X POST repos/{owner}/{repo}/pulls/{number}/reviews --input {스크래치}/review.json --jq .html_url
+   ```
+
+   422로 거절되면 응답 메시지를 읽고 고쳐 다시 올린다. 줄을 찾지 못했다는 줄 코멘트는 리뷰 본문 목록으로 옮긴다. event를 거절하면 event를 `COMMENT`로 바꾸고 거절 이유를 4단계 출력 끝에 붙인다. 그 밖의 거절이면 멈추고 응답을 알린다.
+
+→ 완료: 승인받은 리뷰 한 건이 올라가 URL이 있고, 달 발견이 모두 줄 코멘트나 리뷰 본문 목록에 들었다. 또는 사용자가 보류했거나 state가 `OPEN`이 아니어서 4단계로 건너뛰었다.
+
+## 4. 마무리
+
+`git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지운 뒤, 마지막 출력으로 `{event} · CRITICAL {x} · INFO {y} · {리뷰 URL}` 한 줄만 낸다. 3단계에서 건너뛰었으면 `올리지 않음 · {사용자 보류 | PR {state}}` 한 줄을 낸다.
+
+→ 완료: 리뷰 worktree가 지워졌고 결과 한 줄을 냈다.
