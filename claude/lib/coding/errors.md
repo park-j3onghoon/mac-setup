@@ -1,5 +1,7 @@
 For Python code, also Read `~/.claude/lib/coding/errors-python.md`; for frontend code, `~/.claude/lib/coding/errors-frontend.md`.
 
+- Handle what can happen: add a fallback, null check or try/except only for a case the contract, a code path or measured data shows can occur, and let every other case raise.
+- Trust the contract: read a value the contract guarantees directly, so a broken contract raises where it breaks.
 - Exception classes: raise the class the project already has for the role (not found, not allowed, invalid argument, already exists), such as `NotFoundError` or `{Entity}NotFoundError`.
 - Access control vs business rule: an access-control failure raises the use case's not-allowed exception; a business-rule failure raises a domain exception.
 - Exception ownership: define an exception beside the rule that fails. A failure of business eligibility or invariants belongs in the domain; a failure of application coordination or execution preconditions belongs in the application. Classify by the meaning of the failed rule, not the exception's name or payload types.
@@ -7,7 +9,7 @@ For Python code, also Read `~/.claude/lib/coding/errors-python.md`; for frontend
 - Failure representation: do not turn a reachable validation or processing failure into a boolean, default or successful partial result that loses its cause or hides an incomplete result. Expected absence or a normal no-op may use an explicit ordinary result; not every branch needs an exception.
 - Not found: when existence is a precondition (`update`/`delete`), raise the not-found exception and keep the return type non-nullable; when the caller expects absence (`find`/`search`), return null.
 - Catch-all handlers return a fixed response and log the original error.
-- Unreachable branch: in a pure function, return a safe fallback with the comment `정상 경로 도달 불가: ...`; in an async or event handler, throw an error naming the branch (`unreachable: ...`).
+- Unreachable branch: cover only reachable cases; where the language or an exhaustive match needs a branch for an unreachable case, raise an error naming it (`unreachable: ...`).
 - Batch/loop failure aggregation: collect per-item failures and log once after the loop with the failure count and an id → message map; persist each failed item in a terminal state (run FAILED); in nested loops, aggregate per level (run loop, org loop); on exception, close a claimed item to a terminal state.
 - Message style: write English + resource name + id (`Campaign request not found: id=42`, `Campaign creative not found: campaign_id=7`). A domain error describes its rule without application workflow context; an application error may add safe context needed to understand or handle the scenario failure. Keep causes for diagnosis, expose only suitable details at presentation, and let the frontend map messages to Korean.
 - Timeouts: set explicit connect/read timeouts on every call to another system (HTTP, gRPC, SMTP).

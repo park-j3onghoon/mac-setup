@@ -2,11 +2,11 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
 
 ## 브랜치·커밋
 
-- 새 브랜치는 `teddy/` prefix로 만든다(예: `teddy/abc-123-fix-duplicate-mail`).
+- 브랜치·PR 관례가 있는 레포에서는 새 브랜치를 `teddy/` prefix로 만들고(예: `teddy/abc-123-fix-duplicate-mail`), 그런 관례가 없는 레포는 기본 브랜치 하나에 커밋한다.
 - commit·merge 전 `git branch --show-current`로 현재 브랜치를 확인한다.
 - 커밋은 새 커밋으로 쌓는다: amend·reset·rebase·squash 대신 새 커밋을 만들고, 이미 커밋한 파일을 되돌릴 때도 삭제를 새 커밋으로 남긴다.
-- 커밋 메시지·PR 제목·본문은 한글로 쓴다.
-- 커밋 전에 파일 목록과 커밋 메시지 안을 보여 주고, 승인받은 파일만 새 커밋으로 남긴다.
+- 커밋 메시지는 한글 한두 줄로, PR 제목·본문은 한글로 쓴다.
+- 커밋 전 검증을 통과하면 이번 범위의 파일만 새 커밋으로 남기고, 커밋 해시와 메시지를 결과에 적는다.
 - 코드 변경을 커밋하기 전에 `~/.claude/lib/coding/tests.md`를 Read하고 Before commit의 검증을 통과시킨다.
 - push 전에는 최종 커밋의 검증 결과를 확인하고, 검증 뒤 코드가 바뀌었으면 해당 검증을 다시 돌린다. 전체 스위트가 CI에서만 도는 레포는 그 사실을 적고 CI 결과를 게이트로 삼는다.
 

@@ -23,8 +23,9 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 - FE-BE 데이터 정합성: 응답 필드명/타입이 프론트 기대와 일치하는지.
 - proto ↔ cmd DTO 필드 매핑: `MessageToDict(request) → Cmd(**dict)` spread 패턴 사용 시, proto 메시지의 필드 구조와 cmd DTO 의 필드명/타입이 정확히 일치해야 함. proto 가 nested object (`customer: CustomerDetail`) 인데 cmd 가 lookup key (`customer_name: str`) 면 pydantic `extra='ignore'` 기본값에서 silent drop. proto + cmd 가 별도 PR/publish 일 때 publish 순서 의존성을 PR 본문에 머지 차단 조건으로 명시.
 
-## 4. 클린 코드 / 네이밍
+## 4. Simple Design / 네이밍
 
+- `~/Downloads/Obsidian Vault/Simple Design.md` 2절 체크리스트로 중복과 문법 요소를 판정한다.
 - `~/.claude/lib/coding/functions.md`·`~/.claude/lib/coding/file-layout.md`·`~/.claude/lib/coding/comments.md`·`~/.claude/lib/coding/naming.md`와 `~/.claude/lib/coding/design.md`의 DRY of knowledge·Abstraction discipline을 Read하고 그 규칙으로 판정한다.
 
 ## 5. YAGNI / 명시성
@@ -85,3 +86,5 @@ diff를 아래 카테고리별로 빠짐없이 검증한다.
 - [CRITICAL/INFO] file:line · 설명
 ```
 발견이 없으면 `PASS`, 이 diff와 무관한 카테고리면 `해당 없음` 한 줄.
+
+설명은 `~/Downloads/Obsidian Vault/Simple Design.md` 4절대로 쓴다.

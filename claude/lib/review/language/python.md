@@ -37,7 +37,7 @@
 ## Django 특화
 - ORM `.annotate()`에 새 필드를 더하면 결과 dict 키와 dataclass 필드 이름을 맞춘다.
 - 모델을 바꾸면 migration 파일을 같은 PR에 넣고 번호 순서를 맞춘다.
-- 다른 시스템이 발급한 id는 범위가 작은 정수 필드(`PositiveSmallIntegerField` 최대 65535, `PositiveIntegerField`) 대신 `BigIntegerField`에 저장한다.
+- 다른 시스템이 발급한 id를 저장하는 레포에서는 그 id를 범위가 작은 정수 필드(`PositiveSmallIntegerField` 최대 65535, `PositiveIntegerField`) 대신 `BigIntegerField`에 저장한다.
 - `.iterator()`는 무거운 엔티티를 대량 스캔하며 스트림으로 소비할 때만 쓴다. 결과를 바로 `list()`로 만들거나 청크로 바운드된 가벼운 projection(`values_list`)에 붙은 `.iterator()`는 지운다.
 - 예외를 응답으로 바꾸는 데코레이터는 변수에 담아 아래로 흘리는 대신 각 except 블록에서 바로 `return Response(...)`한다.
 - `bulk_create(update_conflicts=True)`로 행을 갱신하면 `auto_now` 필드(`updated_at`)에 값을 직접 넣고 `update_fields`에 넣으며, 그걸 확인하는 테스트를 둔다.
