@@ -1,27 +1,16 @@
 #!/usr/bin/env bash
-# CLAUDE.md ↔ AGENTS.md 페어의 섹션 구성이 같은지 본다(도구별 문장 차이는 허용).
+# Claude 진입 파일과 Codex 진입 파일이 같은 원본 하나를 가리키는지 본다.
 # 사용: bash scripts/check-pair.sh
 
 set -uo pipefail
-fail=0
 
-check() {
-  local a="$1" b="$2"
-  if [ ! -e "$a" ] || [ ! -e "$b" ]; then
-    echo "SKIP $a ↔ $b (없음)"; return
-  fi
-  local d
-  d=$(diff <(grep -E '^#{1,3} ' "$a") <(grep -E '^#{1,3} ' "$b"))
-  if [ -n "$d" ]; then
-    echo "DRIFT $a ↔ $b"; echo "$d" | sed 's/^/    /'; fail=1
-  else
-    local la lb
-    la=$(wc -l <"$a" | tr -d ' '); lb=$(wc -l <"$b" | tr -d ' ')
-    echo "OK $(basename "$(dirname "$a")")  섹션 일치 (${la}줄 / ${lb}줄)"
-  fi
-}
+real() { python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
 
-check "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"
-
-[ "$fail" -eq 0 ] && { echo "PASS"; exit 0; }
+claude=$(real "$HOME/.claude/CLAUDE.md")
+codex=$(real "$HOME/.codex/AGENTS.md")
+if [ -f "$claude" ] && [ "$claude" = "$codex" ]; then
+  echo "OK 같은 원본: $claude ($(wc -l <"$claude" | tr -d ' ')줄)"
+  echo "PASS"; exit 0
+fi
+echo "DRIFT ~/.claude/CLAUDE.md -> $claude, ~/.codex/AGENTS.md -> $codex"
 echo "FAIL"; exit 1
