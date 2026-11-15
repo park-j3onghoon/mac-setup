@@ -1,32 +1,16 @@
 For Python code, also Read `~/.claude/lib/coding/db-python.md`.
 
-## Types
+## Columns
 
 - `user_id` is int.
-- Use an enum for a column that holds a kind, state or mode.
 - Leave integer columns on the implicit default 0.
 - Time columns are `timestamp`.
 - Give varchar 20–30% headroom over the longest expected value.
-
-## Enum columns
-
-- Make the first enum value `''`. When `''` has a clearly useful meaning, name its member for that meaning (`UNKNOWN`, `ALL`) and keep it in the domain enum; otherwise name it `UNSPECIFIED`, leave it out of the domain enum, and have the repository map it to null for an optional field or reject it for a required one.
-
-## Charset
-
-- Use ascii by default and utf8mb4 only for columns that store Korean or other non-ASCII text.
-
-## Column order (top → bottom)
-
-- FK/relations to other tables → fact values → varchar/json.
-
-## Aggregate counters
-
-- Cache a counter only when an aggregate query is a measured problem on production data: update it at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
-
-## updated_at
-
-- Leave `updated_at` to the DDL `ON UPDATE CURRENT_TIMESTAMP`: when a change relies on it, confirm it in the live table DDL (the DBA applies it outside migrations), on a legacy table by checking staging `information_schema.COLUMNS.EXTRA` for `on update CURRENT_TIMESTAMP`; set it by hand only on a legacy table without it.
+- Enum columns: make the first enum value `''`. When `''` has a clearly useful meaning, name its member for that meaning (`UNKNOWN`, `ALL`) and keep it in the domain enum; otherwise name it `UNSPECIFIED`, leave it out of the domain enum, and have the repository map it to null for an optional field or reject it for a required one.
+- Charset: use ascii by default and utf8mb4 only for columns that store Korean or other non-ASCII text.
+- Column order (top → bottom): FK/relations to other tables → fact values → varchar/json.
+- Aggregate counters: cache a counter only when an aggregate query is a measured problem on production data; update it at write time and read only the counter, e.g. progress = `total_count` (fixed at run start) / `completed_count` (incremented per item).
+- `updated_at`: leave it to the DDL `ON UPDATE CURRENT_TIMESTAMP`; when a change relies on it, confirm it in the live table DDL (the DBA applies it outside migrations), on a legacy table by checking staging `information_schema.COLUMNS.EXTRA` for `on update CURRENT_TIMESTAMP`; set it by hand only on a legacy table without it.
 
 ## Transactions and locks
 

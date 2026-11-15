@@ -7,13 +7,12 @@ allowed-tools:
   - Bash(bash ${CLAUDE_SKILL_DIR}/restart.sh *)
 ---
 
+인자에서 `--tab`·`--model`·`--effort`를 떼고 남은 글을 첫 프롬프트로 쓴다. 남은 글이 없으면 이 대화에서 마지막으로 안내한 다음 단계를 쓰고, 그것도 없으면 AskUserQuestion으로 무엇을 실행할지 묻는다.
+
 Codex에서 실행하면 `~/.claude/skills/refresh-session/codex.md`를 Read하고 그 절차를 수행한다. Claude Code에서는 아래 절차를 수행한다.
 
 ## 1. 값 확정
 
-인자에서 `--tab`·`--model`·`--effort`를 떼고, 남은 글을 첫 프롬프트로 쓴다.
-
-- 첫 프롬프트: 남은 글이 없으면 이 대화에서 마지막으로 안내한 다음 단계 명령을 쓴다. 그것도 없으면 AskUserQuestion으로 무엇을 실행할지 묻는다.
 - 첫 프롬프트에는 슬래시 명령을 하나만 둔다. 한 입력에 둘이 있으면 Claude Code가 둘 다 실행한다.
 - 첫 프롬프트가 슬래시 명령이 아니면, 새 세션이 이 대화 없이 시작할 수 있게 읽을 파일의 절대경로를 프롬프트에 넣는다.
 - 모델: `--model` 값, 없으면 이 세션 모델의 별칭(`opus`·`sonnet`·`haiku`·`fable`)을 쓴다.
@@ -26,7 +25,7 @@ Codex에서 실행하면 `~/.claude/skills/refresh-session/codex.md`를 Read하�
 
 ## 2. 새 탭
 
-아래를 Bash 한 번으로 실행한다. 스크립트가 새 탭에서 칠 명령을 클립보드에 넣고 그 명령을 출력한다. 이 세션은 그대로 둔다. {첫 프롬프트} 안의 `'`는 `'\''`로 바꾼다.
+아래를 Bash 한 번으로 실행한다. 이 세션은 그대로 둔다. {첫 프롬프트} 안의 `'`는 `'\''`로 바꾼다.
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/restart.sh tab '{디렉토리}' '{모델}' '{effort}' '{권한 모드}' '{첫 프롬프트}'
@@ -38,7 +37,7 @@ bash ${CLAUDE_SKILL_DIR}/restart.sh tab '{디렉토리}' '{모델}' '{effort}' '
 
 ## 3. 재시작
 
-아래를 Bash 한 번으로 실행한다. 스크립트가 `claude agents` 목록에서 이 세션의 종류를 보고, 지금 Claude Code를 끈 뒤 설치된 최신 버전으로 첫 프롬프트를 실행한다. `"$PPID"`는 이 세션의 Claude Code 프로세스다. {첫 프롬프트} 안의 `'`는 `'\''`로 바꾼다.
+아래를 Bash 한 번으로 실행한다. `"$PPID"`는 이 세션의 Claude Code 프로세스다. {첫 프롬프트} 안의 `'`는 `'\''`로 바꾼다.
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/restart.sh restart '{디렉토리}' '{모델}' '{effort}' '{권한 모드}' "$PPID" '{첫 프롬프트}'

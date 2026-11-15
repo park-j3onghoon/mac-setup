@@ -1,5 +1,4 @@
 - 새 consumer에는 lag을 재는 메트릭과 알람을 단다.
 - consumer는 메시지마다 DB에 쓰거나 다른 시스템을 부르는 대신 여러 메시지를 묶어 처리한다.
 - 트랜잭션 producer가 쓰는 토픽을 읽는 consumer는 `isolation.level=read_committed`로 둔다.
-- Kafka 클라이언트는 저장소가 이미 쓰는 라이브러리를 쓴다.
 - producer의 `linger.ms`·`batch.size`를 바꾸면 그 값을 정한 처리량·지연 목표를 PR에 적는다.

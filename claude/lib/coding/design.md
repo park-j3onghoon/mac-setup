@@ -1,8 +1,7 @@
 - YAGNI: before writing code, confirm the task needs it and solve the problem the task has rather than a hypothetical one; change only what the task asks, leaving session handling, convenience features and style tweaks nobody asked for out of the change; add a user-facing safeguard only with a PRD/design basis or to prevent irreversible user loss.
-- KISS: when a change is done, its syntax elements and duplications have gone down or stayed the same, and distinctions that are not essential are merged into one rule.
-- DRY of knowledge: give every fact or decision one source of truth in the layer and module that own it; for domain rules, check entity/value-object ownership before a separate domain service. Remove code duplication as sections 1 and 3 of `~/Downloads/Obsidian Vault/Simple Design.md` say.
+- DRY of knowledge: give every fact or decision one source of truth in the layer and module that own it; for domain rules, check entity/value-object ownership before a separate domain service.
 - Server decides: the server makes decisions and the client applies them; send the resulting state instead of a signal that something changed.
 - Abstraction discipline: extracting shared code early for a planned later PR is allowed; keep a function with one call site when it is the single defence point (encapsulating an unsafe cast, a drift guard); in doubt, keep it local.
-- Reuse general models: hold a new case in an existing general model with a kind or state field instead of a new narrow-role model.
+- Reuse what exists: before designing a new method, query or helper, use an existing repository method, function, entity or decorator that already does the job; hold a new case in an existing general model with a kind or state field instead of a new narrow-role model.
 - Official way: use the documented, recommended way of the framework or tool, deploy scripts included; when it fails, find why and make the documented way work instead of working around it.
 - Only when needed: optimize only a problem measured on real data; make concurrent or repeated runs safe through idempotency, and take locks as `~/.claude/lib/coding/db.md` Transactions and locks says.

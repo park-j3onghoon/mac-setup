@@ -1,4 +1,4 @@
-부른 쪽이 정한 작업 디렉토리·브랜치·`{owner}/{repo}`·PR 번호와 작성자를 쓴다.
+대상은 현재 작업 디렉토리의 브랜치다. 그 절대경로를 적어 두고 git 명령은 `git -C {작업 디렉토리}`로 부르며, `git -C {작업 디렉토리} branch --show-current`·`git -C {작업 디렉토리} status --short --branch`·`gh repo view --json nameWithOwner -q .nameWithOwner`·`gh pr list --head {브랜치} --json number,url,author`로 브랜치·`{owner}/{repo}`·PR 번호와 작성자를 정한다.
 
 ## push
 

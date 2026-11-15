@@ -26,5 +26,5 @@ Place each check on the rung below, in simple CRUD too.
 
 1. Type and format → entrypoint; (de)serialize here and keep the request's JSON and HTTP objects inside the entrypoint.
 2. Single-value invariant → value object constructor.
-3. Business eligibility or invariant over several objects' state → domain behaviour: a `can_*()` query or a guard that raises a domain exception. The use case may handle or contextualize it according to `errors.md`; presentation maps the exposed failure to the transport status.
-4. Application execution precondition → use case: keep the application's coordination rules and their exceptions here. Business eligibility and invariants remain in the domain, regardless of how many objects or operations they involve.
+3. Business eligibility or invariant over several objects' state → domain behaviour: a `can_*()` query or a guard that raises a domain exception. The use case may handle or contextualize it as `~/.claude/lib/coding/errors.md` Handling policy says; presentation maps the exposed failure to the transport status.
+4. Application execution precondition → use case: keep the application's coordination rules and their exceptions here.

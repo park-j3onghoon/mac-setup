@@ -1,2 +1,3 @@
 - Functions and methods start with a verb: a conversion function may take the Python `to_X` form instead (`to_dict`, `to_entity`, `_to_order_entity`).
-- Intention-revealing, searchable names: `Decimal('0')` is a bare value.
+- Model field names follow the DB column names; name every enum column `{enum_type}_type`.
+- Enum naming: model enum without suffix (`LoanStatus`) vs domain enum with a `Type` suffix (`LoanStatusType`).

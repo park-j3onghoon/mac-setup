@@ -2,14 +2,6 @@
 
 Codex에서는 작업 전에 `~/.claude/lib/codex.md`와 이 파일의 `@` 줄이 가리키는 파일을 Read하고 따른다.
 
-일할 때는 아래 규칙을 따른다.
-
 @~/.claude/lib/work-style.md
-
-사용자에게 답할 때는 아래 규칙을 따른다.
-
 @~/.claude/lib/answer-style.md
-
-회사 업무에는 아래 회사 전용 지침도 따른다.
-
 @~/.claude/instructions/company.md

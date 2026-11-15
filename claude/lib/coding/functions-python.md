@@ -1,6 +1,3 @@
-- Local variables decide a nested call too: `return ResponseDTO(**repo.create(entity).dict())`.
 - Comprehensions: keep each to one `for` clause and at most one `if` filter, and write a loop or a named function when it needs more.
-- Falsy sentinel for absent scalars: when falsy means "no filter", use `search_id: int = 0`, `search_name: str = ''`.
-- Explicit fields after a spread: `Entity(**{**request_dto.dict(), 'explicit_field': value})`.
-- Immutable copy: `dict(input)` + the modification.
+- Falsy sentinel for absent scalars: when falsy means "no filter", use `branch_id: int = 0`, `title_query: str = ''`.
 - Use case form: a use case is by default a handler function that takes the command and its dependencies (`def register_card(cmd, uow, payment_gateway)`); in a project that writes UseCase classes (`MonthlyReportUseCase`), make an externally called method public and an internal one a private instance method, use a public `@staticmethod` only for pure state-independent computation and no private classmethod/staticmethod, and keep all private methods of one class the same kind; make a state-holding builder a class (`ReportTree`); services and utils may be module functions (`resolve_report_scope`, `build_report_tree`, `_parse_date_window`).
