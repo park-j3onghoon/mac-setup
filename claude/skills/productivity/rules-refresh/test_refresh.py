@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 SPEC = importlib.util.spec_from_file_location('refresh', Path(__file__).with_name('refresh.py'))
@@ -142,7 +143,7 @@ class RefreshTest(unittest.TestCase):
                          {'files': 2, 'sections': 2, 'rules': 4, 'duplicates': 1})
         self.assertEqual(result['code'], {'files': 1, 'lines': 2})
 
-    def test_replay_check_reports_pinned_head_and_reads_outside_the_run(self):
+    def test_replay_check_reports_pinned_head_and_outside_reads_from_unterminated_and_cut_off_transcripts(self):
         source = self.root / 'source'
         subprocess.run(['git', 'init', '-q', str(source)], check=True)
         for name in ('one', 'two'):
@@ -166,13 +167,27 @@ class RefreshTest(unittest.TestCase):
                 {'tool_use_id': 't2', 'tool_name': 'Read', 'tool_input': {'file_path': home_plans}},
                 {'tool_use_id': 's9', 'tool_name': 'WebFetch', 'tool_input': {'url': 'https://api.github.com/x'}}]},
         ]
-        transcript = self.write('transcript.jsonl', '\n'.join(json.dumps(e) for e in events) + '\n')
+        lines = '\n'.join(json.dumps(e) for e in events)
+        transcript = self.write('transcript.jsonl', lines)
         check = refresh.check_replay(transcript, refresh.HOME / 'plans/run', isolated, head, source)
         self.assertEqual((check['head_pinned'], check['refs'], check['commits_outside_head'], check['clone_history_matches']),
                          (True, [], 0, True))
         self.assertEqual(sorted((a['tool'], a['blocked']) for a in check['forbidden_attempts']),
                          [('Grep', False), ('Read', True), ('WebFetch', True)])
         self.assertEqual(check['forbidden_succeeded'], 1)
+        transcript.write_bytes((lines + '\n{"type": "assistant", "message": {"content": [{"text": "한').encode()[:-1])
+        self.assertEqual(refresh.check_replay(transcript, refresh.HOME / 'plans/run', isolated, head, source), check)
+
+    def test_headless_run_passes_the_wait_setting_and_stops_claude_at_the_time_limit(self):
+        fake = self.write('claude', '#!/bin/sh\necho "wait=$CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"\n'
+                                    '[ "$2" = slow ] && exec sleep 30\nexit 7\n')
+        fake.chmod(0o755)
+        transcript = self.root / 'transcript.jsonl'
+        with mock.patch.object(refresh, 'CLAUDE', fake):
+            self.assertEqual(refresh.run_headless('fast', 'Read', ['Agent'], ['WebFetch'], self.root, transcript), 7)
+            self.assertEqual(transcript.read_text(), 'wait=0\n')
+            with mock.patch.object(refresh, 'HEADLESS_TIMEOUT_HOURS', 0.0003):
+                self.assertIsNone(refresh.run_headless('slow', 'Read', ['Agent'], ['WebFetch'], self.root, transcript))
 
 
 if __name__ == '__main__':

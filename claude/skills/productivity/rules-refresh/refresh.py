@@ -86,6 +86,7 @@ REPLAY_PROMPT = (
 )
 REPLAY_FORBIDDEN_TOOLS = {'Bash', 'WebFetch', 'WebSearch'}
 HEADLESS_MODEL = ('--model', 'opus', '--effort', 'xhigh')
+HEADLESS_TIMEOUT_HOURS = 6
 
 
 def main():
@@ -532,12 +533,7 @@ def replay_review(case, out, rules):
     if rules:
         denied += [f'Read({root}/lib/review/**)' for root in ('~/.claude', '~/git/mac-setup/claude')]
     transcript = out / 'transcript.jsonl'
-    with transcript.open('w') as stream:
-        code = subprocess.run([str(CLAUDE), '-p', prompt, *HEADLESS_MODEL, '--setting-sources', 'local', '--strict-mcp-config',
-                               '--no-chrome', '--permission-mode', 'dontAsk', '--tools', 'Read,Grep,Glob,Agent,Write',
-                               '--allowedTools', *allowed, '--disallowedTools', *denied,
-                               '--output-format', 'stream-json', '--verbose'],
-                              cwd=out, env=headless_env(), stdout=stream, stderr=subprocess.STDOUT).returncode
+    code = run_headless(prompt, 'Read,Grep,Glob,Agent,Write', allowed, denied, out, transcript)
     check = check_replay(transcript, out, isolated, head, clone)
     check.update({'exit': code, 'base': base, 'result': str(result), 'result_written': result.is_file()})
     check_file.write_text(json.dumps(check, ensure_ascii=False, indent=1))
@@ -560,8 +556,14 @@ def rules_copy(rules, out):
 
 def check_replay(transcript, out, isolated, head, clone):
     calls, denials = {}, []
-    for line in transcript.read_text(encoding='utf-8').split('\n'):
-        event = json.loads(line) if line.startswith('{') else {}
+    *lines, last = transcript.read_bytes().split(b'\n')
+    events = [json.loads(line) for line in lines if line.startswith(b'{')]
+    if last.startswith(b'{'):
+        try:  # claude killed at run_headless's time limit can leave its last line cut, even inside a UTF-8 character
+            events.append(json.loads(last))
+        except ValueError:
+            pass
+    for event in events:
         if event.get('type') == 'assistant':
             calls.update({block['id']: block for block in event['message']['content'] if block.get('type') == 'tool_use'})
         if event.get('type') == 'result':
@@ -595,26 +597,17 @@ def forbidden_call(call, out):
     return any(not path.replace('~', str(HOME), 1).startswith(str(out)) for path in paths)
 
 
-def headless_env():
-    path = f'{HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
-    return {'HOME': str(HOME), 'USER': os.environ.get('USER', HOME.name), 'PATH': path, 'SHELL': '/bin/bash',
-            'LANG': 'ko_KR.UTF-8', 'TMPDIR': os.environ.get('TMPDIR', '/tmp')}
-
-
 def run_periodic():
     started = datetime.datetime.now()
     run_dir = NOTES / 'runs' / started.strftime('%Y%m%d-%H%M%S')
     run_dir.mkdir(parents=True, exist_ok=True)
     head, protected = git(REPO, 'rev-parse', 'HEAD').strip(), protected_digest()
-    with (run_dir / 'transcript.jsonl').open('w') as stream:
-        code = subprocess.run([str(CLAUDE), '-p', PERIODIC_PROMPT, *HEADLESS_MODEL, '--setting-sources', 'local', '--strict-mcp-config',
-                               '--no-chrome', '--permission-mode', 'dontAsk',
-                               '--tools', 'Read,Grep,Glob,Edit,Write,Bash,Agent',
-                               '--allowedTools', 'Agent', *(f'Read({p})' for p in READABLE),
-                               *(f'Edit({p})' for p in EDITABLE), *PERIODIC_COMMANDS,
-                               '--disallowedTools', *PERIODIC_DENIED, '--output-format', 'stream-json', '--verbose'],
-                              cwd=REPO, env=headless_env(), stdout=stream, stderr=subprocess.STDOUT).returncode
+    code = run_headless(PERIODIC_PROMPT, 'Read,Grep,Glob,Edit,Write,Bash,Agent',
+                        ['Agent', *(f'Read({p})' for p in READABLE), *(f'Edit({p})' for p in EDITABLE), *PERIODIC_COMMANDS],
+                        PERIODIC_DENIED, REPO, run_dir / 'transcript.jsonl')
     problems = run_problems(head, protected, started.timestamp())
+    if code is None:
+        problems.insert(0, f'{HEADLESS_TIMEOUT_HOURS}시간 안에 끝나지 않아 claude를 멈춤')
     report = latest_report(started.timestamp())
     if report is None:
         problems.append('리포트 없음')
@@ -623,6 +616,27 @@ def run_periodic():
     notify(f'규칙 갱신 종료 코드 {final}', f'{message} · 기록 {run_dir}')
     (run_dir / 'exit-code').write_text(f'{final}\n')
     return final
+
+
+def run_headless(prompt, tools, allowed, denied, cwd, transcript):
+    """Return claude -p's exit code, or None when it was killed after HEADLESS_TIMEOUT_HOURS."""
+    command = [str(CLAUDE), '-p', prompt, *HEADLESS_MODEL, '--setting-sources', 'local', '--strict-mcp-config', '--no-chrome',
+               '--permission-mode', 'dontAsk', '--tools', tools, '--allowedTools', *allowed, '--disallowedTools', *denied,
+               '--output-format', 'stream-json', '--verbose']
+    with transcript.open('w') as stream:
+        try:
+            return subprocess.run(command, cwd=cwd, env=headless_env(), stdin=subprocess.DEVNULL, stdout=stream,
+                                  stderr=subprocess.STDOUT, timeout=HEADLESS_TIMEOUT_HOURS * 3600).returncode
+        except subprocess.TimeoutExpired:
+            return None
+
+
+def headless_env():
+    path = f'{HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    # Print mode stops background subagents still running 10 minutes after the last turn, so a run that ends its turn
+    # to wait for them exits without their results; 0 waits for them, and run_headless kills claude at its time limit.
+    return {'HOME': str(HOME), 'USER': os.environ.get('USER', HOME.name), 'PATH': path, 'SHELL': '/bin/bash',
+            'LANG': 'ko_KR.UTF-8', 'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
 
 
 def latest_report(since):
