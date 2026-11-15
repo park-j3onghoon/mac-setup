@@ -16,7 +16,7 @@ import time
 
 from api import Anthropic
 from compatibility import FAILURE as COMPATIBILITY_FAILURE
-from macos import Keychain, KeychainError, Vault
+from macos import Keychain, KeychainError, Vault, system_awake
 from measurement import Measurement, observe, summarize
 from monitoring import review_if_due, start as start_monitoring
 from refresh import record_switch
@@ -99,9 +99,16 @@ def show_status(state):
                       'monitoring': state.load('monitoring')}, indent=2))
 
 
-def halts_keychain_work(exc):
-    """A failed Keychain read can mean a prompt in every Claude session; never retry it on a timer."""
-    return isinstance(exc, KeychainError) or str(exc) == COMPATIBILITY_FAILURE
+def halts_keychain_work(exc, awake=system_awake):
+    """A failed Keychain read can mean a prompt in every Claude session; never retry it on a timer.
+
+    The compatibility check also fails when it runs in a dark wake: on 2026-11-14 14:37 the
+    first check of a freshly updated Claude Code ran one second into a lid-closed wake, with no
+    prompt (no SecurityAgent), and halted the service for a day. That case retries instead.
+    """
+    if isinstance(exc, KeychainError):
+        return True
+    return str(exc) == COMPATIBILITY_FAILURE and awake()
 
 
 def tick_once(app, apply, last_outcome):
