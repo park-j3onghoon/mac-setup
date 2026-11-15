@@ -18,6 +18,16 @@ class KeychainError(RuntimeError):
     pass
 
 
+def system_awake(runner=subprocess.run):
+    """False in a dark wake: a lid-closed maintenance wake runs without graphics."""
+    try:
+        result = runner(['/usr/bin/pmset', '-g', 'systemstate'], capture_output=True, text=True,
+                        timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return 'Graphics' in result.stdout
+
+
 class DictionaryKeyCallbacks(C.Structure):
     _fields_ = [('version', C.c_long), ('retain', C.c_void_p),
                 ('release', C.c_void_p), ('describe', C.c_void_p),

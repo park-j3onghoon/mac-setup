@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 from compatibility import FAILURE
 from helpers import make_app
-from macos import KeychainError
+from macos import KeychainError, system_awake
 from storage import SwitcherError
 from refresh import switch_pending
 from switcher import (HALT_POLL_SECONDS, halts_keychain_work, record_if_switched,
@@ -25,9 +25,29 @@ class KeychainHaltRuleTests(unittest.TestCase):
     def test_compatibility_failure_halts(self):
         """호환성 검사는 Claude Code로 로그인 정보를 읽으므로, 실패하면 같은 이유로 멈춘다."""
         # when
-        halted = halts_keychain_work(SwitcherError(FAILURE))
+        halted = halts_keychain_work(SwitcherError(FAILURE), awake=lambda: True)
         # then
         self.assertTrue(halted)
+
+    def test_compatibility_failure_during_dark_wake_keeps_retrying(self):
+        """뚜껑을 닫은 채 잠깐 깬 다크 웨이크(그래픽 없음)에서 난 호환성 검사 실패는 승인창과 무관해 멈추지 않고 다음 주기에 다시 검사한다."""
+        # when
+        halted = halts_keychain_work(SwitcherError(FAILURE), awake=lambda: False)
+        # then
+        self.assertFalse(halted)
+
+    def test_dark_wake_is_read_from_the_system_capabilities(self):
+        """pmset이 알려 주는 시스템 기능에 Graphics가 없으면 다크 웨이크로 본다."""
+        # given
+        cases = (('Current System Capabilities are: CPU Graphics Audio Network', True),
+                 ('Current System Capabilities are: CPU Network', False))
+        for output, expected in cases:
+            with self.subTest(output=output):
+                runner = Mock(return_value=Mock(returncode=0, stdout=output))
+                # when
+                awake = system_awake(runner)
+                # then
+                self.assertEqual(awake, expected)
 
     def test_unrelated_switcher_error_keeps_retrying(self):
         """키체인과 무관한 오류(다른 계정으로 로그인됨 등)는 다음 주기에 다시 시도한다."""
