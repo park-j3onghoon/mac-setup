@@ -27,8 +27,8 @@ argument-hint: "[계획 파일 경로]"
 
 스코프는 아래 기준으로 하나를 골라, 고른 것과 이유를 한 줄로 알린다.
 - SCOPE REDUCTION: 계획이 목표 달성에 필요 없는 파일·함수까지 바꿀 때. 줄인 계획을 제안해 승인받은 뒤 BIG CHANGE 또는 SMALL CHANGE로 재진입
-- SMALL CHANGE: 3줄 이하 수정. Agent 없이 직접 리뷰. 차원당 이슈 1개만 선택지와 추천 이유를 붙인 3단계 응답 형식으로, 나머지는 한 줄 요약으로 쓴다
-- BIG CHANGE: 그 밖의 계획. 차원별 Agent 병렬 리뷰. 차원당 이슈 4개까지는 선택지와 추천 이유를 붙인 3단계 응답 형식으로, 나머지는 한 줄 요약으로 쓴다
+- SMALL CHANGE: 3줄 이하 수정
+- BIG CHANGE: 그 밖의 계획
 
 이후 모든 이슈는 그 스코프 안에서 낸다.
 
@@ -48,18 +48,7 @@ argument-hint: "[계획 파일 경로]"
 
 ## 3. 리뷰 실행
 
-### 추천 기준
-
-이슈마다 선택지를 비교해 추천안을 아래 순서로 고르고, 이유에 갈린 기준을 쓴다. 위에 있는 기준이 먼저다.
-
-1. Prefer the option whose worst-case failure reaches the fewest users, rows or services, and name that reach in the reason.
-2. A plan step that needs a person to run, watch or repair something by hand in production is itself an issue; prefer the option that handles it automatically (an idempotent rerun, a retry, an alert).
-3. Prefer a library or service the repository already uses; recommend a new one only when none of them does the job, and name the ones checked.
-4. When options still tie, prefer the one that changes fewer files.
-
-### BIG CHANGE: 차원별 Agent 병렬
-
-ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
+BIG CHANGE면 ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. 이슈를 사용자에게 제시할 때는 `~/.claude/lib/answer-style.md`를 Read해 그 규칙대로 쓴다. 각 프롬프트에 넣을 것:
 1. 계획 전문
 2. "`~/.claude/skills/plan-review/{그 차원의 참고 파일}`을 Read하고 그 기준으로 계획을 훑어라". 경로는 2단계 목록에서 골라 그대로 적는다
 3. "`~/.claude/lib/coding/index.md`를 Read하고 그 목록에서 계획이 닿는 모듈을 Read해 그 규칙으로 판단하라"
@@ -75,11 +64,21 @@ ACTIVE 차원마다 Agent를 하나의 메시지에서 동시에 스폰한다. �
   → B 추천. 이유: {추천 기준 연결}
 ```
 
-### SMALL CHANGE: 인라인
+SMALL CHANGE면 Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 목록에서 계획이 닿는 모듈을 직접 Read하고, 추천안은 추천 기준 절로 고른다. 차원마다 이슈 1개는 응답 형식으로, 나머지는 `[Issue {번호}] {한 줄 요약}`으로 쓰고, 번호는 2단계의 머리글자로 매겨 한 번에 제시한다.
 
-Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 목록에서 계획이 닿는 모듈을 직접 Read하고, 추천안은 추천 기준 절로 고른다. 차원마다 이슈 1개는 응답 형식으로, 나머지는 `[Issue {번호}] {한 줄 요약}`으로 쓰고, 번호는 2단계의 머리글자로 매겨 한 번에 제시한다.
+시스템·데이터 레벨 이슈는 통합 결과에 제목만 적고 한 턴에 하나씩 묻는다. 사용자가 이슈 원문을 보지 못했다고 가정하고 설명한다.
 
-→ 완료: 통합 결과를 제시했고, 코드 레벨 이슈는 추천안을 반영 목록에 넣었고, 시스템·데이터 레벨 이슈가 있으면 AskUserQuestion 1회로 반영 여부를 받았다.
+### 추천 기준
+
+이슈마다 선택지를 비교해 추천안을 아래 순서로 고르고, 이유에 갈린 기준을 쓴다. 위에 있는 기준이 먼저다.
+
+1. 일정을 늘리는 품질 작업은 추천하지 않고, 품질 지적에는 그 작업이 다음 변경을 어떻게 빠르게 하는지 적는다.
+2. Prefer the option whose worst-case failure reaches the fewest users, rows or services, and name that reach in the reason.
+3. A plan step that needs a person to run, watch or repair something by hand in production is itself an issue; prefer the option that handles it automatically (an idempotent rerun, a retry, an alert).
+4. Prefer a library or service the repository already uses; recommend a new one only when none of them does the job, and name the ones checked.
+5. When options still tie, prefer the one that changes fewer files.
+
+→ 완료: 통합 결과를 제시했고, 코드 레벨 이슈는 추천안을 반영 목록에 넣었고, 시스템·데이터 레벨 이슈가 있으면 이슈마다 반영 여부를 받았다.
 
 ## 4. 종합 산출물
 
@@ -114,13 +113,12 @@ Agent 없이 ACTIVE 차원의 참고 파일과, `~/.claude/lib/coding/index.md` 
 
 SMALL CHANGE면 건너뛰고 7단계로 간다. BIG CHANGE면 `~/.claude/lib/cross-check.md`를 Read하고, 지금 에이전트에 맞는 절의 diff가 없는 파일 적대 검증 행을 5단계에서 쓴 `plan.md`의 절대경로로 실행한다. 작업 지시 끝에 "이 계획이 실제 운영에서 어떻게 깨질 수 있는지, 필요한 전제가 성립하지 않을 때 어떤 위험이 있는지 짚어라"를 더한다. 계획에 대응하는 git diff가 이미 있으면 그 diff가 체크아웃된 경로를 대상 경로로, 같은 문장을 리뷰 초점으로 넣은 diff 적대 검증 행을 쓴다. 실행·회수, 멈추거나 실패한 실행의 대체, 결과 취급도 그 문서를 따른다.
 
-발견을 3단계의 응답 형식으로 옮겨 `[Issue X1] ({검증한 AI}) {문제 요약}`부터 번호를 매긴다. 선택지와 추천은 내가 붙이고, 3단계에서 이미 다룬 이슈와 같으면 그 번호를 적는다. 그 목록을 보여 준 뒤 코드 레벨 이슈는 추천안대로 Edit로 `plan.md`에 반영한다. 시스템·데이터 레벨 이슈가 있으면 AskUserQuestion 1회로 처리를 받는다:
-- A) 제기된 이슈를 전부 Edit로 `plan.md`에 반영 → 7단계
-- B) 사용자가 지정한 일부만 반영 → 7단계
-- C) 원안대로 진행 → 7단계
-- D) 설계 재검토 → 1단계나 3단계로 되돌림
+발견을 3단계의 응답 형식으로 옮겨 `[Issue X1] ({검증한 AI}) {문제 요약}`부터 번호를 매긴다. 선택지와 추천은 내가 붙이고, 3단계에서 이미 다룬 이슈와 같으면 그 번호를 적는다. 그 목록을 보여 준 뒤 코드 레벨 이슈는 추천안대로 Edit로 `plan.md`에 반영한다. 시스템·데이터 레벨 이슈는 3단계처럼 한 턴에 하나씩 묻고, 이슈마다 아래 가운데 하나를 받는다. C를 받으면 바로 되돌리고, 그 밖에는 다 받은 뒤 7단계로 간다.
+- A) Edit로 `plan.md`에 반영
+- B) 원안대로 진행
+- C) 설계 재검토 → 1단계나 3단계로 되돌림
 
-→ 완료: SMALL CHANGE라 건너뛰었거나, 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈추거나 실패한 실행을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, 코드 레벨 이슈가 반영됐고, 시스템·데이터 레벨 이슈가 있었으면 A~D 중 하나를 받았다.
+→ 완료: SMALL CHANGE라 건너뛰었거나, 발견이 빠짐없이 이슈 목록으로 제시됐고, 멈추거나 실패한 실행을 자체 적대 점검으로 대체했다면 그 사실을 알렸고, 코드 레벨 이슈가 반영됐고, 시스템·데이터 레벨 이슈가 있었으면 이슈마다 A~C 중 하나를 받았다.
 
 ## 7. 마감
 

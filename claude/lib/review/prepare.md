@@ -22,7 +22,7 @@ git -C {클론} fetch origin --quiet
 
 ## 3. 리뷰 worktree
 
-경로는 `{클론}/.claude/worktrees/review-{number}`이고, 이 경로가 작업 디렉토리다. 만드는 명령은 호출한 쪽이 정한다.
+경로는 `{클론}/.claude/worktrees/review-{number}`이고, 이 경로가 작업 디렉토리다. `git -C {클론} worktree add --detach {작업 디렉토리} origin/{head}`로 만들고, 이미 있으면 `git -C {작업 디렉토리} checkout --detach origin/{head}`로 최신 head에 맞춘다. 호출한 쪽이 다른 명령을 정했으면 그 명령을 쓴다.
 
 → 완료: 작업 디렉토리 절대경로가 정해졌고 그 경로에 리뷰 worktree가 있다.
 

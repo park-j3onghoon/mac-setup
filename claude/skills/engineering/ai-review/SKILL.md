@@ -9,7 +9,7 @@ argument-hint: "[PR URL]"
 
 코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 스코프 체크·보안 레벨·이슈 리포트는 3단계 초안으로만 보여 준다.
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 그 문서 리뷰 worktree 절의 worktree는 `git -C {클론} worktree add --detach {작업 디렉토리} origin/{head}`로 만들고, 이미 있으면 `git -C {작업 디렉토리} checkout --detach origin/{head}`로 최신 head에 맞춰 그대로 쓴다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다.
 
 → 완료: 그 문서의 완료 기준을 만족했다.
 

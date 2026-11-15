@@ -28,6 +28,4 @@ DEBUG REPORT
 
 원인 구조가 복잡해 그림이 있어야 전달되면 `~/.claude/lib/explain-html.md`를 Read해 같은 내용을 HTML 해설서로 낸다.
 
-수정이 5개 파일 이상이면 고치기 전에 `/implement`를 권하고 멈춘다.
-
-수정 파일 수는 테스트 파일을 빼고 센다. 이 기준으로 멈출 때도 DEBUG REPORT를 내고, 수정 칸에 고칠 파일 목록을, 상태 칸에 BLOCKED를 쓴다.
+수정이 5개 파일 이상이면 고치기 전에 `/implement`를 권하고 멈춘다. 수정 파일 수는 테스트 파일을 빼고 센다. 이 기준으로 멈출 때도 DEBUG REPORT를 내고, 수정 칸에 고칠 파일 목록을, 상태 칸에 BLOCKED를 쓴다.

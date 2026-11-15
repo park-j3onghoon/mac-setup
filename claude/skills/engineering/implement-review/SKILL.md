@@ -15,7 +15,7 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 작업 디렉토리나 `teddy/review/{head}` 브랜치가 이미 있으면, `teddy/review/{head}`가 없거나 `git -C {클론} merge-base --is-ancestor teddy/review/{head} {head}`가 참일 때만 지우고 다시 만든다. 작업 디렉토리는 `git -C {클론} worktree remove {작업 디렉토리}`로 지우고, `{T}`가 있으면 `teddy/review/{head}`를 `git -C {T} branch -d teddy/review/{head}`로 지운다. 그 밖의 경우나 remove나 `branch -d`가 거절하면 사용자에게 묻는다.
 
-- `{T}`가 있으면: `git -C {T} status --short`에 미커밋 변경이나 untracked 파일이 있을 때 목록을 보여 주고, 먼저 커밋해 리뷰에 넣을지 빼고 진행할지 묻는다. 먼저 커밋하면 `~/.claude/lib/pr-rules.md`를 Read하고 커밋 전 검증과 커밋 규칙을 따른다. 그다음 `git -C {클론} worktree add -b teddy/review/{head} {작업 디렉토리} {head}`로 리뷰 브랜치를 올린다.
+- `{T}`가 있으면: `git -C {T} status --short`에 나온 미커밋 변경과 untracked 파일은 리뷰에서 빼고 결과에 한 줄로 적는다(다른 세션의 미커밋이 섞일 수 있다). 그다음 `git -C {클론} worktree add -b teddy/review/{head} {작업 디렉토리} {head}`로 리뷰 브랜치를 올린다.
 - `{T}`가 없으면: `git -C {클론} worktree add {작업 디렉토리} {head}`로 head를 바로 올린다.
 
 PR 모드에서는 worktree를 만든 뒤 받아 온 원격 head와 작업 디렉토리의 HEAD를 비교한다. 원격 head가 앞서 있으면 작업 디렉토리에서 `git merge --ff-only origin/{head}`로 갱신하고, 로컬이 앞서 있으면 로컬 구현 커밋을 보존한다. 서로 갈라졌거나 ff가 실패하면 대상 커밋을 사용자에게 확인한다. 이 확인을 마친 뒤 아래 증분 판정을 하고 diff를 생성한다.
@@ -56,7 +56,7 @@ Auto-fixed: Z · 승인 후 수정: W · 남은 항목: V (보류 · 기각 · �
 
 반영한 수정이 있으면 `~/.claude/lib/coding/tests.md`를 Read하고 버그 수정은 red/green, 구조 변경은 Refactoring equivalence 기준으로 검증한다. 유지된 동작·승인된 변경·미확인 범위를 구분해 보고한다. 최종 diff와 최신 의도 및 PR 제목·본문(범위 모드는 해당 문서)을 다시 대조하고, 불일치는 보고하거나 권한이 있을 때만 사용자 작성 부분을 보존해 수정한다.
 
-반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 커밋 전 검증을 통과할 때까지 수정한 뒤, 원래 구현 커밋 다음에 별도 새 커밋으로 남긴다. 구조 변경과 동작 변경은 `~/.claude/lib/coding/process.md`의 Two hats대로 나누고 각 커밋 전에 검증한다. 리뷰 대상과 무관한 파일(생성물 · 잠금 파일 등)은 커밋할 파일 목록에서 뺀다. 수정이 없으면 빈 커밋을 만들지 않는다.
+반영한 수정이 있으면 `~/.claude/lib/pr-rules.md`를 Read하고 커밋 전 검증을 통과할 때까지 수정한 뒤, 원래 구현 커밋 다음에 별도 새 커밋으로 남긴다.
 
 사용자가 커밋을 미뤘거나 커밋 전 검증을 끝내지 못했으면 ff 반영과 정리를 건너뛰고 리뷰 worktree·브랜치를 보존하며 경로와 남은 작업을 알린다.
 
@@ -70,8 +70,6 @@ git -C {T} branch -d teddy/review/{head}
 
 커밋을 마쳤고 `{T}`가 없으면 head에서 커밋한 리뷰 worktree를 그대로 두고 그 경로를 알린다.
 
-범위 모드는 커밋까지로 마치고, 처음 리뷰한 범위를 `{기준 커밋}..{대상 커밋}`, 추가한 수정 커밋을 별도로 알린다.
-
 리뷰 기록을 연결된 계획 파일과 같은 디렉토리의 `review-log.md` 끝에 더한다. 끝 커밋은 리뷰 수정 커밋을 head에 반영했으면 그 커밋, 아니면 대상 커밋이다. 계획 파일을 찾지 못했으면 기록할 곳이 없다고 알린다.
 
 ```
@@ -80,11 +78,9 @@ git -C {T} branch -d teddy/review/{head}
 - {보류|기각|남김} · {파일:라인} · {발견 요약} · {이유}
 ```
 
-→ 완료: 요약과 검증 결과를 냈고, 검증을 통과한 수정 커밋이 head에 들어갔거나(`{T}`가 있었으면 ff 반영과 리뷰 worktree 정리까지) 사용자가 커밋을 미뤘다. 범위 모드면 고정한 리뷰 범위와 추가 수정 커밋을 알렸다. `review-log.md`에 이번 리뷰 항목을 더했거나, 계획 파일이 없다고 알렸다.
+→ 완료: 요약과 검증 결과를 냈고, 검증을 통과한 수정 커밋이 head에 들어갔거나(`{T}`가 있었으면 ff 반영과 리뷰 worktree 정리까지) 사용자가 커밋을 미뤘다. `review-log.md`에 이번 리뷰 항목을 더했거나, 계획 파일이 없다고 알렸다.
 
 ## 범위 모드
-
-1단계에서 PR 링크가 없을 때 prepare.md 대신 수행한다.
 
 1. 현재 작업 트리에서 `git rev-parse --path-format=absolute --git-common-dir`로 얻은 공용 Git 디렉토리의 부모를 메인 클론 `{클론}`으로 정한다. `{repo}`는 그 클론의 디렉토리 이름, `{head}`는 현재 작업 트리의 `git branch --show-current`다.
 2. `{base_ref}`는 인자로 받은 기준 ref, 대화나 연결된 계획에 기록한 기준 ref, 현재 작업 트리의 `git rev-parse --symbolic-full-name '@{upstream}'` 순으로 고른다. 셋 다 없으면 기준 브랜치나 커밋을 묻는다. 원격 ref를 쓰면 메인 클론에서 해당 원격을 fetch한 뒤 그 ref를 확정한다. `{base_ref}`에는 원격 접두사를 다시 붙이지 않는다.

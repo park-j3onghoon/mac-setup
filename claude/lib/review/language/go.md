@@ -1,15 +1,14 @@
 ## 에러 핸들링
-- 레이어 경계에서 에러는 `fmt.Errorf("...: %w", err)`로 감싸 올린다.
+- 에러 메시지는 `failed to` 대신 하던 일만 쓰고, 감쌀 때는 `%w`로 감싼다(`fmt.Errorf("get user: %w", err)`).
 - 에러 여러 개는 `fmt.Errorf("%w: %w", e1, e2)`나 `errors.Join(...)`으로 묶고, 재시도를 멈춰야 하면 재시도를 멈추는 제어용 에러를 함께 join한다.
 - 부가 I/O(postback, enrichment) 에러는 `log.Warnf`로 남기고 처리를 이어 간다.
-- 에러 메시지에는 `failed to` 접두어 대신 하던 일만 쓴다(`fmt.Errorf("get user: %w", err)`).
 - 반환된 `err`는 `_`로 버리는 대신 검사한다.
 - 검사 실패를 알리는 에러는 sentinel 에러에 맥락을 붙여 만든다(`fmt.Errorf("%w: id is empty", ErrInvalidSetting)`).
 - 업무 로직은 `panic` 대신 error를 돌려준다.
 
 ## 안전성
-- type assertion은 ok 값을 받는 꼴(`v, ok := x.(*Type)`)로 쓰고, mock 반환값(`ret.Get(0).(*Type)`)은 nil을 검사한 뒤 쓴다.
-- 슬라이스 인덱스는 길이를 검사한 뒤 쓴다(`len(tokens)`).
+- 계약이 보장하지 않는 값(`any`로 받은 값)의 type assertion은 ok 값을 받는 꼴(`v, ok := x.(*Type)`)로 쓰고, mock 반환값(`ret.Get(0).(*Type)`)은 nil을 검사한 뒤 쓴다.
+- 계약이 보장하지 않는 슬라이스(외부 입력을 나눈 값)의 인덱스는 길이를 검사한 뒤 쓴다(`len(tokens)`).
 - 없음과 0을 나눠야 하는 값은 `*int32`나 proto `optional` 필드로 둔다.
 - 인터페이스 구현체에는 `var _ Interface = (*Impl)(nil)`로 컴파일 타임 검증을 둔다.
 - 빌드 타임에 보장되는 nil 체크, 생성자가 보장하는 invariant의 재검사, 도달할 수 없는 경로의 방어 코드, `sync.Once`와 `init()`을 함께 쓴 중복 방어는 지운다.

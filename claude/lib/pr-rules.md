@@ -6,13 +6,10 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
 - commit·merge 전 `git branch --show-current`로 현재 브랜치를 확인한다.
 - 커밋은 새 커밋으로 쌓는다: amend·reset·rebase·squash 대신 새 커밋을 만들고, 이미 커밋한 파일을 되돌릴 때도 삭제를 새 커밋으로 남긴다.
 - 커밋 메시지는 한글 한두 줄로, PR 제목·본문은 한글로 쓴다.
-- 커밋 전 검증을 통과하면 이번 범위의 파일만 새 커밋으로 남기고, 커밋 해시와 메시지를 결과에 적는다.
-- 코드 변경을 커밋하기 전에 `~/.claude/lib/coding/tests.md`를 Read하고 Before commit의 검증을 통과시킨다.
+- 커밋 전 검증: 코드 변경은 `~/.claude/lib/coding/tests.md`를 Read하고 Before commit의 검증을 통과시킨다. 커밋에는 이번 범위의 파일만 담고, 커밋 해시와 메시지를 결과에 적는다.
 - push 전에는 최종 커밋의 검증 결과를 확인하고, 검증 뒤 코드가 바뀌었으면 해당 검증을 다시 돌린다. 전체 스위트가 CI에서만 도는 레포는 그 사실을 적고 CI 결과를 게이트로 삼는다.
 
 ## PR 본문
-
-리뷰어가 변경을 이해하는 데 필요한 것만 남긴다.
 
 - 본문은 사용자가 직접 쓴 글 → 구분 줄 → AI가 쓴 글 순서로 둔다. 구분 줄 위에는 사용자가 쓴 글만, 쓴 그대로 둔다. 구분 줄은 아래 블록이고 앞뒤에 빈 줄을 둔다.
 
@@ -45,7 +42,6 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
 
 ## stacked PR
 
-- base 브랜치에 push한 뒤 의존 브랜치에 merge로 전파한다. conflict는 즉시 해결한다.
+- base 브랜치에 push한 뒤 의존 브랜치에 merge로 전파한다. conflict는 즉시, 어느 쪽이 최신인지 판단해 해결한다: base(master)에 이미 머지·검증된 코드가 최신이면 base 기준으로 해결한다.
 - 각 PR 브랜치는 자기 base 대비 변경만 담는다. 다른 PR 브랜치의 변경을 가져와야 하면 사용자 확인 후에 merge한다.
 - 압축이 필요하면 force push 없이 끝단 PR의 base를 재지정하고(`gh pr edit --base`) 흡수된 PR을 close한다.
-- merge conflict는 어느 쪽이 최신인지 판단해 해결한다. base(master)에 이미 머지·검증된 코드가 최신이면 base 기준으로 해결한다.

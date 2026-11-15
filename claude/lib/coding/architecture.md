@@ -2,8 +2,8 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 
 ## Layers
 
-- Dependency direction: presentation calls application; domain imports neither application, presentation nor concrete adapters; application depends on domain and port contracts rather than concrete adapters. Infrastructure implements those contracts and the composition root wires it in. Follow the project's port placement convention; between modules of the same layer, keep dependencies one way too.
-- Composition root: only the composition root creates adapters and hands them to use cases and services, so application code uses adapters only through ports; it sits outside the layers, and entrypoints get what they call from it.
+- Dependency direction: presentation calls application; domain imports neither application, presentation nor concrete adapters; application depends on domain and port contracts rather than concrete adapters. Infrastructure implements those contracts and the composition root wires it in. Between modules of the same layer, keep dependencies one way too.
+- Composition root: only the composition root creates adapters and hands them to use cases and services; it sits outside the layers, and entrypoints get what they call from it.
 - Utils: a function with no business term and no port is a util; it sits outside the layers. A util called by domain must not import application, presentation or concrete adapters, including transitively.
 
 ## Presentation
@@ -12,7 +12,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 
 ## Application
 
-- One scenario per use case: a use case runs one user scenario end to end; a command use case is the handler of one command. Branches or per-item outcomes inside that scenario do not each require their own use case.
+- One scenario per use case: a use case runs one user scenario end to end; a command use case is the handler of one command.
 - Command and event handlers: each command has one handler, and a failing command handler raises to the caller; after the unit of work commits, each domain event goes to every handler registered for it, and a failing event handler is logged while the other handlers still run; add a reaction to an event as a new event handler.
 - Unit of work: a use case runs as one unit of work over the repositories it uses, which saves all of its changes when the use case completes and none when it fails; the unit of work interface and its implementation sit in the application; "transaction" names only the database mechanism inside that implementation.
 - Use cases call no other use case and share no base class: put the steps several use cases share in a service; a service calls domain methods and ports in a fixed order and runs inside the calling use case's unit of work; calls between use cases and services go one way: use case → service.
@@ -22,8 +22,8 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 
 ## Domain
 
-- Business rules in the domain: put business calculations, eligibility and invariants in the domain, including those checked by only one operation. Classify by the meaning and owner of the decision, not by purity, reuse, the number of objects read or domain terms in a type's name. Constants and exceptions live with their rule; changing ownership moves the owned check too, without a domain → application import. Handling or wrapping a domain exception in a use case does not move its domain check.
-- Ports: each outside resource has a port; place its contract according to the owning layer and project convention (domain/application, or an isolated interface module next to its adapter). Use cases and services reach the ORM, HTTP clients and email rendering only through these contracts, not concrete adapters.
+- Business rules in the domain: put business calculations, eligibility and invariants in the domain, including those checked by only one operation. Classify by the meaning and owner of the decision, not by purity, reuse, the number of objects read, domain terms in a type's name, or a type's form or base class. Constants and exceptions live with their rule; changing ownership moves the owned check too, without a domain → application import. Handling or wrapping a domain exception in a use case does not move its domain check.
+- Ports: each outside resource (the ORM, an HTTP client, email rendering) has a port; place its contract in the owning layer (domain/application, or an isolated interface module next to its adapter).
 
 ## Infrastructure
 
