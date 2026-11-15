@@ -53,21 +53,34 @@ done < <(find "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private" \
          | grep -vE 'lib/answer-style\.md')
 [ "$em" -eq 0 ] && note "없음"
 
+# 2c·2d는 skill-writing.md가 닿는 규칙 파일만 본다(도구 README·분석 기록은 뺀다).
+rules=("$HOME/git/mac-setup/claude/CLAUDE.md" "$HOME/git/mac-setup/claude/lib" "$HOME/git/mac-setup/claude/skills"
+       "$HOME/git/mac-setup/private/claude/lib" "$HOME/git/mac-setup/private/claude/skills" "$HOME/git/mac-setup/private/claude/instructions")
+
 echo "== 2c. 완료 줄 표기 (→ 완료:)"
 lbl=0
 while IFS= read -r hit; do
   note "${hit#$HOME/git/mac-setup/}"; lbl=$((lbl+1)); fail=1
-done < <(grep -rnE '^[[:space:]]*완료( 기준| 조건)?[[:space:]]*[:=]' "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" \
-           --include='*.md' --include='*.html' 2>/dev/null)
+done < <(grep -rnE '^[[:space:]]*완료( 기준| 조건)?[[:space:]]*[:=]' "${rules[@]}" --include='*.md' --include='*.html' 2>/dev/null)
 [ "$lbl" -eq 0 ] && note "없음"
 
 echo "== 2d. 장식 기호 (§ · 「」 · ①ⓐ)"
 dec=0
 while IFS= read -r hit; do
   note "${hit#$HOME/git/mac-setup/}"; dec=$((dec+1)); fail=1
-done < <(grep -rnE '§|「|」|①|②|③|④|⑤|ⓐ|ⓑ|ⓒ' "$HOME/git/mac-setup/claude" "$HOME/git/mac-setup/private/claude" \
-           --include='*.md' --include='*.html' 2>/dev/null | grep -v '/lib/skill-writing\.md:')
+done < <(grep -rnE '§|「|」|①|②|③|④|⑤|ⓐ|ⓑ|ⓒ' "${rules[@]}" --include='*.md' --include='*.html' 2>/dev/null \
+           | grep -v '/lib/skill-writing\.md:')
 [ "$dec" -eq 0 ] && note "없음"
+
+echo "== 2e. 공개 스킬 README 등록"
+reg=0
+for f in "$HOME"/git/mac-setup/claude/skills/*/*/SKILL.md; do
+  rel="${f#$HOME/git/mac-setup/}"; skill_dir="$(dirname "$f")"
+  grep -qF "($rel)" "$HOME/git/mac-setup/README.md" || { note "최상위 README.md 표에 없음: $rel"; reg=$((reg+1)); fail=1; }
+  grep -qF "(./$(basename "$skill_dir")/SKILL.md)" "$(dirname "$skill_dir")/README.md" \
+    || { note "버킷 README.md에 없음: $rel"; reg=$((reg+1)); fail=1; }
+done
+[ "$reg" -eq 0 ] && note "모두 등록"
 
 echo "== 3. 포인터 경로 해소 (백틱 안의 ~/ · /Users 경로)"
 missing=0
