@@ -60,8 +60,9 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | 스킬 | 하는 일 |
 |---|---|
 | [`/explain-html`](claude/skills/productivity/explain-html/SKILL.md) | 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다. |
+| [`/mastery-tutor`](claude/skills/productivity/mastery-tutor/SKILL.md) | 슬랙 스레드나 개념을 사전지식부터 블록별로 정복하고 진척 퍼센트를 표시한다. 학습 정리·오답·진행 상황을 Codex와 Claude 공용 로컬 기록에 저장해 중복 지식은 재사용하고 약점을 우선 재검증하며, 중단 뒤 이어서 할 수 있다. 질문별로 답을 받고 남은 질문을 즉시 수정·제거하며, 자세한 채점·해설은 나중에 공개한다. "완전히 이해할 때까지 질문해", "퀴즈로 공부하자", "사전지식부터 정복하자", "전에 하던 학습 이어서"에 쓴다. 단순 요약이나 일회성 개념 설명에는 적용하지 않는다. |
 | [`/refresh-session`](claude/skills/productivity/refresh-session/SKILL.md) | 다음 작업을 빈 컨텍스트에서 잇는다. Claude Code는 같은 탭의 대화를 비우거나 새 탭 명령을 만들고, Codex는 새 세션 명령과 이어갈 프롬프트를 만든다. |
-| [`/skill-review`](claude/skills/productivity/skill-review/SKILL.md) | 스킬이 구조 규약과 실행 기준을 지키는지 점검하고, 어긋난 곳을 고칠 안을 낸다. |
+| [`/rules-refresh`](claude/skills/productivity/rules-refresh/SKILL.md) | AI 규칙(진입 파일·lib·instructions·스킬·검사 스크립트)을 개발 방법론과 Simple Design 기준에 맞춰 다시 짜고, 매주 바뀐 것만 갱신하며, 매달 지난달 머지 PR로 리뷰 규칙을 리뷰봇·사람 리뷰와 대조한다. |
 
 ### 공용 하위 모듈
 
@@ -87,7 +88,7 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | [`lib/pr-rules.md`](claude/lib/pr-rules.md) | 브랜치·커밋·PR 본문·리뷰 대응·stacked PR 규칙 (`/implement`·`/implement-review`·`/push-commit`·`/pr-create`·`/investigate`가 읽는다) |
 | [`lib/push.md`](claude/lib/push.md) | push(사람 리뷰 여부로 push할 사람을 정함·stacked 전파)와 PR 제목·본문 갱신 절차 (`/push-commit`·`/pr-create`가 읽는다) |
 | [`lib/review/`](claude/lib/review/) | 코드 리뷰 기준(공통·언어별·도구별·관점·보안 게이트) · 리뷰 준비(PR 링크 → diff) · 문제 지점 찾기(리뷰 공통 절차) · 지적 반영(AUTO-FIX·ASK, `/implement-review`·`/pr-create`가 읽는다) · 주장 검증 |
-| [`lib/skill-writing.md`](claude/lib/skill-writing.md) | 스킬·모듈 작성 규칙 25개 (`/skill-review` 4단계가 읽는다) |
+| [`lib/skill-writing.md`](claude/lib/skill-writing.md) | 스킬·모듈 작성 규칙 25개 (`/rules-refresh` 3절이 읽는다) |
 
 ## 새 맥에서 사용법
 
