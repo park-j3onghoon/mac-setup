@@ -278,6 +278,9 @@ def enroll(app, role):
         raise SwitcherError(
             f'Browser signed into a different account; expected {expected}. '
             'Retry using a separate browser session.')
+    if account['emailAddress'] != expected:
+        # Open sessions keep the outgoing login in memory until they restart.
+        record_switch(app.state, time.time())
     try:
         app.capture(expected)
     except KeychainError:
