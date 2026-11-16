@@ -28,47 +28,45 @@ argument-hint: "[PR URL]"
    - CRITICAL 발견이 없으면 event는 `APPROVE`이고 INFO 발견을 모두 단다.
    - 1단계에서 읽은 PR author의 login이 `gh api user --jq .login`과 같으면 event만 `COMMENT`로 바꾼다.
    - PR 제목·본문이나 문서가 코드와 다르다는 발견은 머지 판단을 바꾸는 것만 단다.
-2. 자리를 정한다. 발견의 `file:line`이 가리키는 새 파일 줄이 1단계 diff 파일 hunk의 `+` 줄이나 문맥 줄이면 줄 코멘트로 단다. 줄 범위면 두 끝이 같은 hunk에 들 때 여러 줄 코멘트로 단다. 나머지 발견은 리뷰 본문 목록에 단다.
-3. `~/.claude/lib/document-tone.md`를 Read하고 그 어투로 줄 코멘트와 리뷰 본문을 쓴다. 발견 원문의 압축 용어(불변식, 필드명만 쓴 표현)는 풀어 쓴다.
+2. 자리를 정한다. 발견의 `file:line`이 가리키는 새 파일 줄이 1단계 diff 파일 hunk의 `+` 줄이나 문맥 줄이면 줄 코멘트로 단다. 줄 범위면 두 끝이 같은 hunk에 들 때 여러 줄 코멘트로 단다. 나머지 발견은 리뷰 본문에 단다.
+3. `~/.claude/lib/document-tone.md`를 Read하고 그 어투로, 사람 리뷰어가 직접 쓴 글처럼 줄 코멘트와 리뷰 본문을 쓴다. 발견 원문의 압축 용어(불변식, 필드명만 쓴 표현)는 풀어 쓰고, 근거는 리뷰어·도구 이름 대신 코드·데이터 사실로 쓴다.
 
-   줄 코멘트:
+   줄 코멘트(INFO는 첫 줄을 `nit) `나 `nit, `로 시작한다):
 
    ```
-   [CRITICAL|INFO] {문제 한 문장}
+   {문제 한 문장}
    {틀어지는 경우: 실제 값이 든 입력과 결과, 또는 근거 file:line}
    {고칠 방법 한 문장}
    ```
 
-   리뷰 본문:
+   리뷰 본문의 첫 줄은 PR author가 나면 `셀프 리뷰했습니다.`, 아니면 CRITICAL 발견을 달 때 수정을 부탁하는 한 문장(예: `확인 부탁드립니다!`), 달지 않을 때 `LGTM`·`LGTM~`·`LGTM!` 가운데 하나다.
 
    ```
-   🤖 ai-review가 작성한 리뷰입니다.
-   CRITICAL {x} · INFO {y}
-   <!-- (선택) event가 REQUEST_CHANGES일 때 -->
-   INFO는 CRITICAL을 고친 뒤 다시 리뷰할 때 답니다.
-   <!-- (선택) 리뷰 본문 목록에 단 발견이 있을 때 -->
+   {첫 줄}
+   <!-- (선택) CRITICAL 발견을 달고 달지 않은 INFO 발견이 있을 때 -->
+   {사소한 것은 수정 뒤 다시 볼 때 남기겠다는 한 문장}
+   <!-- (선택) 리뷰 본문에 다는 발견마다 -->
 
-   - [CRITICAL|INFO] {file:line} · {설명}
+   {줄 코멘트 꼴, 첫 문장에 file:line}
    ```
-
-   x·y는 이슈 리포트에서 남김을 뺀 CRITICAL·INFO 발견 수다.
 4. 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주고 AskUserQuestion으로 올릴지 묻는다. 고칠 곳을 답하면 고친 초안으로 다시 묻고, 보류하면 4단계로 건너뛴다.
 5. 올리기 직전에 `gh pr view {number} -R {owner}/{repo} --json state,headRefOid`를 읽는다.
    - state가 `OPEN`이 아니면 4단계로 건너뛴다.
    - headRefOid가 1단계의 대상 커밋과 다르면 새 커밋이 올라왔다고 한 줄로 알리고 1단계부터 다시 한다.
-6. 리뷰를 `{스크래치}/review.json`으로 쓰고 올린다. 줄 코멘트는 `path`·`line`·`side: "RIGHT"`·`body`로 쓰고, 여러 줄 코멘트는 `start_line`·`start_side: "RIGHT"`를 더한다.
+6. 리뷰를 `{스크래치}/review.json`으로 쓰고 올린 뒤, 리뷰 URL을 `~/pr_reviews/ai-review-urls.txt` 끝에 한 줄로 더한다. 줄 코멘트는 `path`·`line`·`side: "RIGHT"`·`body`로 쓰고, 여러 줄 코멘트는 `start_line`·`start_side: "RIGHT"`를 더한다.
 
    ```bash
    # review.json = {"commit_id": "{대상 커밋}", "event": "{event}", "body": "{리뷰 본문}", "comments": [...]}
-   gh api -X POST repos/{owner}/{repo}/pulls/{number}/reviews --input {스크래치}/review.json --jq .html_url
+   gh api -X POST repos/{owner}/{repo}/pulls/{number}/reviews --input {스크래치}/review.json > {스크래치}/posted.json \
+     && jq -r .html_url {스크래치}/posted.json | tee -a ~/pr_reviews/ai-review-urls.txt
    ```
 
-   422로 거절되면 응답 메시지를 읽고 고쳐 다시 올린다. 줄을 찾지 못했다는 줄 코멘트는 리뷰 본문 목록으로 옮긴다. event를 거절하면 event를 `COMMENT`로 바꾸고 거절 이유를 4단계 출력 끝에 붙인다. 그 밖의 거절이면 멈추고 응답을 알린다.
+   422로 거절되면 `{스크래치}/posted.json`의 메시지를 읽고 고쳐 다시 올린다. 줄을 찾지 못했다는 줄 코멘트는 리뷰 본문으로 옮긴다. event를 거절하면 event를 `COMMENT`로 바꾸고 거절 이유를 4단계 출력 끝에 붙인다. 그 밖의 거절이면 멈추고 응답을 알린다.
 
-→ 완료: 승인받은 리뷰 한 건이 올라가 URL이 있고, 달 발견이 모두 줄 코멘트나 리뷰 본문 목록에 들었다. 또는 사용자가 보류했거나 state가 `OPEN`이 아니어서 4단계로 건너뛰었다.
+→ 완료: 승인받은 리뷰 한 건이 올라가 그 URL이 `~/pr_reviews/ai-review-urls.txt` 끝 줄에 있고, 달 발견이 모두 줄 코멘트나 리뷰 본문에 들었다. 또는 사용자가 보류했거나 state가 `OPEN`이 아니어서 4단계로 건너뛰었다.
 
 ## 4. 마무리
 
-`git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지운 뒤, 마지막 출력으로 `{event} · CRITICAL {x} · INFO {y} · {리뷰 URL}` 한 줄만 낸다. 3단계에서 건너뛰었으면 `올리지 않음 · {사용자 보류 | PR {state}}` 한 줄을 낸다.
+`git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지운 뒤, 마지막 출력으로 `{event} · CRITICAL {x} · INFO {y} · {리뷰 URL}` 한 줄만 낸다. x·y는 이슈 리포트에서 남김을 뺀 CRITICAL·INFO 발견 수다. 3단계에서 건너뛰었으면 `올리지 않음 · {사용자 보류 | PR {state}}` 한 줄을 낸다.
 
 → 완료: 리뷰 worktree가 지워졌고 결과 한 줄을 냈다.

@@ -34,7 +34,7 @@ LIST_ITEM = re.compile(r'^\s*(?:[-*]|\d+\.)\s+')
 TABLE_RULE = re.compile(r'^\|[\s:|-]+$')
 DUPLICATE_MIN_CHARS = 20
 
-AI_REVIEW_MARK = '🤖 ai-review가 작성한 리뷰입니다.'
+AI_REVIEW_URLS = HOME / 'pr_reviews/ai-review-urls.txt'
 REVIEW_BOTS = HOME / '.claude/lib/review-bots/index.md'
 REVIEW_LOG_HEADER = re.compile(r'^## (\d{4}-\d{2}-\d{2}) (\S+) (?:전체|증분) ([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})')
 HTML_HEADS = (r'대상(?: 커밋)? (?:<code>)?([0-9a-f]{7,40})\b',
@@ -253,6 +253,7 @@ def collect_cases(month, out):
     prs |= set(html_reviews)
     logs = read_review_logs(HOME / 'plans')
     markers = read_bot_markers(REVIEW_BOTS)
+    ai_reviews = set(AI_REVIEW_URLS.read_text().split()) if AI_REVIEW_URLS.exists() else set()
     (out / 'cases').mkdir(parents=True, exist_ok=True)
     index = []
     for name, pr_number in sorted(prs):
@@ -260,7 +261,7 @@ def collect_cases(month, out):
         if not pr['mergedAt'] or not pr['mergedAt'].startswith(month):
             continue
         resolved = merge_resolutions(name, pr)
-        case = build_case(name, pr, me, markers, html_reviews.get((name, pr_number)), logs.get(pr['headRefName'], []), resolved)
+        case = build_case(name, pr, me, markers, ai_reviews, html_reviews.get((name, pr_number)), logs.get(pr['headRefName'], []), resolved)
         patch_oids = sorted({oid for oids in case['post_commits'].values() for oid in oids})
         case['patches'] = {oid: truncated('(병합 충돌 해결)', resolved[oid]) if oid in resolved else commit_patch(name, oid)
                            for oid in patch_oids}
@@ -359,7 +360,7 @@ def fetch_pr(name, number):
     query = '''query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){
       pullRequest(number:$number){number title url mergedAt baseRefName headRefName headRefOid author{login}
         commits(last:250){nodes{commit{oid committedDate messageHeadline parents(first:2){nodes{oid}}}}}
-        reviews(first:100){nodes{author{login __typename} body submittedAt commit{oid}
+        reviews(first:100){nodes{author{login __typename} url body submittedAt commit{oid}
           comments(first:100){nodes{path line originalLine body}}}}
         comments(first:100){nodes{author{login __typename} body createdAt}}
         timelineItems(itemTypes:[REVIEW_REQUESTED_EVENT],last:100){nodes{... on ReviewRequestedEvent{createdAt}}}}}}'''
@@ -368,7 +369,7 @@ def fetch_pr(name, number):
     return data['data']['repository']['pullRequest']
 
 
-def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
+def build_case(name, pr, me, markers, ai_reviews, html_review, log_reviews, resolved):
     author = (pr['author'] or {}).get('login', '')
     commits = [{'oid': node['commit']['oid'], 'at': to_utc(node['commit']['committedDate']),
                 'headline': node['commit']['messageHeadline'],
@@ -376,7 +377,7 @@ def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
                for node in pr['commits']['nodes']]
     reviews = []
     for node in pr['reviews']['nodes']:
-        group = classify(node['author'], node['body'], author, me, markers)
+        group = classify(node['author'], node['body'], author, markers, node['url'] in ai_reviews)
         if group:
             findings = [{'path': c['path'], 'line': c['line'] or c['originalLine'], 'text': c['body'][:TEXT_LIMIT]}
                         for c in node['comments']['nodes']]
@@ -385,7 +386,7 @@ def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
                             'findings': findings, 'body': node['body'][:TEXT_LIMIT]})
     skipped = 0
     for node in pr['comments']['nodes']:
-        group = classify(node['author'], node['body'], author, me, markers)
+        group = classify(node['author'], node['body'], author, markers)
         if group == 'bot' and node['author']['login'] not in markers:
             skipped += 1
         elif group:
@@ -416,12 +417,12 @@ def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
     }
 
 
-def classify(account, body, author, me, markers):
-    if not account or account['login'] == author:
-        return 'mine' if account and account['login'] == me and AI_REVIEW_MARK in body else None
-    login = account['login']
-    if login == me and AI_REVIEW_MARK in body:
+def classify(account, body, author, markers, ai_review=False):
+    if ai_review:
         return 'mine'
+    if not account or account['login'] == author:
+        return None
+    login = account['login']
     if account['__typename'] == 'Bot' or (login in markers and markers[login] in body):
         return 'bot'
     return 'human'

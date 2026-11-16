@@ -7,7 +7,7 @@ python3 ~/.claude/skills/rules-refresh/refresh.py pr-collect {YYYY-MM} ~/plans/a
 ```
 
 - PR 묶음: 그 달 머지된 PR 가운데 내가 작성했거나 리뷰했거나 내 리뷰 기록이 있는 PR.
-- 내 리뷰: 내 계정 GitHub 리뷰 가운데 본문에 `🤖 ai-review가 작성한 리뷰입니다.`가 든 것, `~/plans` 아래 review-log.md의 그 브랜치 항목, `~/pr_reviews/{repo}/{number}/review.html`.
+- 내 리뷰: URL이 `~/pr_reviews/ai-review-urls.txt`에 있는 GitHub 리뷰, `~/plans` 아래 review-log.md의 그 브랜치 항목, `~/pr_reviews/{repo}/{number}/review.html`. 그 GitHub 리뷰의 코멘트와 본문에서 `nit`으로 시작하는 발견은 INFO다.
 - 리뷰봇: GitHub Bot 계정의 리뷰, `~/.claude/lib/review-bots/index.md` 봇 리뷰 판별 절의 계정과 본문 표식이 맞는 리뷰·PR 대화 코멘트. 표식이 없는 Bot 계정의 PR 대화 코멘트(이슈 연결·커버리지·CI 결과)는 리뷰가 아니라 사례 파일의 `skipped_bot_comments`로만 센다.
 - 사람 리뷰: PR 작성자를 뺀 나머지 User 계정의 리뷰·PR 대화 코멘트.
 - 리뷰가 본 커밋: GitHub 리뷰의 commit, review.html의 head, review-log 항목 범위의 끝 커밋. 코멘트처럼 커밋이 없으면 그 시각까지 head 줄기에 올라온 마지막 커밋.
