@@ -108,7 +108,8 @@ class LauncherTest(unittest.TestCase):
 
     def test_session_in_a_cmux_tab_passes_the_tab_to_its_shell_commands(self):
         with patch("service.ensure", return_value={"active": "company"}), \
-             patch.dict(launcher.os.environ, {"CMUX_SURFACE_ID": "SURFACE-1"}, clear=True), \
+             patch.dict(launcher.os.environ, {"CMUX_SURFACE_ID": "SURFACE-1",
+                                              "CMUX_SOCKET_CAPABILITY": "v1.CAP"}, clear=True), \
              patch.object(launcher.os, "getpid", return_value=4321), \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
             with self.assertRaises(SystemExit):
@@ -116,6 +117,7 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(run.call_args.args[1][1:], [
             "--remote", "unix://" + str(SOCKET),
             "-c", 'shell_environment_policy.set.CMUX_SURFACE_ID="SURFACE-1"',
+            "-c", 'shell_environment_policy.set.CMUX_SOCKET_CAPABILITY="v1.CAP"',
             "-c", 'shell_environment_policy.set.CMUX_CODEX_PID="4321"',
             "--cd", "/chosen",
         ])
