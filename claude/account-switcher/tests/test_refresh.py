@@ -31,6 +31,12 @@ def user_text(text):
     return {'type': 'user', 'message': {'role': 'user', 'content': text}}
 
 
+def task_notification():
+    text = '<task-notification>\n<status>failed</status>\n</task-notification>'
+    return {'type': 'user', 'origin': {'kind': 'task-notification'}, 'promptSource': 'system',
+            'message': {'role': 'user', 'content': text}}
+
+
 class Clock:
     def __init__(self, now):
         self.now = now
@@ -145,6 +151,17 @@ class LimitErrorTests(unittest.TestCase):
             limited = ended_with_limit_error(fixture.home / 'projects', SESSION)
             # then
             self.assertFalse(limited)
+
+    def test_task_notifications_after_limit_error_keep_the_limit_stop(self):
+        """한도 오류 뒤에 백그라운드 작업 알림만 쌓였으면 사용자가 입력한 것이 아니므로 한도에 멈춘 세션으로 본다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # given
+            fixture = SessionFixture(tmp)
+            fixture.transcript(user_text('작업해 줘'), limit_error(), task_notification())
+            # when
+            limited = ended_with_limit_error(fixture.home / 'projects', SESSION)
+            # then
+            self.assertTrue(limited)
 
 
 class LiveSessionTests(unittest.TestCase):
