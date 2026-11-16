@@ -208,10 +208,16 @@ quote() {
 	printf "'%s'" "${1//"$sq"/$escaped}"
 }
 
-# detach <인자...>: 이 스크립트를 새 세션으로 떼어 돌린다. Claude Code가 이 세션을 멈추거나 끝내도 남는다.
+# detach <인자...>: 이 스크립트를 새 세션으로 떼어 돌린다. 세션이 멈추거나 끝나도 남는다.
+# 자식이 새 세션이 된 뒤에 돌아온다: Codex는 명령이 끝나면 그 프로세스 그룹을 SIGKILL해서(0.168.0),
+# 백그라운드 자식이 setsid 하기 전에 이 스크립트가 끝나면 같이 죽는다.
 detach() {
 	mkdir -p "$state_dir"
-	/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' bash "$0" "$@" >>"$log" 2>&1 </dev/null &
+	/usr/bin/python3 -I -c '
+import subprocess, sys
+with open(sys.argv[1], "ab") as log:
+    subprocess.Popen(sys.argv[2:], stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+' "$log" bash "$0" "$@"
 }
 
 log() {
