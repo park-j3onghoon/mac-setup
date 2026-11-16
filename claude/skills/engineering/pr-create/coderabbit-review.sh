@@ -1,5 +1,5 @@
 #!/bin/bash
-# /pr-create 5단계가 부른다. PR의 CodeRabbit 리뷰를 부르고 끝날 때까지 5분마다 확인하며 기다린다.
+# /pr-create 리뷰 요청과 기다리기 절이 부른다. PR의 CodeRabbit 리뷰를 부르고 끝날 때까지 5분마다 확인하며 기다린다.
 # 상태는 coderabbitai[bot]의 PR 대화 코멘트(요약 코멘트와 답글)와 head 커밋에 단 리뷰로 판정한다.
 # 사람이 단 마지막 `@coderabbitai review` 코멘트가 있으면, 그 뒤에 쓰이거나 고쳐진 CodeRabbit 코멘트만 지금 상태로 본다.
 # 사용:
