@@ -7,12 +7,13 @@ cmux lets only processes started inside cmux type into its tabs ("socketControlM
 "cmuxOnly"), so the restart runs from each session's own Stop/StopFailure hook
 (refresh_hook.py), which runs inside cmux; a detached helper keeps that access.
 
-When a session that started before the latest switch ends a turn, the hook starts a helper
-(SelfRestart) that waits until the session is idle, its input box is empty and no
-background work runs, then types the built-in `/restart`. `/restart` re-executes in the
-same pid and resumes the same session id with a new registry startedAt (measured
-2026-11-13). After a turn that ended with a usage-limit error, the helper types
-CONTINUE_PROMPT once the session is back.
+When a session that started before the latest switch, or that stopped at a usage limit, ends
+a turn, the hook starts a helper (SelfRestart). The helper first waits for a switch newer than
+the session (a limit can come before the service notices and switches), then until the
+session is idle, its input box is empty and no background work runs, and types the built-in
+`/restart`. `/restart` re-executes in the same pid and resumes the same session id with a new
+registry startedAt (measured 2026-11-13). After a turn that ended with a usage-limit error,
+the helper types CONTINUE_PROMPT once the session is back.
 
 Background work means a child shell (Bash or Monitor tasks) under the session's process, or
 a subagent transcript written in the last SUBAGENT_QUIET_SECONDS. The footer's "← N agents"
@@ -32,6 +33,8 @@ STATE = 'session_refresh'
 # Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
 # 16:27); after that every session reads the live login on its next request.
 REFRESH_WINDOW_SECONDS = 8 * 3600
+# Longer than the service's longest usage lookup interval, 9 minutes (policy.POLL_TIERS).
+SWITCH_TIMEOUT_SECONDS = 900
 READY_TIMEOUT_SECONDS = 600
 RESTART_TIMEOUT_SECONDS = 120
 WAIT_STEP_SECONDS = 3
@@ -184,7 +187,9 @@ class SelfRestart:
         return bool(session and session.get('startedAt', 0) / 1000 < since)
 
     def run(self):
-        """Wait for a quiet moment, restart, and continue after a limit stop."""
+        """Wait for the switch and a quiet moment, restart, and continue after a limit stop."""
+        if not self.wait(self.needed, SWITCH_TIMEOUT_SECONDS):
+            return 'no_switch'
         session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
         if session is None:
             return 'not_ready'

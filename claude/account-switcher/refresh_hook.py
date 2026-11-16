@@ -2,9 +2,9 @@
 """Claude Code Stop/StopFailure hook: restart this session after an account switch.
 
 The hook itself only checks and returns, so a turn never waits on it. When the session
-started before the latest switch, it launches a detached helper (`--helper`) that does the
-restart through the session's own cmux surface (see refresh.py). Set
-ACCOUNT_SWITCHER_STATE_DIR to use another state directory (tests).
+stopped at a usage limit or started before the latest switch, it launches a detached helper
+(`--helper`) that waits for the switch and does the restart through the session's own cmux
+surface (see refresh.py). Set ACCOUNT_SWITCHER_STATE_DIR to use another state directory (tests).
 """
 
 import json
@@ -17,7 +17,7 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from refresh import SelfRestart, switch_pending  # noqa: E402
+from refresh import SelfRestart  # noqa: E402
 from storage import State, SwitcherError  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
@@ -33,10 +33,12 @@ def hook():
     try:
         payload = json.load(sys.stdin)
         session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
-        state = State(state_dir())
-        if not session_id or not surface or switch_pending(state, time.time()) is None:
+        if not session_id or not surface:
             return 0
-        if SelfRestart(state, Path.home() / '.claude', session_id, surface).needed():
+        restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
+        # limited() first: needed() runs ps, which timed out when many sessions stopped at a
+        # limit at once (2026-11-16 11:08).
+        if restart.limited() or restart.needed():
             subprocess.Popen([sys.executable, __file__, '--helper', session_id, surface],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
