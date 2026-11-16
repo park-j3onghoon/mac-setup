@@ -1,7 +1,6 @@
 ---
 name: explain-html
-description: 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고, ~/plans에 저장한 뒤 브라우저로 연다.
-disable-model-invocation: true
+description: 개념·설계·코드 흐름을 그림이 든 HTML 해설서로 설명해 달라고 할 때, 주제를 조사해 인라인 SVG 도식이 들어간 단일 파일 HTML 해설서를 만들고 ~/plans에 저장한 뒤 브라우저로 연다. 채팅 답으로 충분한 설명에는 쓰지 않는다.
 argument-hint: "<주제> [저장 경로]"
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: implement-review
-description: 내 PR이나 구현 커밋을 위험도에 맞춘 리뷰어로 리뷰하고, 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
+description: 내 PR이나 구현 커밋을 위험도에 맞춘 리뷰어로 리뷰한다. 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 보고, `--full`이면 처음부터 다시 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
 disable-model-invocation: true
-argument-hint: "[PR URL | 기준 ref, 없으면 계획의 기준 ref 또는 upstream]"
+argument-hint: "[PR URL | 기준 ref, 없으면 계획의 기준 ref 또는 upstream] [--full]"
 ---
 
 ## 1. 리뷰 준비
@@ -20,11 +20,11 @@ git -C {클론} worktree list --porcelain    # "branch refs/heads/{head}" 줄이
 
 PR 모드에서는 worktree를 만든 뒤 받아 온 원격 head와 작업 디렉토리의 HEAD를 비교한다. 원격 head가 앞서 있으면 작업 디렉토리에서 `git merge --ff-only origin/{head}`로 갱신하고, 로컬이 앞서 있으면 로컬 구현 커밋을 보존한다. 서로 갈라졌거나 ff가 실패하면 대상 커밋을 사용자에게 확인한다. 이 확인을 마친 뒤 아래 증분 판정을 하고 diff를 생성한다.
 
-증분 판정: 연결된 계획 파일(`~/.claude/lib/coding/load-rules.md` 5번이 찾는 `plan.md`)과 같은 디렉토리의 `review-log.md`에서 이 head의 마지막 리뷰 항목을 찾는다.
+증분 판정: 인자에 `--full`이 있거나 사용자가 전체 리뷰를 요청했으면 리뷰 기록과 상관없이 전체 diff를 만든다. 그 밖에는 연결된 계획 파일(`~/.claude/lib/coding/load-rules.md` 5번이 찾는 `plan.md`)과 같은 디렉토리의 `review-log.md`에서 이 head의 마지막 리뷰 항목을 찾는다.
 
 - 그 항목의 끝 커밋이 작업 디렉토리 HEAD의 조상이고 둘이 다르면 증분 리뷰다. diff를 만들 때 끝 커밋을 넘겨 `~/.claude/lib/review/diff.md`의 증분 블록으로 만든다.
-- 끝 커밋이 HEAD와 같거나 증분 커밋 목록이 비면, 직전 리뷰 뒤 새 커밋이 없다고 알린다. `git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지우고, `{T}`가 있으면 `git -C {T} branch -d teddy/review/{head}`로 리뷰 브랜치도 지운 뒤 마친다.
-- 항목이 없거나, 끝 커밋이 HEAD의 조상이 아니거나, 사용자가 전체 리뷰를 요청했으면 전체 diff를 만든다.
+- 끝 커밋이 HEAD와 같거나 증분 커밋 목록이 비면, 직전 리뷰 뒤 새 커밋이 없고 처음부터 다시 보려면 `--full`을 붙이라고 알린다. `git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지우고, `{T}`가 있으면 `git -C {T} branch -d teddy/review/{head}`로 리뷰 브랜치도 지운 뒤 마친다.
+- 항목이 없거나, 끝 커밋이 HEAD의 조상이 아니면 전체 diff를 만든다.
 
 `/guard`가 활성화돼 있으면 리뷰 worktree와 이번 작업의 계획 문서 디렉토리를 편집 범위에 포함한다.
 
