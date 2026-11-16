@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock
 
 from refresh import (CONTINUE_PROMPT, READY_TIMEOUT_SECONDS, REFRESH_WINDOW_SECONDS,
-                     SelfRestart, ended_with_limit_error, input_ready, live_sessions,
+                     SelfRestart, ended_with_limit_error, input_ready, live_session,
                      record_switch, switch_pending)
 from storage import State
 
@@ -109,8 +109,7 @@ class FakeRunner:
             self.ps_timeouts -= 1
             raise subprocess.TimeoutExpired(argv, kwargs.get('timeout'))
         if argv[0] == '/bin/ps':
-            ps = f'101 ttys011 {STARTED}\n'
-            return Mock(returncode=0, stdout=self.children if '-ax' in argv else ps)
+            return Mock(returncode=0, stdout=self.children if '-ax' in argv else f'{STARTED}\n')
         if argv[1] in ('send', 'send-key'):
             self.typed.append(argv[-1])
             if argv[-1] == '/restart' and self.restarts:
@@ -195,11 +194,11 @@ class LiveSessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             # given
             fixture = SessionFixture(tmp)
-            runner = Mock(return_value=Mock(stdout='101 ttys011 Sat Nov 14 01:00:00 2026\n'))
+            runner = Mock(return_value=Mock(stdout='Sat Nov 14 01:00:00 2026\n'))
             # when
-            sessions = live_sessions(fixture.home, runner)
+            session = live_session(fixture.home, SESSION, runner)
             # then
-            self.assertEqual(sessions, [])
+            self.assertIsNone(session)
 
 
 class SwitchRecordTests(unittest.TestCase):
