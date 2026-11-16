@@ -171,6 +171,9 @@ class SelfRestart:
         return next((s for s in live_sessions(self.config_home, self.runner)
                      if s['sessionId'] == self.session_id), None)
 
+    def limited(self):
+        return ended_with_limit_error(self.projects, self.session_id)
+
     def needed(self):
         """True when the latest switch happened after this session's process started."""
         since = switch_pending(self.state, self.clock())
@@ -179,25 +182,26 @@ class SelfRestart:
 
     def run(self):
         """Wait for a quiet moment, restart, and continue after a limit stop."""
-        session = self.wait_until_ready(None, READY_TIMEOUT_SECONDS)
+        session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
         if session is None:
             return 'not_ready'
-        limited = ended_with_limit_error(self.projects, self.session_id)
+        limited = self.limited()
         self.type('/restart')
-        if self.wait_until_ready(session.get('startedAt'), RESTART_TIMEOUT_SECONDS) is None:
+        if self.wait(lambda: self.ready(session.get('startedAt')), RESTART_TIMEOUT_SECONDS) is None:
             return 'restart_unconfirmed'
         if not limited:
             return 'restarted'
         self.type(CONTINUE_PROMPT)
         return 'restarted_and_continued'
 
-    def wait_until_ready(self, old_started, timeout):
+    def wait(self, check, timeout):
+        """The first truthy result of check(), tried every WAIT_STEP_SECONDS; None after timeout."""
         deadline = self.clock() + timeout
         while True:
             try:
-                session = self.session()
-                if session and session.get('startedAt') != old_started and self.ready(session):
-                    return session
+                result = check()
+                if result:
+                    return result
             except subprocess.TimeoutExpired:
                 # 2026-11-16 11:08: many sessions stopped at a limit at once and five helpers gave
                 # up on one slow ps; a slow check only means "not ready yet".
@@ -206,13 +210,18 @@ class SelfRestart:
                 return None
             self.sleep(WAIT_STEP_SECONDS)
 
-    def ready(self, session):
-        limited = ended_with_limit_error(self.projects, self.session_id)
-        if session.get('status') != 'idle' and not limited:
-            return False
+    def ready(self, old_started):
+        """This session once it is quiet with an empty input box, else None. While the registry
+        still shows old_started (its startedAt before `/restart`), it has not come back yet."""
+        session = self.session()
+        if not session or session.get('startedAt') == old_started:
+            return None
+        if session.get('status') != 'idle' and not self.limited():
+            return None
         if background_work(session, process_children(self.runner), self.projects, self.clock()):
-            return False
-        return input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12'))
+            return None
+        screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
+        return session if input_ready(screen) else None
 
     def cmux(self, *args):
         result = self.runner([self.cmux_path, *args], capture_output=True, text=True,
