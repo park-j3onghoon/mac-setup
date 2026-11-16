@@ -178,6 +178,17 @@ class SwitchRecordTests(unittest.TestCase):
             # then
             self.assertIsNone(since)
 
+    def test_switch_stays_pending_while_old_access_tokens_live(self):
+        """전환 직전에 받은 액세스 토큰은 8시간 유효해 세션이 그때까지 예전 계정을 쓰므로, 전환 7시간 뒤에 끝난 턴도 재시작 대상이다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # given
+            state = State(Path(tmp) / 'state')
+            record_switch(state, SWITCHED_AT)
+            # when
+            since = switch_pending(state, SWITCHED_AT + 7 * 3600)
+            # then
+            self.assertEqual(since, SWITCHED_AT)
+
 
 class SelfRestartTests(unittest.TestCase):
     def setUp(self):
