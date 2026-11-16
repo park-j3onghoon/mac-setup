@@ -48,6 +48,7 @@ class RefreshTest(unittest.TestCase):
             'comments': {'nodes': [{'author': account('linear', 'Bot'), 'body': 'linked', 'createdAt': '2026-10-01T01:00:00Z'},
                                    {'author': account('helper'), 'body': '## Team Bot\n- 이름', 'createdAt': '2026-10-01T02:00:00Z'},
                                    {'author': account('me'), 'body': '답글', 'createdAt': '2026-10-03T00:00:00Z'}]},
+            'timelineItems': {'nodes': [{'createdAt': '2026-10-04T12:00:00Z'}]},
         }
         log = [{'group': 'mine', 'source': 'review-log', 'author': 'me', 'commit': 'a1',
                 'at': refresh.to_utc('2026-10-01T05:00:00Z'), 'findings': [], 'body': ''},
@@ -58,6 +59,7 @@ class RefreshTest(unittest.TestCase):
                          [('bot', 'helper'), ('mine', 'me'), ('bot', 'coderabbitai')])
         self.assertEqual(case['skipped_bot_comments'], 1)
         self.assertEqual(case['post_commits'], {'0': ['b2', 'm3', 'd4'], '1': ['b2', 'm3', 'd4'], '2': ['m3', 'd4']})
+        self.assertEqual(case['miss_commits'], {'0': ['b2', 'm3'], '1': ['b2', 'm3'], '2': ['m3']})
         self.assertEqual((case['first_external_commit'], case['unresolved_merges']), ('a1', []))
         self.assertEqual(case['reviews'][2]['findings'][0]['line'], 3)
         pr['comments']['nodes'] = pr['comments']['nodes'][:1]

@@ -361,7 +361,8 @@ def fetch_pr(name, number):
         commits(last:250){nodes{commit{oid committedDate messageHeadline parents(first:2){nodes{oid}}}}}
         reviews(first:100){nodes{author{login __typename} body submittedAt commit{oid}
           comments(first:100){nodes{path line originalLine body}}}}
-        comments(first:100){nodes{author{login __typename} body createdAt}}}}}'''
+        comments(first:100){nodes{author{login __typename} body createdAt}}
+        timelineItems(itemTypes:[REVIEW_REQUESTED_EVENT],last:100){nodes{... on ReviewRequestedEvent{createdAt}}}}}}'''
     data = json.loads(gh(['api', 'graphql', '-f', f'query={query}', '-F', f'owner={owner}', '-F', f'repo={repo}',
                           '-F', f'number={number}']))
     return data['data']['repository']['pullRequest']
@@ -397,6 +398,8 @@ def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
                    if author == me and any(c['oid'].startswith(review['commit']) for c in commits))
     reviews.sort(key=lambda review: review['at'])
     chain = first_parent_chain(commits, pr['headRefOid'])
+    post = {str(i): post_commits(chain, review['commit'], review['at'], resolved) for i, review in enumerate(reviews)}
+    requests = [to_utc(node['createdAt']) for node in pr['timelineItems']['nodes']]
     external = [review for review in reviews if review['group'] != 'mine']
     return {
         'pr': {'name': name, 'number': pr['number'], 'url': pr['url'], 'title': pr['title'], 'author': author,
@@ -406,7 +409,8 @@ def build_case(name, pr, me, markers, html_review, log_reviews, resolved):
         'reviews': reviews,
         'skipped_bot_comments': skipped,
         'commits_truncated': len(commits) >= 250,
-        'post_commits': {str(i): post_commits(chain, review['commit'], review['at'], resolved) for i, review in enumerate(reviews)},
+        'post_commits': post,
+        'miss_commits': {i: before_next_request(chain, oids, reviews[int(i)]['at'], requests) for i, oids in post.items()},
         'unresolved_merges': sorted(c['oid'] for c in chain if len(c['parents']) > 1 and c['oid'] not in resolved),
         'first_external_commit': (external[0]['commit'] or seen_commit(commits, chain, None, external[0]['at'])) if external else None,
     }
@@ -443,6 +447,13 @@ def post_commits(chain, commit, at, resolved):
     oids = [c['oid'] for c in chain]
     start = oids.index(seen) + 1 if seen else 0
     return [c['oid'] for c in chain[start:] if len(c['parents']) < 2 or resolved.get(c['oid'])]
+
+
+def before_next_request(chain, oids, at, requests):
+    """Keep the commits made before the first review request after `at`; with no later request, keep them all."""
+    end = min((request for request in requests if request > at), default=None)
+    made = {commit['oid']: commit['at'] for commit in chain}
+    return [oid for oid in oids if end is None or made[oid] < end]
 
 
 def tally_judged(judged):

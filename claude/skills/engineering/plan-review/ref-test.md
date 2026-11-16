@@ -1,5 +1,3 @@
-`~/.claude/lib/coding/tests.md`를 Read하고 계획의 테스트를 그 규칙에 대어 본다.
-
 ## 체크리스트
 
 - 계획 단계에서 새 코드패스마다 테스트할 경로(정상, 경계값, 에러)를 미리 적는다.
@@ -16,20 +14,3 @@
 - 경계값: 빈 결과, 대량 결과, 최소/최대 입력
 - 에러 상태: 사용자에게 보이는 에러, 복구 가능 여부
 
-## 예시
-
-```python
-# 잘된 예시: 정상 + 경계값 + 에러 경로를 한 클래스에 모은다
-class TestExpeditionActivation:
-    def test_activate_valid_expedition(self):
-        """정상 활성화"""
-
-    def test_activate_already_active_raises(self):
-        """이미 활성 상태면 도메인 예외"""
-
-    def test_activate_expired_expedition_raises(self):
-        """만료된 탐사 활성화 시도 → 도메인 예외"""
-
-    def test_activate_zero_budget_raises(self):
-        """예산 0 탐사 → 도메인 예외"""
-```
