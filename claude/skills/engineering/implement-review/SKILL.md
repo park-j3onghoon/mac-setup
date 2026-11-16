@@ -34,8 +34,6 @@ PR 모드에서는 worktree를 만든 뒤 받아 온 원격 head와 작업 디�
 
 `~/.claude/lib/review/find-issues.md`를 Read하고 그대로 수행한다. diff는 1단계의 diff 파일, 의도는 그 문서의 최신 승인·PR·커밋 기준과 출처이고 증분 리뷰면 증분 커밋 메시지와 최신 승인이다. 대상은 1단계의 작업 디렉토리다.
 
-타입·예외·추상화 발견은 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`·`~/.claude/lib/coding/types.md`·`~/.claude/lib/coding/design.md` 기준으로 소유자와 생산자→소비자 경로를 읽어 확인한다. 적절한 entity/value object나 더 직접적인 흐름과 비교하고, 예외의 소유권과 usecase의 처리 정책을 구분하며 domain → application 역방향 의존을 만들지 않는지 본다.
-
 `~/.claude/lib/review/find-issues.md` 1절의 Risk가 HIGH이면, 서브에이전트 병렬 리뷰 절의 리뷰어와 같은 배치에서 Skill 도구로 `code-review`를 부른다. 인자는 `max` 뒤에 1단계의 diff 파일 경로 전부·기준 커밋·대상 커밋·작업 디렉토리 절대경로와 적재한 규칙·계획·승인 출처를 붙인다. PR 링크는 맥락으로만 전달하고, 리뷰 범위는 같은 diff 파일을 읽게 한다. 도구가 ref만 받으면 `{기준 커밋}..{대상 커밋}`을 쓰고 전달한 diff와 같은 범위인지 확인한다. 결과 통합 절은 code-review 결과가 돌아온 뒤 수행하고, 그 발견을 다른 리뷰어의 발견과 합쳐 출처를 `code-review`로 적는다.
 
 → 완료: 그 문서의 완료 기준을 만족했고, code-review를 불렀으면 그 발견도 이슈 리포트에 합쳐졌다.

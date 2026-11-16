@@ -1,4 +1,4 @@
-계획이 트랜잭션·락을 쓰거나 쿼리를 바꾸면 `~/.claude/lib/coding/db.md`, 다른 시스템을 부르거나 배치를 돌리면 `~/.claude/lib/coding/errors.md`를 Read하고 그 규칙에 대어 본다. 계획이 Python 코드를 바꾸면 `~/.claude/skills/plan-review/ref-performance-python.md`도 Read해 이 기준에 더한다.
+계획이 Python 코드를 바꾸면 `~/.claude/skills/plan-review/ref-performance-python.md`도 Read해 이 기준에 더한다.
 
 ## 쿼리·외부 호출
 - 루프 안에서 항목마다 DB를 읽거나 쓰는 곳(N+1 포함)에 측정된 병목이 있을 때 루프 밖 한 번의 조회나 일괄 쓰기로 바꾼다.

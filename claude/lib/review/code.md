@@ -26,13 +26,11 @@
 ## 5. YAGNI / 명시성
 
 - 최소 변경: 요청 범위 밖 주변 코드의 리팩토링·재포매팅은 같은 PR 대신 별도 이슈나 PR로 낸다.
-- 필드 명시적 나열: 동적 탐색보다 하드코딩이 안전한 경우.
 - 호출 체인 내 중복 로직: caller와 callee가 같은 검증·변환을 각각 하면 한쪽에만 둔다. caller가 값을 가공해 넘기고 callee도 같은 가공을 하면 callee 쪽에 남긴다.
 
 ## 6. 아키텍처
 
 - 타입·규칙 소유권과 위치: `~/.claude/lib/coding/architecture.md`(Layers 절, What a use case holds, Business rules in the domain)와 `~/.claude/lib/coding/domain.md`를 Read하고 그 기준으로 판정하며, 순환 참조가 생기지 않는지 본다.
-- 설계 의도 일치: secondary write가 primary 성공과 무관하게 실행되어야 하는지 등.
 - API 설계: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 
 ## 7. 에러 핸들링
@@ -43,7 +41,6 @@
 
 ## 8. 관측성
 
-- 로그 레벨: error vs warn vs info 적절성.
 - 모니터링 유지: sentry/metric 제거 시 대안.
 - 루프 안에서 항목마다 남기는 debug 로그는 머지 전에 지운다.
 - info 로그에 `[DEBUG]` 같은 접두어가 붙어 있으면, 테스트용이면 지우고 아니면 debug 레벨로 바꾼다.

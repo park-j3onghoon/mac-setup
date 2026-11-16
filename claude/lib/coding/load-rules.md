@@ -1,6 +1,6 @@
 입력은 작업 트리 경로·변경 파일과 범위·연결된 계획 파일이다. 규칙과 승인된 판단을 읽어 적용 기준으로 모은다.
 
-1. `~/.claude/lib/coding/index.md`를 Read하고 변경이 닿는 모듈을 모두 Read한다.
+1. `~/.claude/lib/coding/index.md`를 Read하고 변경이 닿는 모듈을 모두 Read한다. 타입·예외·추상화를 추가·변경·이동하는 변경이거나 리뷰에서 그런 발견을 판정하면 `~/.claude/lib/coding/architecture.md`·`~/.claude/lib/coding/domain.md`·`~/.claude/lib/coding/errors.md`·`~/.claude/lib/coding/types.md`·`~/.claude/lib/coding/design.md`도 Read해 소유자와 생산자→소비자 경로를 확인하고, 적절한 entity/value object나 더 직접적인 흐름과 비교한 근거를 결과에 남긴다. 예외의 소유권과 usecase의 처리 정책을 나누고 domain → application 역방향 의존을 만들지 않는다.
 2. 작업 레포의 CLAUDE.md·AGENTS.md를 Read하고 그 문서가 가리키는 레포 전용 규칙도 Read한다.
 3. 레포 이름은 작업 트리에서 `git rev-parse --path-format=absolute --git-common-dir`로 얻은 공용 Git 디렉토리의 부모 디렉토리 이름으로 정한다. `~/.claude/lib/{레포 이름}-rules.md`가 있으면 Read한다.
 4. proto 메시지·RPC나 REST 경로·요청·응답 필드를 바꾸면 `~/.claude/lib/api-aip/index.md`를 Read한다. 트랙과 현행 컨벤션 확정 절대로 형제 스펙을 확인하고 해당 트랙 파일을 Read해 적용 기준을 모은다. 기존에 확정한 엔벨로프·페이지네이션·에러 shape·필드 케이스와 승인된 보류 사유가 있으면 함께 기록한다.
