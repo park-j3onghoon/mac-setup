@@ -42,9 +42,13 @@ class RefreshTest(unittest.TestCase):
             'commits': {'nodes': [node('a1', '2026-10-01T00:00:00Z', 'z0'), node('b2', '2026-10-02T00:00:00Z', 'a1'),
                                   node('x9', '2026-10-03T00:00:00Z', 'z0'), node('m3', '2026-10-04T00:00:00Z', 'b2', 'x9'),
                                   node('d4', '2026-10-05T00:00:00Z', 'm3')]},
-            'reviews': {'nodes': [{'author': account('coderabbitai', 'Bot'), 'body': 'r', 'submittedAt': '2026-10-02T12:00:00Z',
+            'reviews': {'nodes': [{'author': account('coderabbitai', 'Bot'), 'url': 'u#r1', 'body': 'r', 'submittedAt': '2026-10-02T12:00:00Z',
                                    'commit': {'oid': 'b2'}, 'comments': {'nodes': [
-                                       {'path': 'a.py', 'line': None, 'originalLine': 3, 'body': '합계가 음수가 된다'}]}}]},
+                                       {'path': 'a.py', 'line': None, 'originalLine': 3, 'body': '합계가 음수가 된다'}]}},
+                                  {'author': account('me'), 'url': 'u#r2', 'body': '셀프 리뷰했습니다.', 'submittedAt': '2026-10-04T13:00:00Z',
+                                   'commit': {'oid': 'm3'}, 'comments': {'nodes': []}},
+                                  {'author': account('me'), 'url': 'u#r3', 'body': '메모', 'submittedAt': '2026-10-04T14:00:00Z',
+                                   'commit': {'oid': 'd4'}, 'comments': {'nodes': []}}]},
             'comments': {'nodes': [{'author': account('linear', 'Bot'), 'body': 'linked', 'createdAt': '2026-10-01T01:00:00Z'},
                                    {'author': account('helper'), 'body': '## Team Bot\n- 이름', 'createdAt': '2026-10-01T02:00:00Z'},
                                    {'author': account('me'), 'body': '답글', 'createdAt': '2026-10-03T00:00:00Z'}]},
@@ -54,17 +58,17 @@ class RefreshTest(unittest.TestCase):
                 'at': refresh.to_utc('2026-10-01T05:00:00Z'), 'findings': [], 'body': ''},
                {'group': 'mine', 'source': 'review-log', 'author': 'me', 'commit': 'other-repo',
                 'at': refresh.to_utc('2026-10-01T06:00:00Z'), 'findings': [], 'body': ''}]
-        case = refresh.build_case('acme/shop', pr, 'me', {'helper': 'Team Bot'}, None, log, {'m3': '++ 충돌 해결'})
+        case = refresh.build_case('acme/shop', pr, 'me', {'helper': 'Team Bot'}, {'u#r2'}, None, log, {'m3': '++ 충돌 해결'})
         self.assertEqual([(r['group'], r['author']) for r in case['reviews']],
-                         [('bot', 'helper'), ('mine', 'me'), ('bot', 'coderabbitai')])
+                         [('bot', 'helper'), ('mine', 'me'), ('bot', 'coderabbitai'), ('mine', 'me')])
         self.assertEqual(case['skipped_bot_comments'], 1)
-        self.assertEqual(case['post_commits'], {'0': ['b2', 'm3', 'd4'], '1': ['b2', 'm3', 'd4'], '2': ['m3', 'd4']})
-        self.assertEqual(case['miss_commits'], {'0': ['b2', 'm3'], '1': ['b2', 'm3'], '2': ['m3']})
+        self.assertEqual(case['post_commits'], {'0': ['b2', 'm3', 'd4'], '1': ['b2', 'm3', 'd4'], '2': ['m3', 'd4'], '3': ['d4']})
+        self.assertEqual(case['miss_commits'], {'0': ['b2', 'm3'], '1': ['b2', 'm3'], '2': ['m3'], '3': ['d4']})
         self.assertEqual((case['first_external_commit'], case['unresolved_merges']), ('a1', []))
         self.assertEqual(case['reviews'][2]['findings'][0]['line'], 3)
         pr['comments']['nodes'] = pr['comments']['nodes'][:1]
         pr['reviews']['nodes'][0]['commit'] = {'oid': 'f0rce'}
-        rewritten = refresh.build_case('acme/shop', pr, 'me', {}, None, [], {})
+        rewritten = refresh.build_case('acme/shop', pr, 'me', {}, set(), None, [], {})
         self.assertEqual((rewritten['first_external_commit'], rewritten['unresolved_merges']), ('f0rce', ['m3']))
 
     def test_merge_keeps_only_hand_resolved_lines(self):
@@ -89,15 +93,16 @@ class RefreshTest(unittest.TestCase):
     def test_reviews_split_into_mine_bot_and_human(self):
         markers = {'helper-account': 'Bot Review'}
         cases = [
-            (account('coderabbitai', 'Bot'), 'summary', 'bot'),
-            (account('helper-account'), 'Bot Review result', 'bot'),
-            (account('helper-account'), 'looks good', 'human'),
-            (account('writer'), 'self note', None),
-            (account('me'), refresh.AI_REVIEW_MARK + '\nCRITICAL 0', 'mine'),
-            (account('me'), 'manual review', 'human'),
+            (account('coderabbitai', 'Bot'), 'summary', False, 'bot'),
+            (account('helper-account'), 'Bot Review result', False, 'bot'),
+            (account('helper-account'), 'looks good', False, 'human'),
+            (account('writer'), 'self note', False, None),
+            (account('writer'), '셀프 리뷰했습니다.', True, 'mine'),
+            (account('me'), 'LGTM!', True, 'mine'),
+            (account('me'), 'LGTM!', False, 'human'),
         ]
-        for who, body, group in cases:
-            self.assertEqual(refresh.classify(who, body, 'writer', 'me', markers), group, who)
+        for who, body, ai_review, group in cases:
+            self.assertEqual(refresh.classify(who, body, 'writer', markers, ai_review), group, (who, ai_review))
 
     def test_my_review_records_are_read_from_logs_html_and_bot_table(self):
         self.write('plans/topic/notes/review-log.md', '\n'.join([
