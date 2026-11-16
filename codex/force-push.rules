@@ -1,0 +1,4 @@
+# 강제 push 금지. Codex는 규칙 폴더의 심링크를 읽지 않아 install.sh가 이 파일을 ~/.codex/rules에 복사한다.
+prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")
+prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")
+prefix_rule(pattern=["git", "push", "--force-with-lease"], decision="forbidden")
