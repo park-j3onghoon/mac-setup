@@ -15,6 +15,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import traceback
 
 HOME = Path.home()
 REPO = HOME / 'git/mac-setup'
@@ -601,6 +602,18 @@ def run_periodic():
     started = datetime.datetime.now()
     run_dir = NOTES / 'runs' / started.strftime('%Y%m%d-%H%M%S')
     run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        final, message = periodic_result(started, run_dir)
+    except Exception as error:
+        # A crash must still notify, or a failed weekly run goes unnoticed until someone looks for its report.
+        traceback.print_exc()
+        final, message = 1, f'실행 중 오류 {type(error).__name__}: {error}'
+    notify(f'규칙 갱신 종료 코드 {final}', f'{message} · 기록 {run_dir}')
+    (run_dir / 'exit-code').write_text(f'{final}\n')
+    return final
+
+
+def periodic_result(started, run_dir):
     head, protected = git(REPO, 'rev-parse', 'HEAD').strip(), protected_digest()
     code = run_headless(PERIODIC_PROMPT, 'Read,Grep,Glob,Edit,Write,Bash,Agent',
                         ['Agent', *(f'Read({p})' for p in READABLE), *(f'Edit({p})' for p in EDITABLE), *PERIODIC_COMMANDS],
@@ -612,10 +625,7 @@ def run_periodic():
     if report is None:
         problems.append('리포트 없음')
     message = ' · '.join(problems) or report.read_text(encoding='utf-8').split('\n', 1)[0].lstrip('# ')
-    final = code or (3 if problems else 0)
-    notify(f'규칙 갱신 종료 코드 {final}', f'{message} · 기록 {run_dir}')
-    (run_dir / 'exit-code').write_text(f'{final}\n')
-    return final
+    return code or (3 if problems else 0), message
 
 
 def run_headless(prompt, tools, allowed, denied, cwd, transcript):
