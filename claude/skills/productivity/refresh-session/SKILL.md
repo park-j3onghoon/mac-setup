@@ -1,7 +1,6 @@
 ---
 name: refresh-session
-description: 다음 작업을 새 프로세스의 빈 컨텍스트에서 잇는다. Claude Code·Codex 둘 다 지금 세션을 끄고 같은 cmux 탭에서 다시 띄우거나(Claude Code는 설치된 최신 버전으로) 새 탭 명령을 만든다.
-disable-model-invocation: true
+description: 사용자가 새 세션에서 이어 가자고 할 때, 다음 작업을 새 프로세스의 빈 컨텍스트에서 잇는다. Claude Code·Codex 둘 다 지금 세션을 끄고 같은 cmux 탭에서 다시 띄우거나(Claude Code는 설치된 최신 버전으로) 새 탭 명령을 만든다. 지금 세션에서 이어 하는 작업에는 쓰지 않는다.
 argument-hint: "[--tab] [--model 모델] [--effort 레벨] [/스킬 인자 | 할 일]"
 allowed-tools:
   - Bash(bash ${CLAUDE_SKILL_DIR}/restart.sh *)

@@ -1,7 +1,6 @@
 ---
 name: ai-review
-description: PR을 위험도에 맞춘 리뷰어로 리뷰하고, 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다.
-disable-model-invocation: true
+description: 다른 사람의 PR에 리뷰를 달아 달라고 할 때, PR을 위험도에 맞춘 리뷰어로 리뷰하고 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다. 내 PR을 고치는 리뷰와 GitHub에 올리지 않는 읽기 전용 리뷰에는 쓰지 않는다.
 argument-hint: "[PR URL]"
 ---
 

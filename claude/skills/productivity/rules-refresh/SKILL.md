@@ -1,7 +1,6 @@
 ---
 name: rules-refresh
-description: AI 규칙(진입 파일·lib·instructions·스킬·검사 스크립트)을 개발 방법론과 Simple Design 기준에 맞춰 다시 짜고, 매주 바뀐 것만 갱신하며, 매달 지난달 머지 PR로 리뷰 규칙을 리뷰봇·사람 리뷰와 대조한다.
-disable-model-invocation: true
+description: AI 규칙을 다시 짜거나 주기 갱신·PR 대조를 해 달라고 할 때, AI 규칙(진입 파일·lib·instructions·스킬·검사 스크립트)을 개발 방법론과 Simple Design 기준에 맞춰 다시 짜고, 매주 바뀐 것만 갱신하며, 매달 지난달 머지 PR로 리뷰 규칙을 리뷰봇·사람 리뷰와 대조한다. 정해진 문장을 고치는 요청에는 쓰지 않는다.
 argument-hint: "[전체 [스킬 이름 | 경로] | 주기 | PR [YYYY-MM]]"
 ---
 

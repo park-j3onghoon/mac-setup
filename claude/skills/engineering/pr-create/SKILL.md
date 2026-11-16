@@ -1,7 +1,6 @@
 ---
 name: pr-create
-description: push된 브랜치로 Draft PR을 만든다. 크기를 검사하고, 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다.
-disable-model-invocation: true
+description: push된 브랜치로 PR을 만들어 달라고 할 때 Draft PR을 만든다. 크기를 검사하고, 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다. push 전인 변경과 이미 PR이 있는 브랜치에는 쓰지 않는다.
 effort: xhigh
 ---
 

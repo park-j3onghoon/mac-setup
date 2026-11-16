@@ -1,7 +1,6 @@
 ---
 name: cso
-description: Read-only 보안 감사. 시크릿·공급망·CI/CD·OWASP·STRIDE를 훑어 exploitable한 발견만 보고서로 낸다.
-disable-model-invocation: true
+description: 레포 전체 보안 감사를 해 달라고 할 때, Read-only로 시크릿·공급망·CI/CD·OWASP·STRIDE를 훑어 exploitable한 발견만 보고서로 낸다. 브랜치 변경분만 보는 보안 점검에는 쓰지 않는다.
 ---
 
 red-team 관점으로 파고들고 blue-team 관점으로 보고한다. 코드는 읽기만 하고, 산출물은 보안 현황 보고서 하나다.

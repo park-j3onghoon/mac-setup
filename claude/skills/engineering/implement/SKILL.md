@@ -1,7 +1,6 @@
 ---
 name: implement
-description: 확정된 계획을 vertical slice 단위로 구현한다. 안전 모드와 코드 규칙을 적용하고, 슬라이스마다 테스트 통과 후 커밋하며, 끝에 simplify로 정리한 변경도 검증 후 별도 커밋한다.
-disable-model-invocation: true
+description: 확정된 계획이나 정한 범위를 구현해 달라고 할 때, 계획을 vertical slice 단위로 구현한다. 안전 모드와 코드 규칙을 적용하고, 슬라이스마다 테스트 통과 후 커밋하며, 끝에 simplify로 정리한 변경도 검증 후 별도 커밋한다. 원인을 모르는 버그 수정에는 쓰지 않는다.
 argument-hint: "[계획 파일 경로 | 구현 범위]"
 ---
 
