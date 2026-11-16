@@ -1,37 +1,38 @@
 #!/bin/bash
-# /refresh-session(Claude Code)이 부른다. 지금 세션을 끄고 설치된 최신 Claude Code로 새 세션을 띄워 첫 프롬프트를 잇는다.
+# /refresh-session이 부른다. 지금 세션(Claude Code·Codex)을 끄고 새 프로세스로 다시 띄워 첫 프롬프트를 잇는다.
 # 사용:
-#   restart.sh tab     <디렉토리> <모델> <effort> <권한 모드> <첫 프롬프트>
-#   restart.sh restart <디렉토리> <모델> <effort> <권한 모드> <세션 pid> <첫 프롬프트>
+#   restart.sh tab     <디렉토리> <에이전트 명령> <첫 프롬프트>
+#   restart.sh restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>
+# <에이전트 명령>은 첫 프롬프트 앞까지의 명령이다(`claude --model opus --effort max --permission-mode auto`, `codex`).
 # tab은 새 탭에서 칠 명령을 클립보드에 넣고 출력한다. restart는 세션 종류에 따라 다시 띄우고 사용자에게 보일 줄을 출력한다.
-#   백그라운드 세션: 새 백그라운드 세션을 띄우고, 이 세션은 턴이 끝나면 claude stop한다.
+#   Claude Code 백그라운드 세션: 새 백그라운드 세션을 띄우고, 이 세션은 턴이 끝나면 claude stop한다.
 #     claude respawn은 붙어 있던 화면을 떼어 내서(이어서 입력할 곳이 사라진다) 쓰지 않는다.
-#   cmux 탭의 대화형 세션: 이 탭에 /exit를 입력해 두고, Claude Code가 끝나면 같은 탭 셸에 재시작 명령을 입력한다.
-#   그 밖(claude agents 목록에서 종류를 확인하지 못한 경우 포함): 재시작 명령을 클립보드에 넣는다.
+#   cmux 탭의 대화형 세션: 이 탭에 /exit를 입력해 두고, 세션 프로세스가 끝나면 같은 탭 셸에 재시작 명령을 입력한다.
+#   그 밖(세션 pid나 Claude Code 세션 종류를 확인하지 못한 경우 포함): 재시작 명령을 클립보드에 넣는다.
 # 턴이 끝나기를 기다리는 일은 떼어 낸 프로세스가 하고, 그 기록은 ~/.claude/state/refresh-session/restart.log에 남는다.
 set -euo pipefail
 
 state_dir="$HOME/.claude/state/refresh-session"
 log="$state_dir/restart.log"
-# 턴이 끝나거나 Claude Code가 꺼지기를 기다리는 한도(초)
+# 턴이 끝나거나 세션 프로세스가 꺼지기를 기다리는 한도(초)
 wait_limit=600
 
 main() {
 	local mode=${1:-}
 	shift || true
 	case $mode:$# in
-	tab:5) copy_tab_command "$@" ;;
-	restart:6) restart "$@" ;;
+	tab:3) copy_tab_command "$@" ;;
+	restart:4) restart "$@" ;;
 	stop-when-idle:2) stop_when_idle "$@" ;;
 	type-after-exit:3) type_after_exit "$@" ;;
 	*)
-		echo "사용: restart.sh tab|restart <디렉토리> <모델> <effort> <권한 모드> [<세션 pid>] <첫 프롬프트>" >&2
+		echo "사용: restart.sh tab <디렉토리> <에이전트 명령> <첫 프롬프트> | restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>" >&2
 		return 2
 		;;
 	esac
 }
 
-# copy_tab_command <디렉토리> <모델> <effort> <권한 모드> <첫 프롬프트>
+# copy_tab_command <디렉토리> <에이전트 명령> <첫 프롬프트>
 copy_tab_command() {
 	local cmd
 	cmd=$(restart_command "$@")
@@ -39,30 +40,33 @@ copy_tab_command() {
 	printf '%s\n' "$cmd"
 }
 
-# restart <디렉토리> <모델> <effort> <권한 모드> <세션 pid> <첫 프롬프트>
+# restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>
 restart() {
-	local pid=$5 info kind id
-	# pid가 틀리면 기다리는 쪽이 곧바로 끝난 것으로 보고, 아직 도는 Claude Code 입력칸에 명령을 친다.
-	if ! [[ $pid =~ ^[0-9]+$ && $(ps -o command= -p "$pid" 2>/dev/null) == *claude* ]]; then
-		echo "세션 pid가 Claude Code 프로세스가 아닙니다: '$pid'" >&2
-		return 1
+	local dir=$1 pid=$2 agent=$3 prompt=$4 name=${3%% *} kind= id=
+	# pid가 틀리면 기다리는 쪽이 곧바로 끝난 것으로 보고, 아직 도는 세션 입력칸에 명령을 친다.
+	if [[ $pid =~ ^[0-9]+$ && $(ps -o command= -p "$pid" 2>/dev/null) == *"$name"* ]]; then
+		# 탭에 /exit를 치는 일은 그 탭에서 도는 대화형 세션으로 확인될 때만 한다.
+		# Claude Code agent view 목록 화면에 치면 새 세션이 생겨서 목록에서 종류를 확인한다.
+		if [[ $name == claude ]]; then
+			read -r kind id _ <<<"$(session_info pid "$pid" || true)" || true
+		else
+			kind=interactive
+		fi
 	fi
-	info=$(session_info pid "$pid" || true)
-	read -r kind id _ <<<"$info" || true
-	# 탭에 /exit를 치는 일은 그 탭에서 도는 대화형 세션으로 확인될 때만 한다. agent view 목록 화면에 치면 새 세션이 생긴다.
 	if [[ $kind == background ]]; then
-		restart_background "$1" "$2" "$3" "$4" "$id" "$pid" "$6"
+		restart_background "$dir" "$agent" "$prompt" "$id" "$pid"
 	elif [[ $kind == interactive && -n ${CMUX_SURFACE_ID:-} ]]; then
-		restart_in_tab "$1" "$2" "$3" "$4" "$pid" "$6"
+		restart_in_tab "$dir" "$agent" "$prompt" "$pid"
 	else
-		copy_command "$1" "$2" "$3" "$4" "$6"
+		copy_command "$dir" "$agent" "$prompt"
 	fi
 }
 
-# restart_background <디렉토리> <모델> <effort> <권한 모드> <세션 id> <세션 pid> <첫 프롬프트>
+# restart_background <디렉토리> <에이전트 명령> <첫 프롬프트> <세션 id> <세션 pid>
 restart_background() {
-	local dir=$1 id=$5 pid=$6 prompt=$7 settings out new
-	local args=(--bg -n "$(session_name "$prompt")" --model "$2" --effort "$3" --permission-mode "$4")
+	local dir=$1 prompt=$3 id=$4 pid=$5 words settings out new
+	read -r -a words <<<"$2"
+	local args=(--bg -n "$(session_name "$prompt")" "${words[@]:1}")
 	settings=$(agent_view_settings)
 	[[ -z $settings ]] || args+=(--settings "$settings")
 	out=$(cd "$dir" && claude "${args[@]}" -- "$prompt" 2>&1) || {
@@ -81,18 +85,18 @@ restart_background() {
 	[[ -n $settings ]] || echo "agent view의 cmux 설정을 찾지 못해 새 세션에는 cmux 알림이 없습니다."
 }
 
-# restart_in_tab <디렉토리> <모델> <effort> <권한 모드> <세션 pid> <첫 프롬프트>
+# restart_in_tab <디렉토리> <에이전트 명령> <첫 프롬프트> <세션 pid>
 restart_in_tab() {
-	local pid=$5 cmd
-	cmd=$(restart_command "$1" "$2" "$3" "$4" "$6")
-	# 턴 중에 입력한 /exit는 턴이 끝날 때까지 큐에서 기다린다.
+	local cmd
+	cmd=$(restart_command "$1" "$2" "$3")
+	# Claude Code는 턴 중에 입력한 /exit를 턴이 끝날 때까지 큐에 두고, Codex는 곧바로 끝난다(원격 화면이면 턴은 서버에서 마저 돈다).
 	cmux send --surface "$CMUX_SURFACE_ID" -- /exit >/dev/null
 	cmux send-key --surface "$CMUX_SURFACE_ID" enter >/dev/null
-	detach type-after-exit "$pid" "$CMUX_SURFACE_ID" "$cmd"
-	printf '이 턴이 끝나면 Claude Code를 끄고 같은 탭에서 다시 띄웁니다: `%s`\n' "$cmd"
+	detach type-after-exit "$4" "$CMUX_SURFACE_ID" "$cmd"
+	printf '세션을 끄고 같은 탭에서 다시 띄웁니다: `%s`\n' "$cmd"
 }
 
-# copy_command <디렉토리> <모델> <effort> <권한 모드> <첫 프롬프트>
+# copy_command <디렉토리> <에이전트 명령> <첫 프롬프트>
 copy_command() {
 	local cmd
 	cmd=$(restart_command "$@")
@@ -123,12 +127,12 @@ stop_when_idle() {
 	notify "세션 ${id}의 턴이 ${wait_limit}초 안에 끝나지 않아 멈추지 않았습니다. 직접 멈추려면: claude stop $id"
 }
 
-# type_after_exit <세션 pid> <cmux 탭> <명령>: 그 Claude Code가 끝나면 그 탭 셸에 명령을 입력한다.
+# type_after_exit <세션 pid> <cmux 탭> <명령>: 그 세션 프로세스가 끝나면 그 탭 셸에 명령을 입력한다.
 type_after_exit() {
 	local pid=$1 surface=$2 cmd=$3 waited=0
 	while kill -0 "$pid" 2>/dev/null; do
 		if ((waited >= wait_limit)); then
-			notify "Claude Code(pid $pid)가 ${wait_limit}초 안에 끝나지 않아 다시 띄우지 않았습니다"
+			notify "세션 프로세스(pid $pid)가 ${wait_limit}초 안에 끝나지 않아 다시 띄우지 않았습니다"
 			return
 		fi
 		sleep 1
@@ -179,10 +183,12 @@ installed_version() {
 	claude --version | cut -d' ' -f1
 }
 
-# restart_command <디렉토리> <모델> <effort> <권한 모드> <첫 프롬프트>: 셸에 칠 재시작 명령을 출력한다.
+# restart_command <디렉토리> <에이전트 명령> <첫 프롬프트>: 셸에 칠 재시작 명령을 출력한다.
 restart_command() {
-	printf 'cd %s && claude --model %s --effort %s --permission-mode %s -- %s' \
-		"$(shell_dir "$1")" "$(word "$2")" "$(word "$3")" "$(word "$4")" "$(quote "$5")"
+	local words quoted=() w
+	read -r -a words <<<"$2"
+	for w in "${words[@]}"; do quoted+=("$(word "$w")"); done
+	printf 'cd %s && %s -- %s' "$(shell_dir "$1")" "${quoted[*]}" "$(quote "$3")"
 }
 
 # shell_dir <디렉토리>: 홈 아래이고 셸 특수 문자가 없으면 ~/…로, 아니면 작은따옴표로 감싸 출력한다.
