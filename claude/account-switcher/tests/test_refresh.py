@@ -18,7 +18,7 @@ SESSION = 'aaaaaaaa-1111-2222-3333-444444444444'
 
 
 def screen(prompt_line='❯', footer='  ⏵⏵ auto mode on (shift+tab to cycle)'):
-    return '\n'.join(['⏺ 작업을 마쳤습니다.', '', RULE, prompt_line, RULE, '  buzzvil', footer])
+    return '\n'.join(['⏺ 작업을 마쳤습니다.', '', RULE, prompt_line, RULE, '  work', footer])
 
 
 def limit_error(text="You've hit your 5-hour limit · resets 7:30pm (Asia/Seoul)"):
