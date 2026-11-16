@@ -38,6 +38,9 @@ WAIT_STEP_SECONDS = 3
 SUBAGENT_QUIET_SECONDS = 120
 WORKING_CHILDREN = frozenset({'zsh', 'bash', 'sh'})
 LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
+# User entries Claude Code writes itself. Background task notifications keep arriving after a
+# limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
+GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
 RULE_MIN_DASHES = 10
 TAIL_BYTES = 262144
 
@@ -77,10 +80,10 @@ def input_ready(screen):
     return is_rule(lines[i - 1]) and is_rule(lines[i + 1])
 
 
-def is_command_echo(entry):
+def is_generated(entry):
     content = (entry.get('message') or {}).get('content')
     text = content if isinstance(content, str) else ''
-    return entry.get('isMeta') or text.lstrip().startswith(('<command-', '<local-command'))
+    return entry.get('isMeta') or text.lstrip().startswith(GENERATED_PREFIXES)
 
 
 def ended_with_limit_error(projects_dir, session_id):
@@ -98,7 +101,7 @@ def ended_with_limit_error(projects_dir, session_id):
             entry = json.loads(line)
         except ValueError:
             continue
-        if entry.get('type') == 'user' and not is_command_echo(entry):
+        if entry.get('type') == 'user' and not is_generated(entry):
             return False
         if entry.get('type') == 'assistant':
             content = (entry.get('message') or {}).get('content') or []
