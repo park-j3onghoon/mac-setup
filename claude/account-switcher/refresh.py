@@ -29,7 +29,9 @@ import time
 CMUX_PATHS = ('/opt/homebrew/bin/cmux', '/Applications/cmux.app/Contents/Resources/bin/cmux')
 CONTINUE_PROMPT = '이어서 해줘'
 STATE = 'session_refresh'
-REFRESH_WINDOW_SECONDS = 6 * 3600
+# Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
+# 16:27); after that every session reads the live login on its next request.
+REFRESH_WINDOW_SECONDS = 8 * 3600
 READY_TIMEOUT_SECONDS = 600
 RESTART_TIMEOUT_SECONDS = 120
 WAIT_STEP_SECONDS = 3
