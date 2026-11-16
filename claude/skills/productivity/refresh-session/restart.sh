@@ -1,9 +1,12 @@
 #!/bin/bash
 # /refresh-session이 부른다. 지금 세션(Claude Code·Codex)을 끄고 새 프로세스로 다시 띄워 첫 프롬프트를 잇는다.
 # 사용:
-#   restart.sh tab     <디렉토리> <에이전트 명령> <첫 프롬프트>
-#   restart.sh restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>
+#   restart.sh tab           <디렉토리> <에이전트 명령> <첫 프롬프트>
+#   restart.sh restart       <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>
+#   restart.sh codex-tab     <디렉토리> <첫 프롬프트> [옵션]
+#   restart.sh codex-restart <디렉토리> <첫 프롬프트> [옵션]
 # <에이전트 명령>은 첫 프롬프트 앞까지의 명령이다(`claude --model opus --effort max --permission-mode auto`, `codex`).
+# codex-*는 에이전트 명령(`codex [옵션]`)과 세션 pid(`$CMUX_CODEX_PID`)를 스크립트가 채운다. 명령 틀에 글자 그대로 둔 `'codex'` 인자를 Codex 모델이 빠뜨린다.
 # tab은 새 탭에서 칠 명령을 클립보드에 넣고 출력한다. restart는 세션 종류에 따라 다시 띄우고 사용자에게 보일 줄을 출력한다.
 #   Claude Code 백그라운드 세션: 새 백그라운드 세션을 띄우고, 이 세션은 턴이 끝나면 claude stop한다.
 #     claude respawn은 붙어 있던 화면을 떼어 내서(이어서 입력할 곳이 사라진다) 쓰지 않는다.
@@ -23,10 +26,12 @@ main() {
 	case $mode:$# in
 	tab:3) copy_tab_command "$@" ;;
 	restart:4) restart "$@" ;;
+	codex-tab:[23]) copy_tab_command "$1" "codex${3:+ $3}" "$2" ;;
+	codex-restart:[23]) restart "$1" "${CMUX_CODEX_PID:-}" "codex${3:+ $3}" "$2" ;;
 	stop-when-idle:2) stop_when_idle "$@" ;;
 	type-after-exit:3) type_after_exit "$@" ;;
 	*)
-		echo "사용: restart.sh tab <디렉토리> <에이전트 명령> <첫 프롬프트> | restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트>" >&2
+		echo "사용: restart.sh tab <디렉토리> <에이전트 명령> <첫 프롬프트> | restart <디렉토리> <세션 pid> <에이전트 명령> <첫 프롬프트> | codex-tab <디렉토리> <첫 프롬프트> [옵션] | codex-restart <디렉토리> <첫 프롬프트> [옵션]" >&2
 		return 2
 		;;
 	esac
