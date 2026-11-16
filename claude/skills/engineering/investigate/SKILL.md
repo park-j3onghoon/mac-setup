@@ -1,7 +1,6 @@
 ---
 name: investigate
-description: 버그를 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다.
-disable-model-invocation: true
+description: 버그·에러·장애의 원인을 모를 때 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. 원인과 고칠 곳이 이미 정해진 수정에는 쓰지 않는다.
 argument-hint: "[증상 또는 에러 메시지]"
 ---
 
