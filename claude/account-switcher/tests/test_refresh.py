@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock
@@ -70,12 +71,16 @@ class FakeRunner:
     """Answers ps and cmux like the real tools and records typed text. Typing `/restart`
     re-registers the session with a new startedAt, as Claude Code's exec restart does."""
 
-    def __init__(self, fixture, children='', restarts=True):
+    def __init__(self, fixture, children='', restarts=True, ps_timeouts=0):
         self.fixture, self.children, self.restarts = fixture, children, restarts
+        self.ps_timeouts = ps_timeouts
         self.screen_text = screen()
         self.typed = []
 
     def __call__(self, argv, **kwargs):
+        if argv[0] == '/bin/ps' and self.ps_timeouts:
+            self.ps_timeouts -= 1
+            raise subprocess.TimeoutExpired(argv, kwargs.get('timeout'))
         if argv[0] == '/bin/ps':
             ps = f'101 ttys011 {STARTED}\n'
             return Mock(returncode=0, stdout=self.children if '-ax' in argv else ps)
@@ -284,6 +289,16 @@ class SelfRestartTests(unittest.TestCase):
         outcome = fixture.restart(runner).run()
         # then
         self.assertEqual((outcome, runner.typed), ('restart_unconfirmed', ['/restart', 'enter']))
+
+    def test_slow_process_list_is_retried(self):
+        """여러 세션이 한도에 함께 멈춰 ps가 시간 안에 끝나지 않아도 포기하지 않고 다음 확인에서 다시 띄운다."""
+        # given
+        fixture = self.fixture()
+        runner = FakeRunner(fixture, ps_timeouts=2)
+        # when
+        outcome = fixture.restart(runner).run()
+        # then
+        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart', 'enter']))
 
 
 if __name__ == '__main__':
