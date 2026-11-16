@@ -78,7 +78,8 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | [`lib/work-style.md`](claude/lib/work-style.md) | 일하는 규칙: 묻는 범위(시스템·데이터 레벨만), 요청 읽기, 알리기, 맡기기, 운영 (`~/.claude/CLAUDE.md`가 import해 모든 작업에 적용) |
 | [`lib/answer-style.md`](claude/lib/answer-style.md) | 답변·문서 작성 규칙 (`~/.claude/CLAUDE.md`가 import해 모든 답변에 적용) |
 | [`lib/debug.md`](claude/lib/debug.md) | 문제 원인을 찾고 고치는 순서: 증상 → 이론과 코드 → 원인 후보 → 실험 → 수정 → 판정 |
-| [`lib/document-tone.md`](claude/lib/document-tone.md) | PR 본문·코멘트 같은 문서의 문장 끝 규칙 |
+| [`lib/document-tone.md`](claude/lib/document-tone.md) | PR 본문·RFC·카드 같은 문서의 문장 끝 규칙 |
+| [`lib/comment-tone.md`](claude/lib/comment-tone.md) | 내 계정으로 다는 리뷰 코멘트·리뷰 본문·답글의 말투 (직접 쓴 GitHub 코멘트에서 뽑은 문장 끝·묻는 법·nit·LGTM·감사 표현) |
 | [`lib/diagram/`](claude/lib/diagram/) | 도식 형식 고르기(코드블록 · markdown 표 · HTML) · HTML 틀 둘(양의 이동을 보이는 생키 도식, 단계별 흐름과 경로를 비교하는 흐름 지도) |
 | [`lib/explain/`](claude/lib/explain/) | 개념 설명 서술 방식 |
 | [`lib/coding/`](claude/lib/coding/) | 코드 규칙. 분야별 모듈(process·architecture·domain·types·design·tests·errors·functions·file-layout·comments·naming·db·repositories·api·ui)이고 스택 규칙은 `{분야}-{스택}.md` 파일(python·frontend·proto)에 있다. 목차 `index.md`가 작업마다 읽을 모듈을 고른다 |
