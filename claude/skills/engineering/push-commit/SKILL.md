@@ -1,7 +1,6 @@
 ---
 name: push-commit
-description: 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다.
-disable-model-invocation: true
+description: 사용자가 push를 요청할 때 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. push 요청이 없는 로컬 커밋에는 쓰지 않는다.
 effort: xhigh
 ---
 

@@ -28,14 +28,10 @@ while IFS= read -r f; do
   head=$(awk 'NR>1 && /^---/{exit} NR>1{print}' "$f")
   grep -q '^name:' <<<"$head"        || { note "name 없음: $f"; fail=1; }
   grep -q '^description:' <<<"$head" || { note "description 없음: $f"; fail=1; }
-  if grep -q '^disable-model-invocation:' <<<"$head" && ! grep -qE '^disable-model-invocation: (true|false)$' <<<"$head"; then
-    note "disable-model-invocation 은 true/false: $f"; fail=1
-  fi
+  grep -q '^disable-model-invocation:' <<<"$head" && { note "disable-model-invocation 잔존(모든 스킬은 AI가 고른다): $f"; fail=1; }
   if grep -q '^user-invocable:' <<<"$head" && ! grep -qE '^user-invocable: (true|false)$' <<<"$head"; then
     note "user-invocable 은 true/false: $f"; fail=1
   fi
-  grep -q '^user-invocable: false$' <<<"$head" && grep -q '^disable-model-invocation: true$' <<<"$head" \
-    && { note "사용자도 AI도 못 부름: $f"; fail=1; }
   grep -qE '^argument-hint: *[^" ]' <<<"$head" && { note "argument-hint 값에 큰따옴표 없음: $f"; fail=1; }
   grep -q '^version:' <<<"$head"     && { note "version 잔존: $f"; fail=1; }
   grep -q '^context:' <<<"$head"     && { note "context 잔존: $f"; fail=1; }

@@ -1,7 +1,6 @@
 ---
 name: plan-review
-description: 구현 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다.
-disable-model-invocation: true
+description: 구현 계획을 리뷰해 달라고 할 때, 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다. 이미 구현한 코드의 리뷰에는 쓰지 않는다.
 argument-hint: "[계획 파일 경로]"
 ---
 

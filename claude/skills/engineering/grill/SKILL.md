@@ -1,7 +1,6 @@
 ---
 name: grill
-description: 결정을 끝까지 캐묻는다. 사실은 내가 찾고, 갈림길은 한 턴에 하나씩 묻고, 합의된 결정을 decisions.md로 남긴다.
-disable-model-invocation: true
+description: 계획·초안·주제의 결정을 확인해 달라고 할 때 결정을 끝까지 캐묻는다. 사실은 내가 찾고, 갈림길은 한 턴에 하나씩 묻고, 합의된 결정을 decisions.md로 남긴다. 답이 하나로 정해지는 사실 질문에는 쓰지 않는다.
 argument-hint: "<주제 또는 계획>"
 ---
 

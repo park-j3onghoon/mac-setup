@@ -1,7 +1,6 @@
 ---
 name: implement-review
-description: 내 PR이나 구현 커밋을 위험도에 맞춘 리뷰어로 리뷰한다. 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 보고, `--full`이면 처음부터 다시 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다.
-disable-model-invocation: true
+description: 내 PR이나 구현 커밋을 리뷰해 달라고 할 때 위험도에 맞춘 리뷰어로 리뷰한다. 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 보고, `--full`이면 처음부터 다시 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다. 다른 사람의 PR 리뷰에는 쓰지 않는다.
 argument-hint: "[PR URL | 기준 ref, 없으면 계획의 기준 ref 또는 upstream] [--full]"
 ---
 
