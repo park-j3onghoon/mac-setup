@@ -99,8 +99,21 @@ def launch_automatic(arguments):
     # A remote terminal sends no directory unless told, and the thread then runs in the
     # server's own directory (measured on 0.168.0, 2026-11-13).
     directory = [] if any(arg.startswith(("-C", "--cd")) for arg in arguments) else ["-C", os.getcwd()]
-    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(SOCKET), *directory, *arguments],
-              environment)
+    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(SOCKET), *directory,
+                            *cmux_tab_overrides(), *arguments], environment)
+
+
+def cmux_tab_overrides():
+    # The server runs this terminal's shell commands, so they cannot inherit its cmux tab the way a
+    # local terminal's commands do; pass the tab and this process (execve keeps the pid) so they can
+    # act on their own terminal. A remote terminal sends shell_environment_policy with thread/start
+    # and resume (0.169.0).
+    surface = os.environ.get("CMUX_SURFACE_ID")
+    if not surface:
+        return []
+    values = {"CMUX_SURFACE_ID": surface, "CMUX_CODEX_PID": str(os.getpid())}
+    return [part for name, value in values.items()
+            for part in ("-c", f'shell_environment_policy.set.{name}="{value}"')]
 
 
 def main(arguments):

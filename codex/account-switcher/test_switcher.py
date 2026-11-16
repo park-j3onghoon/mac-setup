@@ -90,6 +90,7 @@ class LauncherTest(unittest.TestCase):
 
     def test_automatic_session_runs_in_the_terminal_directory(self):
         with patch("service.ensure", return_value={"active": "company"}), \
+             patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(launcher.os, "getcwd", return_value="/project"), \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
             with self.assertRaises(SystemExit):
@@ -99,10 +100,25 @@ class LauncherTest(unittest.TestCase):
 
     def test_directory_given_by_the_user_is_kept(self):
         with patch("service.ensure", return_value={"active": "company"}), \
+             patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
             with self.assertRaises(SystemExit):
                 launcher.launch_automatic(["--cd", "/chosen"])
         self.assertEqual(run.call_args.args[1][1:], ["--remote", "unix://" + str(SOCKET), "--cd", "/chosen"])
+
+    def test_session_in_a_cmux_tab_passes_the_tab_to_its_shell_commands(self):
+        with patch("service.ensure", return_value={"active": "company"}), \
+             patch.dict(launcher.os.environ, {"CMUX_SURFACE_ID": "SURFACE-1"}, clear=True), \
+             patch.object(launcher.os, "getpid", return_value=4321), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.launch_automatic(["--cd", "/chosen"])
+        self.assertEqual(run.call_args.args[1][1:], [
+            "--remote", "unix://" + str(SOCKET),
+            "-c", 'shell_environment_policy.set.CMUX_SURFACE_ID="SURFACE-1"',
+            "-c", 'shell_environment_policy.set.CMUX_CODEX_PID="4321"',
+            "--cd", "/chosen",
+        ])
 
     def test_management_after_global_options_is_recognized(self):
         self.assertFalse(launcher.interactive(["-c", "model=chosen", "login", "status"]))
