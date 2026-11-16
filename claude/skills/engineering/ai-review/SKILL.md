@@ -23,14 +23,14 @@ argument-hint: "[PR URL]"
 2단계 이슈 리포트에서 남김을 뺀 발견으로 리뷰 한 건을 만들고, 승인받은 뒤 올린다.
 
 1. event와 달 발견을 정한다.
-   - CRITICAL 발견이 있으면 event는 `REQUEST_CHANGES`이고 CRITICAL 발견만 단다.
+   - CRITICAL 발견이 있으면 event는 `COMMENT`이고 CRITICAL 발견만 단다.
    - CRITICAL 발견이 없으면 event는 `APPROVE`이고 INFO 발견을 모두 단다.
    - 1단계에서 읽은 PR author의 login이 `gh api user --jq .login`과 같으면 event만 `COMMENT`로 바꾼다.
    - PR 제목·본문이나 문서가 코드와 다르다는 발견은 머지 판단을 바꾸는 것만 단다.
 2. 자리를 정한다. 발견의 `file:line`이 가리키는 새 파일 줄이 1단계 diff 파일 hunk의 `+` 줄이나 문맥 줄이면 줄 코멘트로 단다. 줄 범위면 두 끝이 같은 hunk에 들 때 여러 줄 코멘트로 단다. 나머지 발견은 리뷰 본문에 단다.
 3. `~/.claude/lib/comment-tone.md`를 Read하고 그 말투로 줄 코멘트와 리뷰 본문을 쓴다. 줄 코멘트마다 문제, 틀어지는 경우(실제 값이 든 입력과 결과, 또는 근거 file:line), 고칠 방법을 담고, INFO 발견은 그 문서의 사소한 지적으로 쓴다. 발견 원문의 압축 용어(불변식, 필드명만 쓴 표현)는 풀어 쓰고, 근거는 리뷰어·도구 이름 대신 코드·데이터 사실로 쓴다.
 
-   리뷰 본문의 첫 줄은 PR author가 나면 `셀프 리뷰했습니다.`, 아니면 event가 `APPROVE`일 때 그 문서의 승인 본문 줄, `REQUEST_CHANGES`일 때 그 문서의 승인하지 않는 본문 줄이다.
+   리뷰 본문의 첫 줄은 PR author가 나면 `셀프 리뷰했습니다.`, 아니면 CRITICAL 발견을 달 때 그 문서의 승인하지 않는 본문 줄, 달지 않을 때 승인 본문 줄이다.
 
    ```
    {첫 줄}
