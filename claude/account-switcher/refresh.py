@@ -117,28 +117,24 @@ def ended_with_limit_error(projects_dir, session_id):
     return False
 
 
-def live_sessions(config_home, runner=subprocess.run):
-    """Interactive sessions whose registered pid still belongs to the same process."""
-    registered = {}
+def live_session(config_home, session_id, runner=subprocess.run):
+    """This interactive session's registry entry while its pid still belongs to the same process.
+
+    `ps -p` gets one pid: with all 15 registered pids it took 0.16 s of system time, with one
+    under 0.01 s (2026-11-16)."""
     for path in (Path(config_home) / 'sessions').glob('*.json'):
         try:
             entry = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if isinstance(entry.get('pid'), int) and entry.get('kind') == 'interactive':
-            registered[entry['pid']] = entry
-    if not registered:
-        return []
-    result = runner(['/bin/ps', '-o', 'pid=,tty=,lstart=', '-p', ','.join(map(str, registered))],
-                    capture_output=True, text=True, timeout=5, check=False,
-                    env={'LC_ALL': 'C', 'TZ': 'UTC'})
-    sessions = []
-    for line in result.stdout.splitlines():
-        pid, tty, started = (line.split(None, 2) + ['', '', ''])[:3]
-        entry = registered.get(int(pid)) if pid.isdigit() else None
-        if entry and entry.get('procStart') == started.strip():
-            sessions.append(dict(entry, tty=tty))
-    return sessions
+        if (entry.get('sessionId') != session_id or entry.get('kind') != 'interactive'
+                or not isinstance(entry.get('pid'), int)):
+            continue
+        result = runner(['/bin/ps', '-o', 'lstart=', '-p', str(entry['pid'])], capture_output=True,
+                        text=True, timeout=5, check=False, env={'LC_ALL': 'C', 'TZ': 'UTC'})
+        if result.stdout.strip() == entry.get('procStart'):
+            return entry
+    return None
 
 
 def process_children(runner):
@@ -178,8 +174,7 @@ class SelfRestart:
         self.projects = self.config_home / 'projects'
 
     def session(self):
-        return next((s for s in live_sessions(self.config_home, self.runner)
-                     if s['sessionId'] == self.session_id), None)
+        return live_session(self.config_home, self.session_id, self.runner)
 
     def limited(self):
         return ended_with_limit_error(self.projects, self.session_id)
