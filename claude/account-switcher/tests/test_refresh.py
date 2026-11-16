@@ -40,12 +40,19 @@ def task_notification():
 class Clock:
     def __init__(self, now):
         self.now = now
+        self.scheduled = []
 
     def __call__(self):
         return self.now
 
+    def at(self, when, action):
+        """Run action once sleep() passes when, as the service records a switch meanwhile."""
+        self.scheduled.append((when, action))
+
     def sleep(self, seconds):
         self.now += seconds
+        while self.scheduled and self.scheduled[0][0] <= self.now:
+            self.scheduled.pop(0)[1]()
 
 
 class SessionFixture:
@@ -63,6 +70,9 @@ class SessionFixture:
         (self.home / 'sessions' / '101.json').write_text(json.dumps({
             'pid': 101, 'sessionId': SESSION, 'kind': 'interactive', 'procStart': STARTED,
             'status': status, 'startedAt': int(started_at * 1000)}))
+
+    def started_at(self):
+        return json.loads((self.home / 'sessions' / '101.json').read_text())['startedAt'] / 1000
 
     def transcript(self, *entries):
         path = self.home / 'projects' / '-Users-test' / f'{SESSION}.jsonl'
@@ -296,6 +306,31 @@ class SelfRestartTests(unittest.TestCase):
         fixture.restart(runner).run()
         # then
         self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+
+    def test_session_stopped_at_a_limit_before_the_switch_waits_for_it(self):
+        """다음 전환보다 먼저 한도에 멈춘 세션은 전환기가 다음 조회(최대 9분 뒤)에서 계정을 바꿀 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
+        # given
+        fixture = self.fixture(status='waiting', started_at=SWITCHED_AT + 30)
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        next_switch = fixture.clock() + 9 * 60
+        fixture.clock.at(next_switch, lambda: record_switch(fixture.state, next_switch))
+        runner = FakeRunner(fixture)
+        # when
+        fixture.restart(runner).run()
+        # then
+        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertGreater(fixture.started_at(), next_switch)
+
+    def test_limit_stopped_session_without_a_switch_is_left_alone(self):
+        """한도에 멈췄어도 전환이 끝내 오지 않으면(두 계정 모두 한도 등) 다시 띄워도 같은 계정이므로 아무것도 넣지 않는다."""
+        # given
+        fixture = self.fixture(status='waiting', started_at=SWITCHED_AT + 30)
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        runner = FakeRunner(fixture)
+        # when
+        outcome = fixture.restart(runner).run()
+        # then
+        self.assertEqual((outcome, runner.typed), ('no_switch', []))
 
     def test_restart_that_never_happens_is_reported(self):
         """`/restart`를 넣어도 등록 시작 시각이 그대로면 재시작 미확인으로 알리고 더 넣지 않는다."""

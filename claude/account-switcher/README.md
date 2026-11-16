@@ -80,7 +80,8 @@ python3 "$tool" init --primary personal@example.com --fallback work@example.com 
      "command": "python3 $HOME/git/mac-setup/claude/account-switcher/refresh_hook.py"}]}]
    ```
 
-   훅은 Keychain을 읽지 않는다. 교체 기록이 없으면 세션 기록도 읽지 않고 끝난다.
+   훅은 Keychain을 읽지 않는다. 자기 대화 기록 끝에서 한도 오류만 확인하고, 교체 기록이
+   없으면 세션 등록 파일과 프로세스 목록은 읽지 않고 끝난다.
 
 ## 규칙
 
@@ -167,11 +168,14 @@ python3 "$tool" service-uninstall  # 백그라운드 서비스 중지·제거
 `Stop`·`StopFailure` 훅(`refresh_hook.py`, 설정은 최초 설정 5단계)이 턴이 끝날 때 세션을
 다시 띄운다. cmux는 cmux 안에서 시작한 프로세스만 탭을 조작하게 하므로(설정
 `automation.socketControlMode` 기본값 `cmuxOnly`) launchd 서비스는 세션 탭에 입력하지
-못한다(2026-11-13 확인). 훅은 교체가 6시간 안이고 세션이 그보다 먼저 시작했을 때만
-분리한 도우미를 띄우고 바로 끝난다. 도우미는 조건을 기다렸다가 자기 탭에 내장
-`/restart`를 넣는다(`refresh.py`). `/restart`는 같은 pid에서 다시 실행되고 같은 세션 ID로
-대화를 이어 간다(2026-11-13 시험 세션에서 확인, 등록 파일 `startedAt`만 바뀐다).
-- 대상: 마지막 교체 전에 시작했고 cmux 탭에서 도는 세션
+못한다(2026-11-13 확인). 훅은 세션이 한도 오류로 멈췄거나, 교체가 8시간 안이고 세션이
+그보다 먼저 시작했을 때만 분리한 도우미를 띄우고 바로 끝난다. 도우미는 세션보다 늦은
+교체를 기다린 뒤 아래 조건을 기다렸다가 자기 탭에 내장 `/restart`를 넣는다(`refresh.py`).
+`/restart`는 같은 pid에서 다시 실행되고 같은 세션 ID로 대화를 이어 간다(2026-11-13 시험
+세션에서 확인, 등록 파일 `startedAt`만 바뀐다).
+- 대상: cmux 탭에서 돌고 마지막 교체 전에 시작한 세션. 교체보다 한도 오류가 먼저 온
+  세션은 전환기가 다음 조회(최대 9분 간격)에서 교체할 때까지 3초마다 최대 15분 기다린다
+  (2026-11-16 11:27에 한도, 11:32에 교체였던 세션이 재시작 없이 멈춰 있었다).
 - 조건: 상태가 `idle`이거나 마지막 응답이 사용 한도 오류, 입력창(`❯`)이 비어 있음,
   자식 셸(백그라운드 Bash·Monitor)이 없음, 서브에이전트 기록이 2분 안에 바뀌지 않음.
   도우미는 3초마다 최대 10분 기다린다. 한도 오류 뒤에 쌓인 백그라운드 작업 알림
@@ -179,9 +183,10 @@ python3 "$tool" service-uninstall  # 백그라운드 서비스 중지·제거
   세션에 알림이 이어 들어와 재시작 뒤 「이어서 해줘」가 빠졌다).
 - 이어서: 한도 오류로 멈췄던 세션은 다시 뜬 뒤 「이어서 해줘」를 넣는다
 - 그대로 두는 세션: 10분 안에 조건이 안 맞은 세션은 다음 턴이 끝날 때 다시 본다.
-  cmux 밖 세션과 6시간 안에 턴이 끝나지 않은 세션은 토큰 만료 때 넘어온다.
+  cmux 밖 세션과 8시간 안에 턴이 끝나지 않은 세션은 토큰 만료 때 넘어온다. 한도에
+  멈췄는데 15분 안에 교체가 없으면(두 계정 모두 한도 등) 아무것도 넣지 않는다.
 - 결과: 상태 디렉터리의 `session-restarts.log`에 세션 ID 앞 8자리와 `restarted`·
-  `restarted_and_continued`·`not_ready`·`restart_unconfirmed` 중 하나를 남긴다.
+  `restarted_and_continued`·`no_switch`·`not_ready`·`restart_unconfirmed` 중 하나를 남긴다.
 - 상태줄의 「← N agents」는 새 세션에도 뜨는 안내라 판정에 쓰지 않는다. Claude Code가
   띄우는 `caffeinate -i -t 300`도 작업이 끝난 뒤 최대 5분 남으므로 쓰지 않는다.
 
