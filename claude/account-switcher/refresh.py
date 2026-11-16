@@ -44,6 +44,10 @@ LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
 # User entries Claude Code writes itself. Background task notifications keep arriving after a
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
 GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
+# Claude Code 2.1.325 titles its usage-limit and billing choices this way. They covered the input
+# box of a session restarted while still limited (2026-11-16 11:35); Esc cancels them, the same
+# as "Stop and wait for limit to reset".
+LIMIT_CHOICES_TITLE = 'What do you want to do?'
 RULE_MIN_DASHES = 10
 TAIL_BYTES = 262144
 
@@ -219,8 +223,9 @@ class SelfRestart:
             self.sleep(WAIT_STEP_SECONDS)
 
     def ready(self, old_started):
-        """This session once it is quiet with an empty input box, else None. While the registry
-        still shows old_started (its startedAt before `/restart`), it has not come back yet."""
+        """This session once it is quiet with an empty input box, else None; usage-limit choices
+        covering the box are closed for the next check. While the registry still shows
+        old_started (its startedAt before `/restart`), the session has not come back yet."""
         session = self.session()
         if not session or session.get('startedAt') == old_started:
             return None
@@ -229,7 +234,11 @@ class SelfRestart:
         if background_work(session, process_children(self.runner), self.projects, self.clock()):
             return None
         screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
-        return session if input_ready(screen) else None
+        if input_ready(screen):
+            return session
+        if LIMIT_CHOICES_TITLE in screen:
+            self.cmux('send-key', '--surface', self.surface, 'escape')
+        return None
 
     def cmux(self, *args):
         result = self.runner([self.cmux_path, *args], capture_output=True, text=True,

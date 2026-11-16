@@ -22,6 +22,16 @@ def screen(prompt_line='❯', footer='  ⏵⏵ auto mode on (shift+tab to cycle)
     return '\n'.join(['⏺ 작업을 마쳤습니다.', '', RULE, prompt_line, RULE, '  work', footer])
 
 
+def limit_choices():
+    """Claude Code 2.1.325's usage-limit choices over a restarted session (2026-11-16 11:35)."""
+    return '\n'.join(['  (send a prompt then to continue)', '▔' * 40,
+                      '   What do you want to do?', '',
+                      '   ❯ 1. Stop and wait for limit to reset',
+                      '     2. Wait here, then continue automatically at 1:50pm',
+                      '     3. Switch to usage credits', '     4. Upgrade your plan', '',
+                      '   Enter to confirm · Esc to cancel'])
+
+
 def limit_error(text="You've hit your 5-hour limit · resets 7:30pm (Asia/Seoul)"):
     return {'type': 'assistant', 'isApiErrorMessage': True,
             'message': {'model': '<synthetic>', 'content': [{'type': 'text', 'text': text}]}}
@@ -85,11 +95,12 @@ class SessionFixture:
 
 class FakeRunner:
     """Answers ps and cmux like the real tools and records typed text. Typing `/restart`
-    re-registers the session with a new startedAt, as Claude Code's exec restart does."""
+    re-registers the session with a new startedAt, as Claude Code's exec restart does, and can
+    bring up the usage-limit choices, which Esc closes."""
 
-    def __init__(self, fixture, children='', restarts=True, ps_timeouts=0):
+    def __init__(self, fixture, children='', restarts=True, ps_timeouts=0, choices=False):
         self.fixture, self.children, self.restarts = fixture, children, restarts
-        self.ps_timeouts = ps_timeouts
+        self.ps_timeouts, self.choices = ps_timeouts, choices
         self.screen_text = screen()
         self.typed = []
 
@@ -104,6 +115,10 @@ class FakeRunner:
             self.typed.append(argv[-1])
             if argv[-1] == '/restart' and self.restarts:
                 self.fixture.register('idle', self.fixture.clock() + 1)
+                if self.choices:
+                    self.screen_text = limit_choices()
+            if argv[-1] == 'escape':
+                self.screen_text = screen()
         return Mock(returncode=0, stdout=self.screen_text if argv[1] == 'read-screen' else '')
 
 
@@ -306,6 +321,17 @@ class SelfRestartTests(unittest.TestCase):
         fixture.restart(runner).run()
         # then
         self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+
+    def test_limit_choices_over_the_restarted_session_are_closed(self):
+        """다시 뜬 세션의 입력창을 한도 선택창이 가리면 Esc(「Stop and wait for limit to reset」과 같다)로 닫고 이어서 넣는다."""
+        # given
+        fixture = self.fixture(status='waiting')
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        runner = FakeRunner(fixture, choices=True)
+        # when
+        fixture.restart(runner).run()
+        # then
+        self.assertEqual(runner.typed, ['/restart', 'enter', 'escape', CONTINUE_PROMPT, 'enter'])
 
     def test_session_stopped_at_a_limit_before_the_switch_waits_for_it(self):
         """다음 전환보다 먼저 한도에 멈춘 세션은 전환기가 다음 조회(최대 9분 뒤)에서 계정을 바꿀 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
