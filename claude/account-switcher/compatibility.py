@@ -21,17 +21,22 @@ def check(executable, config_home, accounts, previous=None, runner=None):
     if (Path(config_home) / '.config.json').exists():
         raise SwitcherError('Legacy Claude config layout needs a separate compatibility check')
     try:
+        path = Path(executable).resolve(strict=True)
+        info = path.stat()
+        identity = [str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+        if previous and previous.get('binary_identity') == identity:
+            # The same binary reads the login the same way, and every tick still reads it through
+            # /usr/bin/security (macos.NativeKeychain.read), which halts when it fails. Running
+            # the CLI cost 0.17 s of CPU and 145 MB on every tick (2026-11-16).
+            return previous
         version = runner([executable, '--version'], capture_output=True, text=True,
                          timeout=5, check=True).stdout.strip().split(' ', 1)[0]
         if not re.fullmatch(r'\d+\.\d+\.\d+', version):
             raise SwitcherError('Could not identify the installed Claude CLI')
-        path = Path(executable).resolve(strict=True)
-        info = path.stat()
-        identity = [str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
-        if not previous or previous.get('binary_identity') != identity:
-            with path.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as binary:
-                if not all(binary.find(marker) >= 0 for marker in MARKERS):
-                    raise SwitcherError('Claude credential storage or lock contract changed')
+        with path.open('rb') as stream, \
+                mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as binary:
+            if not all(binary.find(marker) >= 0 for marker in MARKERS):
+                raise SwitcherError('Claude credential storage or lock contract changed')
         status = json.loads(runner([executable, 'auth', 'status', '--json'], capture_output=True,
                                    text=True, timeout=5, check=True).stdout)
         if (status.get('loggedIn') is not True or status.get('authMethod') != 'claude.ai'

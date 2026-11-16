@@ -41,6 +41,16 @@ class CompatibilityTests(unittest.TestCase):
             check(str(self.binary), self.home, ('personal@example.com',), report,
                   runner=Mock(return_value=Mock(stdout='2.1.324 (Claude Code)')))
 
+    def test_unchanged_binary_reuses_the_last_check_without_running_the_cli(self):
+        """실행 파일이 그대로면 Claude Code(`--version`·`auth status`)를 다시 띄우지 않고 지난 검사 결과를 쓴다."""
+        # given
+        report = check(str(self.binary), self.home, ('personal@example.com',), runner=self.runner)
+        runner = Mock()
+        # when
+        again = check(str(self.binary), self.home, ('personal@example.com',), report, runner=runner)
+        # then
+        self.assertEqual((again, runner.call_count), (report, 0))
+
     def test_native_login_mismatch_is_rejected(self):
         with self.assertRaises(SwitcherError):
             check(str(self.binary), self.home, ('work@example.com',), runner=self.runner)
