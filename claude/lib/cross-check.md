@@ -48,7 +48,7 @@ CODEX_SCRIPT=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-com
 
 ## Codex에서 Claude로
 
-`claude -p`를 Bash로 부르고 도구는 `--allowedTools "Read,Grep,Glob"`만 준다. 결과는 stdout으로 받는다.
+`claude -p`를 Bash로 부르고 도구는 `--allowedTools "Read,Grep,Glob"`만 준다. 결과는 stdout으로 받는다. `claude` 명령은 처음부터 샌드박스 밖 실행을 요청한다(`sandbox_permissions: "require_escalated"`). 샌드박스가 키체인과 네트워크를 막아서 로그인돼 있어도 `Not logged in`이나 `loggedIn: false`가 나오므로, 이 결과로 사용자에게 로그인을 요청하지 않는다.
 
 | 대상 | 명령 |
 |---|---|
