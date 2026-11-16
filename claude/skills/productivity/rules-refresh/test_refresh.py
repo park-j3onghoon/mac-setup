@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -188,6 +190,18 @@ class RefreshTest(unittest.TestCase):
             self.assertEqual(transcript.read_text(), 'wait=0\n')
             with mock.patch.object(refresh, 'HEADLESS_TIMEOUT_HOURS', 0.0003):
                 self.assertIsNone(refresh.run_headless('slow', 'Read', ['Agent'], ['WebFetch'], self.root, transcript))
+
+    def test_periodic_run_that_crashes_still_notifies_and_leaves_an_exit_code(self):
+        denied = PermissionError(1, 'Operation not permitted', '개발 방법론.md')
+        with mock.patch.object(refresh, 'NOTES', self.root), mock.patch.object(refresh, 'git', return_value='abc\n'), \
+                mock.patch.object(refresh, 'protected_digest', side_effect=denied), \
+                mock.patch.object(refresh, 'notify') as notify, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(refresh.run_periodic(), 1)
+        title, message = notify.call_args.args
+        self.assertEqual(title, '규칙 갱신 종료 코드 1')
+        self.assertIn('PermissionError', message)
+        run_dir, = (self.root / 'runs').iterdir()
+        self.assertEqual((run_dir / 'exit-code').read_text(), '1\n')
 
 
 if __name__ == '__main__':
