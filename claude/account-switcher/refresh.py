@@ -194,9 +194,14 @@ class SelfRestart:
     def wait_until_ready(self, old_started, timeout):
         deadline = self.clock() + timeout
         while True:
-            session = self.session()
-            if session and session.get('startedAt') != old_started and self.ready(session):
-                return session
+            try:
+                session = self.session()
+                if session and session.get('startedAt') != old_started and self.ready(session):
+                    return session
+            except subprocess.TimeoutExpired:
+                # 2026-11-16 11:08: many sessions stopped at a limit at once and five helpers gave
+                # up on one slow ps; a slow check only means "not ready yet".
+                pass
             if self.clock() >= deadline:
                 return None
             self.sleep(WAIT_STEP_SECONDS)
