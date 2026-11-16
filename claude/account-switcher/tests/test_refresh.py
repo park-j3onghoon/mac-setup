@@ -295,6 +295,33 @@ class SelfRestartTests(unittest.TestCase):
         # then
         self.assertEqual(runner.typed, [])
 
+    def test_limit_stopped_session_waits_out_long_background_work(self):
+        """한도에 멈춘 세션은 다시 시도할 턴 끝이 없으므로, 백그라운드 셸이 10분 넘게 돌아도 끝날 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
+        # given
+        fixture = self.fixture(status='waiting')
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        shell_ends = fixture.clock() + 20 * 60
+        fixture.clock.at(shell_ends, lambda: setattr(runner, 'children', ''))
+        # when
+        fixture.restart(runner).run()
+        # then
+        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertGreater(fixture.started_at(), shell_ends)
+
+    def test_limit_stopped_session_with_endless_background_work_is_left_alone(self):
+        """한도에 멈춘 세션이라도 백그라운드 셸이 재시작 기간(8시간) 내내 돌면 아무것도 넣지 않고 포기한다."""
+        # given
+        fixture = self.fixture(status='waiting')
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        started = fixture.clock()
+        # when
+        outcome = fixture.restart(runner).run()
+        # then
+        self.assertEqual((outcome, runner.typed), ('not_ready', []))
+        self.assertGreaterEqual(fixture.clock() - started, REFRESH_WINDOW_SECONDS)
+
     def test_session_with_a_recently_written_subagent_is_not_restarted(self):
         """서브에이전트 기록이 계속 갱신되면 백그라운드 에이전트가 도는 것으로 보고 넣지 않는다."""
         # given

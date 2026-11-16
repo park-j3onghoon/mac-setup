@@ -38,6 +38,10 @@ SWITCH_TIMEOUT_SECONDS = 900
 READY_TIMEOUT_SECONDS = 600
 RESTART_TIMEOUT_SECONDS = 120
 WAIT_STEP_SECONDS = 3
+# A session stopped at a limit ends no later turn to retry from (Claude Code waits for the reset
+# itself), so past READY_TIMEOUT_SECONDS its helper waits out background work, such as a
+# 14-minute timer on 2026-11-16 15:06~15:13, for the restart window, checking less often.
+LIMIT_WAIT_STEP_SECONDS = 30
 SUBAGENT_QUIET_SECONDS = 120
 WORKING_CHILDREN = frozenset({'zsh', 'bash', 'sh'})
 LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
@@ -190,6 +194,9 @@ class SelfRestart:
         if not self.wait(self.needed, SWITCH_TIMEOUT_SECONDS):
             return 'no_switch'
         session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
+        if session is None and self.limited():
+            session = self.wait(lambda: self.ready(None), REFRESH_WINDOW_SECONDS,
+                                LIMIT_WAIT_STEP_SECONDS)
         if session is None:
             return 'not_ready'
         limited = self.limited()
@@ -201,8 +208,8 @@ class SelfRestart:
         self.type(CONTINUE_PROMPT)
         return 'restarted_and_continued'
 
-    def wait(self, check, timeout):
-        """The first truthy result of check(), tried every WAIT_STEP_SECONDS; None after timeout."""
+    def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
+        """The first truthy result of check(), tried every step seconds; None after timeout."""
         deadline = self.clock() + timeout
         while True:
             try:
@@ -215,7 +222,7 @@ class SelfRestart:
                 pass
             if self.clock() >= deadline:
                 return None
-            self.sleep(WAIT_STEP_SECONDS)
+            self.sleep(step)
 
     def ready(self, old_started):
         """This session once it is quiet with an empty input box, else None; usage-limit choices
