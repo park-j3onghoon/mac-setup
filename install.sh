@@ -169,7 +169,11 @@ if [ ! -e "$HOME/.codex/config.toml" ]; then
   ok "copy: $HOME/.codex/config.toml"
 fi
 
-# Codex 승인 규칙은 사내 경로가 쌓이므로 private/ 에만 둔다.
+# Codex는 규칙 폴더의 심링크를 읽지 않으므로(0.168·0.169 collect_policy_files) 적용할 규칙은 복사한다.
+cp "$REPO_DIR/codex/force-push.rules" "$HOME/.codex/rules/force-push.rules"
+ok "copy: $HOME/.codex/rules/force-push.rules"
+
+# Codex가 승인 때 덧붙이는 규칙은 사내 경로가 쌓이므로 private/ 에 모은다(링크라서 Codex는 읽지 않는다).
 if [ -f "$REPO_DIR/private/codex/rules/default.rules" ]; then
   link_file "$REPO_DIR/private/codex/rules/default.rules" "$HOME/.codex/rules/default.rules"
 fi
