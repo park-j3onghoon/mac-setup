@@ -42,6 +42,7 @@ PR 본문·코멘트·답글은 `~/.claude/lib/document-tone.md`를 Read하고 �
 
 ## stacked PR
 
+- 위 PR이 아래 PR이 만든 코드를 고치거나 쓸 때만 스택으로 쌓는다. 서로의 코드를 쓰지 않는 기능 PR은 기본 브랜치에서 따로 만든다.
 - base 브랜치에 push한 뒤 의존 브랜치에 merge로 전파한다. conflict는 즉시, 어느 쪽이 최신인지 판단해 해결한다: base(master)에 이미 머지·검증된 코드가 최신이면 base 기준으로 해결한다.
 - 각 PR 브랜치는 자기 base 대비 변경만 담는다. 다른 PR 브랜치의 변경을 가져와야 하면 사용자 확인 후에 merge한다.
 - 압축이 필요하면 force push 없이 끝단 PR의 base를 재지정하고(`gh pr edit --base`) 흡수된 PR을 close한다.
