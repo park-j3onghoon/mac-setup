@@ -1,22 +1,21 @@
 ## 1. 값 확정
 
-- 첫 프롬프트: 공유 스킬 호출이면 `/이름`을 `$이름`으로 옮긴다. 이어갈 작업의 승인된 결정·현재 상태·다음 단계와 읽을 파일의 절대경로를 넣어, 이전 대화 없이 이어갈 수 있게 쓴다. 작은따옴표(`'`)는 쓰지 않는다.
+- 첫 프롬프트: 공유 스킬 호출이면 `/이름`을 `$이름`으로 옮긴다. 이어갈 작업의 승인된 결정·현재 상태·다음 단계와 읽을 파일의 절대경로를 넣어, 이전 대화 없이 이어갈 수 있게 쓴다.
 - 에이전트 명령: `codex`. `--model`을 받으면 ` --model {모델}`, `--effort`를 받으면 ` -c model_reasoning_effort={레벨}`, 새 세션이 현재 워크스페이스 밖에 써야 하면 ` --add-dir {그 디렉토리의 절대경로}`를 붙인다. 받지 않은 모델·effort는 Codex 설정 기본값을 쓴다.
 - 디렉토리: 현재 작업 디렉토리.
-- 세션 pid: `printenv CMUX_CODEX_PID`의 출력(cmux 탭에서 도는 이 Codex 화면 프로세스), 없으면 빈 값.
 - 모드: `--tab`이 있으면 새 탭, 없으면 재시작이다.
 
-→ 완료: 모드, 첫 프롬프트, 에이전트 명령, 디렉토리, 세션 pid가 정해졌다.
+→ 완료: 모드, 첫 프롬프트, 에이전트 명령, 디렉토리가 정해졌다.
 
 ## 2. 실행
 
-모드의 명령 하나를 다른 명령과 묶지 않고 실행한다. 인자는 모두 작은따옴표로 감싸고 `~`·`$` 확장을 쓰지 않는다: `~/.codex/rules/default.rules`는 이 모양의 명령만 승인 없이 샌드박스 밖에서 실행하고, cmux 탭 입력과 클립보드 복사는 샌드박스 밖에서만 된다.
+모드의 명령 하나를 샌드박스 밖 실행으로 요청해(`sandbox_permissions: "require_escalated"`) 한 번 실행한다. cmux 탭 입력과 클립보드 복사는 샌드박스 밖에서만 된다. `"${CMUX_CODEX_PID:-}"`는 cmux 탭에서 도는 이 Codex 화면 프로세스다. {첫 프롬프트} 안의 `'`는 `'\''`로 바꾼다.
 
 ```bash
 # 새 탭
-bash /Users/teddy.park/.claude/skills/refresh-session/restart.sh tab '{디렉토리}' '{에이전트 명령}' '{첫 프롬프트}'
+bash ~/.claude/skills/refresh-session/restart.sh tab '{디렉토리}' '{에이전트 명령}' '{첫 프롬프트}'
 # 재시작
-bash /Users/teddy.park/.claude/skills/refresh-session/restart.sh restart '{디렉토리}' '{세션 pid}' '{에이전트 명령}' '{첫 프롬프트}'
+bash ~/.claude/skills/refresh-session/restart.sh restart '{디렉토리}' "${CMUX_CODEX_PID:-}" '{에이전트 명령}' '{첫 프롬프트}'
 ```
 
 출력은 SKILL.md의 같은 모드 절(2절 새 탭, 3절 재시작)을 따른다. 재시작이 cmux 탭에서 되면 이 Codex 화면은 곧바로 끝나고 같은 탭에 새 세션이 뜨므로, 이 명령 뒤에는 도구를 부르지 않는다.
