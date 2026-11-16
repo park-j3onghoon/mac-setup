@@ -62,10 +62,13 @@ CODEX_ACCOUNT=personal codex     # 개인 고정, 자동 전환 없음
 개인 로그인이 거부되고, 붙은 터미널은 고정을 검사하지 않는다. 0.168.0, 2026-11-13 실측).
 원격 터미널은 폴더를 보내지 않으면 서버의 폴더에서 돌기 때문에, 실행기가 실행한 터미널의
 폴더를 `-C`로 넘긴다. 같은 이유로 셸 명령도 서버에서 돌아 터미널의 cmux 탭 환경을 물려받지
-못하므로, cmux 탭에서 실행하면 탭 ID(`CMUX_SURFACE_ID`)와 실행기 pid(`CMUX_CODEX_PID`, execve로
-터미널 pid가 된다)를 `-c shell_environment_policy.set.*`로 넘긴다. refresh-session이 이 값으로 같은
-탭에서 세션을 다시 띄운다. 0.169.0 터미널은 이 설정을 대화 시작·재개 요청에 담고(소스
+못하므로, cmux 탭에서 실행하면 탭 ID(`CMUX_SURFACE_ID`), 탭의 cmux 소켓 권한(`CMUX_SOCKET_CAPABILITY`,
+cmux가 띄우지 않은 서버 쪽 프로세스는 이것이 있어야 cmux에 붙는다), 실행기 pid(`CMUX_CODEX_PID`,
+execve로 터미널 pid가 된다)를 `-c shell_environment_policy.set.*`로 넘긴다. refresh-session이 이 값으로
+같은 탭에서 세션을 다시 띄운다. 0.169.0 터미널은 이 설정을 대화 시작·재개 요청에 담고(소스
 `tui/src/app_server_session.rs`), 서버는 그 대화의 셸 명령 환경에 넣는다(2026-11-16 임시 대화로 확인).
+이미 서버에 올라와 있는 대화를 다른 터미널이 붙어 볼 때(에이전트 목록 선택 등)는 설정을 다시 보내지
+않으므로 처음 연 터미널의 값이 남는다.
 모든 자동 세션은 같은 서버와 활성 계정을 사용한다. 이미 열려 있던 기존
 세션은 전환 대상에 포함되지 않는다. 이전 개인·회사 프로필의 대화는 각각
 `CODEX_ACCOUNT=personal codex resume` 또는 `CODEX_ACCOUNT=company codex resume`으로 연다.
