@@ -1,6 +1,6 @@
 ---
 name: pr-create
-description: push된 브랜치로 PR을 만들어 달라고 할 때 Draft PR을 만든다. 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다. push 전인 변경과 이미 PR이 있는 브랜치에는 쓰지 않는다.
+description: push된 브랜치로 PR을 만들어 달라고 할 때 Draft PR을 만든다. 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 한꺼번에 요청해 모두 끝날 때까지 기다린 뒤 지적에 모두 대응한다. push 전인 변경과 이미 PR이 있는 브랜치에는 쓰지 않는다.
 effort: xhigh
 ---
 
@@ -46,21 +46,23 @@ AskUserQuestion 한 번에 묻는 리뷰마다 질문 하나를 넣는다. 질�
 
 ## 4. 리뷰 요청과 기다리기
 
-2단계에서 받기로 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청하고, 아래대로 기다린다. 고른 리뷰가 없으면 4·5단계를 건너뛴다. Ready 전환은 사용자가 한다.
+2단계에서 받기로 고른 리뷰를 한꺼번에 요청하고, 모두 끝날 때까지 함께 기다린다. 리뷰는 모두 같은 head를 보고 지적은 5단계에서 한 번에 대응하므로, 한 리뷰가 끝나기를 기다렸다가 다음 리뷰를 부르지 않는다. 고른 리뷰가 없으면 4·5단계를 건너뛴다. Ready 전환은 사용자가 한다.
 
-1. CodeRabbit: 아래 명령을 백그라운드로 실행하고, 끝나면 마지막 줄의 상태로 다음을 정한다. `wait`는 5분마다 확인하며 30분까지 기다린다. 명령 도구의 실행 시간 한도가 30분보다 짧으면 `wait`만 다시 부른다.
+1. CodeRabbit: 아래 명령을 백그라운드로 실행하고, 끝나기를 기다리지 않고 바로 2로 간다. `wait`는 5분마다 확인하며 30분까지 기다린다. 명령 도구의 실행 시간 한도가 30분보다 짧으면 `wait`만 다시 부른다.
 
    ```bash
    bash ~/.claude/skills/pr-create/coderabbit-review.sh {owner}/{repo} {번호} request \
      && bash ~/.claude/skills/pr-create/coderabbit-review.sh {owner}/{repo} {번호} wait 30
    ```
 
-   - `reviewed {지적 수}`: 사내 AI 리뷰 봇으로 간다.
-   - `rate_limited {N}`: N이 30 이하면 N+1분 뒤 위 명령을 한 번 더 백그라운드로 실행한다. N이 `?`이거나 30보다 크거나 두 번째도 `rate_limited`면 다음 리뷰 가능 시각을 적고 사내 AI 리뷰 봇으로 간다.
-   - `skipped`: 요약 코멘트의 Review skipped 이유를 적고 사내 AI 리뷰 봇으로 간다.
-   - `in_progress`·`draft_skipped`·`paused`·`none`: 30분 안에 끝나지 않았다고 그 상태와 함께 적고 사내 AI 리뷰 봇으로 간다.
-2. 사내 AI 리뷰 봇: `~/.claude/lib/review-bots/index.md`의 요청 절대로 2단계에서 고른 봇을 부르고 기다린다.
-3. 리뷰마다 한 줄로 알린다: 리뷰어, 상태, 지적 수나 판정, PR이나 Slack 스레드 링크.
+   명령이 끝나면 마지막 줄의 상태로 다음을 정한다.
+
+   - `reviewed {지적 수}`: CodeRabbit 리뷰가 끝났다.
+   - `rate_limited {N}`: N이 30 이하면 N+1분 뒤 위 명령을 한 번 더 백그라운드로 실행한다. N이 `?`이거나 30보다 크거나 두 번째도 `rate_limited`면 다음 리뷰 가능 시각을 적고 CodeRabbit 기다림을 끝낸다.
+   - `skipped`: 요약 코멘트의 Review skipped 이유를 적고 CodeRabbit 기다림을 끝낸다.
+   - `in_progress`·`draft_skipped`·`paused`·`none`: 30분 안에 끝나지 않았다고 그 상태와 함께 적고 CodeRabbit 기다림을 끝낸다.
+2. 사내 AI 리뷰 봇: 1의 명령을 띄운 바로 뒤에 `~/.claude/lib/review-bots/index.md`의 요청 절대로 2단계에서 고른 봇을 부르고 기다린다.
+3. 1·2가 모두 끝나면 리뷰마다 한 줄로 알린다: 리뷰어, 상태, 지적 수나 판정, PR이나 Slack 스레드 링크.
 
 → 완료: 고른 리뷰마다 요청했거나 요청하지 못한 이유를 알렸고, 리뷰마다 상태와 지적 수나 판정을 링크와 함께 알렸다.
 

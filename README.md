@@ -55,10 +55,10 @@ Claude Code에서는 `/이름`, Codex에서는 `$이름`으로 실행한다. 공
 | [`/implement-review`](claude/skills/engineering/implement-review/SKILL.md) | 내 PR이나 구현 커밋을 리뷰해 달라고 할 때 위험도에 맞춘 리뷰어로 리뷰한다. 다시 리뷰할 때는 직전 리뷰 뒤 커밋만 보고, `--full`이면 처음부터 다시 본다. 발견마다 고치거나 하나씩 물어 반영하고, 테스트 통과 후 수정분을 별도 커밋한다. 다른 사람의 PR 리뷰에는 쓰지 않는다. |
 | [`/investigate`](claude/skills/engineering/investigate/SKILL.md) | 버그·에러·장애의 원인을 모를 때 근본 원인까지 추적해 고치고 DEBUG REPORT로 마감한다. 원인과 고칠 곳이 이미 정해진 수정에는 쓰지 않는다. |
 | [`/plan-review`](claude/skills/engineering/plan-review/SKILL.md) | 구현 계획을 리뷰해 달라고 할 때, 계획을 코드 작성 전에 스코프 챌린지·6차원 리뷰·다른 AI 교차 검증으로 통과시킨다. 이미 구현한 코드의 리뷰에는 쓰지 않는다. |
-| [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 PR을 만들어 달라고 할 때 Draft PR을 만든다. 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 CodeRabbit → 사내 AI 리뷰 봇 순서로 요청해 끝날 때까지 기다린 뒤 지적에 모두 대응한다. push 전인 변경과 이미 PR이 있는 브랜치에는 쓰지 않는다. |
+| [`/pr-create`](claude/skills/engineering/pr-create/SKILL.md) | push된 브랜치로 PR을 만들어 달라고 할 때 Draft PR을 만든다. 받을 리뷰(CodeRabbit·사내 AI 리뷰 봇)를 추천과 함께 고르게 한 뒤, 제목·본문 초안을 승인받아 만들고 고른 리뷰를 한꺼번에 요청해 모두 끝날 때까지 기다린 뒤 지적에 모두 대응한다. push 전인 변경과 이미 PR이 있는 브랜치에는 쓰지 않는다. |
 | [`/push-commit`](claude/skills/engineering/push-commit/SKILL.md) | 사용자가 push를 요청할 때 변경을 커밋하고 브랜치를 push한 뒤, PR이 있으면 제목·본문을 코드에 맞춘다. 사람 리뷰를 받기 전이면 Claude가 push하고, 받은 뒤면 사용자가 push한다. push 요청이 없는 로컬 커밋에는 쓰지 않는다. |
 
-기본 흐름은 `/implement`(테스트·구현 커밋) → `/implement-review`(테스트·별도 수정 커밋) → `/push-commit` → `/pr-create`(Draft 생성, 고른 경우 CodeRabbit → 사내 AI 리뷰 봇 리뷰를 받고 지적 대응)다.
+기본 흐름은 `/implement`(테스트·구현 커밋) → `/implement-review`(테스트·별도 수정 커밋) → `/push-commit` → `/pr-create`(Draft 생성, 고른 경우 CodeRabbit·사내 AI 리뷰 봇 리뷰를 한꺼번에 받고 지적 대응)다.
 
 ### productivity
 
