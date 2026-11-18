@@ -111,7 +111,6 @@ finally:
         self.assertTrue(running)
         self.assertEqual(runtime.pid, 4321)
         self.assertEqual(runtime.active, "company")
-        self.assertTrue(runtime.reauthenticate)
         popen.assert_not_called()
         rpc.return_value.close.assert_called_once()
 
@@ -170,13 +169,14 @@ class ContinueTest(unittest.TestCase):
         self.runtime = Runtime({})
         self.runtime.client = Mock()
 
-    def answer(self, threads):
+    def answer(self, threads, parents=None):
         def request(method, params=None, timeout=30):
             if method == "thread/loaded/list":
                 return {"data": list(threads)}
             status, turns = threads.get(params.get("threadId"), (None, None))
             if method == "thread/read":
-                return {"thread": {"status": {"type": status}}}
+                return {"thread": {"status": {"type": status},
+                                   "parentThreadId": (parents or {}).get(params["threadId"])}}
             if method == "thread/turns/list" and isinstance(turns, Exception):
                 raise turns
             return turns if method == "thread/turns/list" else {}
@@ -206,6 +206,17 @@ class ContinueTest(unittest.TestCase):
         self.runtime.continue_limited()
         self.assertEqual(self.started(), [])
 
+    def test_sub_agents_stopped_by_the_limit_are_left_to_their_parent(self):
+        """한도로 멈춘 하위 에이전트에는 직접 이어서 하라고 하지 않는다. 부모가 이어서 하면서 하위 에이전트를 다시 움직인다."""
+        child_limited = {"data": [{"id": "turn-9", "status": "failed",
+                                   "error": {"codexErrorInfo": "usageLimitExceeded"}}]}
+        self.answer({"parent": ("systemError", LIMITED), "child": ("systemError", child_limited)},
+                    parents={"child": "parent"})
+
+        self.runtime.continue_limited()
+
+        self.assertEqual([params["threadId"] for params in self.started()], ["parent"])
+
 
 class SwitchingTest(unittest.TestCase):
     def setUp(self):
@@ -214,7 +225,7 @@ class SwitchingTest(unittest.TestCase):
             profile.tokens.return_value = {"accessToken": "dummy", "chatgptAccountId": name}
         self.runtime = Runtime(self.profiles)
         self.runtime.active = "company"
-        self.runtime.client = Mock()
+        self.runtime.client = Mock(closed=False)
 
     def test_active_work_is_not_interrupted_or_reauthenticated(self):
         self.runtime.client.request.side_effect = [
@@ -235,18 +246,20 @@ class SwitchingTest(unittest.TestCase):
         self.assertTrue(self.runtime.select("personal"))
         self.assertEqual(self.runtime.active, "personal")
 
-    def test_reattached_runtime_registers_a_new_refresh_handler_when_idle(self):
-        """같은 계정을 유지해도 새 감독 연결이 토큰 갱신을 담당하게 한다."""
-        self.runtime.reauthenticate = True
-        self.runtime.client.request.side_effect = [
-            {"data": []}, {"type": "chatgptAuthTokens"}, {"accountId": "company"},
-        ]
+    def test_closed_connection_is_replaced_without_logging_in_again(self):
+        """감독 연결이 끊기면 같은 서버에 새로 붙는다. 계정이 그대로면 다시 로그인하지 않는다(로그인하면 모든 스레드의 MCP가 재시작된다)."""
+        old = self.runtime.client
+        old.closed = True
+        with patch("runtime.Rpc") as rpc:
+            rpc.return_value.request.return_value = {"accountId": "company"}
 
-        changed = self.runtime.select("company")
+            changed = self.runtime.select("company")
 
         self.assertTrue(changed)
-        self.assertFalse(self.runtime.reauthenticate)
-        self.profiles["company"].tokens.assert_called_once()
+        self.assertEqual(self.runtime.client, rpc.return_value)
+        old.close.assert_called_once_with()
+        self.assertEqual([call.args[0] for call in rpc.return_value.request.call_args_list],
+                         ["account/rateLimits/read"])
 
     def test_wrong_identity_rolls_back(self):
         self.runtime.client.request.side_effect = [

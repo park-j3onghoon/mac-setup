@@ -40,22 +40,25 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
 
 
 def loaded_threads(client):
-    """Yield (thread id, status type) for every thread loaded in the runtime."""
+    """Yield (thread id, thread without turns) for every thread loaded in the runtime."""
     cursor = None
     while True:
         response = client.request("thread/loaded/list", {"cursor": cursor})
         for thread_id in response.get("data", []):
-            thread = client.request("thread/read", {
+            yield thread_id, client.request("thread/read", {
                 "threadId": thread_id, "includeTurns": False,
             }).get("thread", {})
-            yield thread_id, thread.get("status", {}).get("type")
         cursor = response.get("nextCursor")
         if not cursor:
             return
 
 
+def quiet(thread):
+    return thread.get("status", {}).get("type") in QUIET
+
+
 def all_idle(client):
-    return all(status in QUIET for _, status in loaded_threads(client))
+    return all(quiet(thread) for _, thread in loaded_threads(client))
 
 
 def newest_turn(client, thread_id):
@@ -76,7 +79,6 @@ class Runtime:
         self.process = self.client = None
         self.pid = None
         self.active = None
-        self.reauthenticate = False
         self.continued = set()
 
     def start(self, existing_pid=None):
@@ -92,13 +94,7 @@ class Runtime:
                     raise UsageUnavailable("An existing automatic runtime is still listening")
                 os.kill(existing_pid, 0)
                 self.pid = existing_pid
-                self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
-                account = self.client.request("account/rateLimits/read").get("accountId")
-                self.active = next((name for name, profile in self.profiles.items()
-                                    if profile.account_id == account), None)
-                if self.active is None:
-                    raise UsageUnavailable("Existing runtime account is outside the saved profiles")
-                self.reauthenticate = True
+                self.attach()
                 return
             finally:
                 probe.close()
@@ -125,6 +121,19 @@ class Runtime:
             time.sleep(0.1)
         self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
 
+    def attach(self):
+        """Connect to the running server and keep the account it already uses.
+
+        Logging in again would restart every loaded thread's MCP servers, and token refresh
+        requests reach every connection anyway (app-server/src/outgoing_message.rs in 0.169.0).
+        """
+        self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+        account = self.client.request("account/rateLimits/read").get("accountId")
+        self.active = next((name for name, profile in self.profiles.items()
+                            if profile.account_id == account), None)
+        if self.active is None:
+            raise UsageUnavailable("Existing runtime account is outside the saved profiles")
+
     def running(self):
         if self.process is not None:
             return self.process.poll() is None
@@ -144,7 +153,10 @@ class Runtime:
         raise UsageUnavailable("Unknown account requested a token refresh")
 
     def select(self, name):
-        if name == self.active and not self.reauthenticate:
+        if self.client.closed:
+            self.client.close()
+            self.attach()
+        if name == self.active:
             return True
         if not all_idle(self.client):
             return False
@@ -158,7 +170,6 @@ class Runtime:
             if verified.get("accountId") != profile.account_id:
                 raise UsageUnavailable("Runtime account verification did not match")
             self.active = name
-            self.reauthenticate = False
             return True
         except Exception:
             self.active = None
@@ -170,7 +181,6 @@ class Runtime:
                     restored = self.client.request("account/rateLimits/read")
                     if restored.get("accountId") == self.profiles[old].account_id:
                         self.active = old
-                        self.reauthenticate = False
                 except Exception:
                     pass
             raise
@@ -181,8 +191,12 @@ class Runtime:
         A turn started from this connection still sends its approval requests to the terminal
         that opened the thread (measured on 0.168.0, 2026-11-13).
         """
-        for thread_id, status in loaded_threads(self.client):
-            turn = newest_turn(self.client, thread_id) if status in QUIET else None
+        for thread_id, thread in loaded_threads(self.client):
+            # A parent drives its sub-agents; the server answers turn/start on one with an error
+            # (0.169.0, 2026-11-18), which used to stop this loop every minute.
+            if thread.get("parentThreadId") or not quiet(thread):
+                continue
+            turn = newest_turn(self.client, thread_id)
             if (not turn or turn["id"] in self.continued or turn["status"] != "failed"
                     or (turn.get("error") or {}).get("codexErrorInfo") != "usageLimitExceeded"):
                 continue
