@@ -67,9 +67,15 @@ class TokenTail:
         cutoff = max(self.started_at - 900, now - 7200)
         counts = defaultdict(lambda: dict.fromkeys(TOKEN_FIELDS + ('requests',), 0))
         paths, errors = self.discover(now)
+        if not errors:
+            present = set(paths)
+            self.files = {path: value for path, value in self.files.items() if path in present}
         for path in paths:
             try:
                 info = path.stat()
+                if info.st_mtime < cutoff:
+                    self.files.pop(path, None)
+                    continue
                 if info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
                     continue
                 identity = (info.st_dev, info.st_ino)

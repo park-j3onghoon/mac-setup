@@ -115,6 +115,21 @@ class ServiceTests(unittest.TestCase):
         app.verify_identity(b)
         self.assertEqual(app.api.profile.call_count, 2)
 
+    def test_identity_cache_retains_only_the_latest_token_per_account(self):
+        """토큰이 여러 번 갱신돼도 계정당 최신 identity 하나만 보유하고 이전 토큰은 다시 검증한다."""
+        app = self.app
+        app.api.profile = Mock(wraps=app.api.profile)
+        bundle = app.vault.read('personal@example.com')
+        original = bundle['oauth']['accessToken']
+        for version in range(100):
+            bundle['oauth']['accessToken'] = original + '-' + str(version)
+            app.verify_identity(bundle)
+
+        self.assertEqual(len(app._verified_identities), 1)
+        bundle['oauth']['accessToken'] = original + '-0'
+        app.verify_identity(bundle)
+        self.assertEqual(app.api.profile.call_count, 101)
+
     def test_switch_preserves_mcp_credentials(self):
         """전환 시 계정 OAuth만 바꾸고 MCP 인증은 유지한다."""
         # given

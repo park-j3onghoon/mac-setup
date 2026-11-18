@@ -101,6 +101,20 @@ class TokenTailTests(unittest.TestCase):
 
         self.assertEqual(counts['requests'], 1)
 
+    def test_deleted_and_inactive_file_offsets_expire_without_losing_resumed_usage(self):
+        """삭제·2시간 비활성 파일 offset은 지우고 다시 쓰인 오래된 대화의 새 요청은 센다."""
+        removed = self.append('removed.jsonl', [event('a', self.now)], self.now)
+        self.append('old.jsonl', [event('b', self.now)], self.now)
+        self.tail.sample(self.now)
+        removed.unlink()
+
+        self.tail.sample(self.now + 7201)
+
+        self.assertFalse(self.tail.files)
+        self.append('old.jsonl', [event('c', self.now + 7202)], self.now + 7202)
+        counts = self.tail.sample(self.now + 7202)['by_model']['claude-opus-5-5']
+        self.assertEqual(counts['requests'], 1)
+
 
 class QuotaDeltaTests(unittest.TestCase):
     def test_delta_and_duration_are_actual_observations(self):

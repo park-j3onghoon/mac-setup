@@ -37,10 +37,10 @@ class Switcher:
 
     def verify_identity(self, bundle):
         account = bundle['account']
-        cache = getattr(self, '_verified_identities', set())
+        cache = getattr(self, '_verified_identities', {})
         identity = (fingerprint(bundle['oauth']), account.get('emailAddress'),
                     account.get('accountUuid'), account.get('organizationUuid'))
-        if identity in cache:
+        if cache.get(account.get('emailAddress')) == identity:
             return
         actual = self.api.profile(bundle['oauth'])
         if (actual.get('email') != account.get('emailAddress')
@@ -48,7 +48,7 @@ class Switcher:
                 or (account.get('organizationUuid') is not None
                     and actual.get('organizationUuid') != account['organizationUuid'])):
             raise SwitcherError('OAuth token ownership does not match the saved account')
-        cache.add(identity)
+        cache[account['emailAddress']] = identity
         self._verified_identities = cache
 
     def capture(self, expected_email):
