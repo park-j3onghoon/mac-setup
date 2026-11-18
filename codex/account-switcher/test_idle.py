@@ -160,6 +160,27 @@ class IdleTest(unittest.TestCase):
 
 
 class ProxyTest(unittest.TestCase):
+    def test_deleted_thread_releases_resume_state_and_cancels_discovery(self):
+        """삭제 알림은 복원 상태를 없애며 늦은 조회 응답으로 되살리지 않는다."""
+        self.proxy.initialized = True
+        self.send_server({'method': 'thread/status/changed', 'params': {
+            'threadId': 'child', 'status': {'type': 'idle'},
+        }})
+        self.proxy.inspect_idle()
+        request_id = self.proxy.check_id
+        self.proxy.idle.track({'thread': {'id': 'child', 'ephemeral': False}}, {}, 0)
+        self.proxy.idle.sleeping.add('child')
+
+        self.send_server({'method': 'thread/deleted', 'params': {'threadId': 'child'}})
+        self.proxy.receive('server', json.dumps({'id': request_id, 'result': {'thread': {
+            'id': 'child', 'ephemeral': False, 'parentThreadId': 'thread',
+        }}}).encode())
+
+        self.assertNotIn('child', self.proxy.idle.threads)
+        self.assertNotIn('child', self.proxy.idle.sleeping)
+        self.assertNotIn('child', self.proxy.discoveries)
+        self.assertNotIn(request_id, self.proxy.pending)
+
     def test_unknown_status_discovery_does_not_block_user_input(self):
         """처음 보는 대화의 조회 응답을 기다리는 동안에도 사용자 입력을 전달한다."""
         self.proxy.initialized = True

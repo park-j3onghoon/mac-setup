@@ -455,6 +455,11 @@ class Proxy:
     def forward_server(self, message, payload):
         method, params = message.get("method"), message.get("params") or {}
         thread_id = params.get("threadId")
+        if method == 'thread/deleted':
+            self.cancel_inspection()
+            self.idle.threads.pop(thread_id, None)
+            self.idle.sleeping.discard(thread_id)
+            self.discoveries.pop(thread_id, None)
         if (method == "thread/status/changed" and thread_id in self.idle.sleeping
                 and params["status"]["type"] != "notLoaded"
                 and self.idle.threads[thread_id]["parent"]):
