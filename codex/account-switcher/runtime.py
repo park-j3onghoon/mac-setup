@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 
-from policy import UsageUnavailable
+from policy import THRESHOLD, UsageUnavailable
 from profiles import BINARY, PROFILES
 from rpc import Rpc
 from state import RUNTIME
@@ -201,10 +201,12 @@ class Runtime:
             self.observe_account()
         if name == self.active:
             return True
+        profile = self.profiles[name]
+        if profile.usage()['used_percent'] >= THRESHOLD:
+            raise UsageUnavailable('Target account no longer has available quota')
         if not force and not all_idle(self.client):
             return False
         old = self.active
-        profile = self.profiles[name]
         try:
             self.client.request("account/login/start", {
                 "type": "chatgptAuthTokens", **profile.tokens(),

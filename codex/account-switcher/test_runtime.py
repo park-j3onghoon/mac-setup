@@ -297,9 +297,23 @@ class SwitchingTest(unittest.TestCase):
         self.profiles = {name: Mock(account_id=name) for name in ("company", "personal")}
         for name, profile in self.profiles.items():
             profile.tokens.return_value = {"accessToken": "dummy", "chatgptAccountId": name}
+            profile.usage.return_value = usage(10, 9999, 1000)
         self.runtime = Runtime(self.profiles)
         self.runtime.active = "company"
         self.runtime.client = Mock(closed=False)
+
+    def test_exhausted_or_unavailable_target_never_changes_login(self):
+        """이전 조회에 여유가 있었어도 전환 직전 한도를 확인할 수 없으면 로그인하지 않는다."""
+        for result in (usage(100, 9999, 1000), UsageUnavailable('offline')):
+            with self.subTest(result=result):
+                self.runtime.client.request.return_value = {'data': []}
+                self.profiles['personal'].usage.side_effect = [result]
+                with self.assertRaises(UsageUnavailable):
+                    self.runtime.select('personal')
+                self.assertEqual(self.runtime.active, 'company')
+                self.profiles['personal'].tokens.assert_not_called()
+                self.assertNotIn('account/login/start', [
+                    call.args[0] for call in self.runtime.client.request.call_args_list])
 
     def test_active_work_is_not_interrupted_or_reauthenticated(self):
         self.runtime.client.request.side_effect = [
