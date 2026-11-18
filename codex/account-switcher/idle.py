@@ -254,8 +254,10 @@ class Proxy:
         self.server_requests = set()
         self.request_sizes = {}
         self.request_bytes = 0
+        self.discoveries = {}
         self.idle = IdleThreads(self.request, delay, lambda: (
             self.events.empty() and not self.client_requests and not self.server_requests
+            and not self.discoveries
         ))
         self.initialized = False
         self.prefix = "idle-" + uuid.uuid4().hex + "-"
@@ -358,7 +360,7 @@ class Proxy:
         if self.checks is None:
             if not self.initialized or self.client_requests or self.server_requests:
                 return
-            self.checks = self.idle.inspect(now)
+            self.checks = self.inspect_threads(now)
         result = None
         if self.check_id is not None:
             try:
@@ -383,6 +385,18 @@ class Proxy:
         self.pending[self.check_id] = queue.Queue(maxsize=1)
         self.check_deadline = now + 30
         self.upstream.send(json.dumps({'id': self.check_id, 'method': method, 'params': params}).encode())
+
+    def inspect_threads(self, now):
+        for thread_id in list(self.discoveries):
+            try:
+                thread = (yield 'thread/read', {'threadId': thread_id})['thread']
+            except UsageUnavailable:
+                continue
+            finally:
+                self.discoveries.pop(thread_id, None)
+            if thread.get('parentThreadId') and thread_id not in self.idle.threads:
+                self.idle.track({'thread': thread}, {}, time.monotonic())
+        yield from self.idle.inspect(now)
 
     def cancel_inspection(self, error=None):
         if self.checks is not None:
@@ -477,13 +491,9 @@ class Proxy:
             if parent and params["thread"]["id"] not in self.idle.threads:
                 self.idle.track(params, {}, time.monotonic())
         elif method == "thread/status/changed" and thread_id not in self.idle.threads:
-            try:
-                thread = self.request("thread/read", {"threadId": thread_id})["thread"]
-                if thread.get("parentThreadId"):
-                    self.idle.track({"thread": thread}, {}, time.monotonic())
-            except UsageUnavailable:
-                # 알림을 읽기 전에 내려간 대화는 새 구독을 만들지 않는다.
-                pass
+            if len(self.discoveries) >= self.request_limit:
+                raise OSError('Too many undiscovered threads')
+            self.discoveries[thread_id] = None
         self.client.send(payload)
 
     def retain_request(self, side, request_id, size):

@@ -160,6 +160,25 @@ class IdleTest(unittest.TestCase):
 
 
 class ProxyTest(unittest.TestCase):
+    def test_unknown_status_discovery_does_not_block_user_input(self):
+        """처음 보는 대화의 조회 응답을 기다리는 동안에도 사용자 입력을 전달한다."""
+        self.proxy.initialized = True
+        self.proxy.request = Mock(side_effect=AssertionError('blocking discovery'))
+        self.send_server({'method': 'thread/status/changed', 'params': {
+            'threadId': 'child', 'status': {'type': 'idle'},
+        }})
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+
+        self.send_client({'id': 42, 'method': 'thread/read', 'params': {'threadId': 'thread'}})
+
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 42)
+        self.proxy.pending[request['id']].put({'result': {'thread': {
+            'id': 'child', 'ephemeral': False, 'parentThreadId': 'thread',
+        }}})
+        self.proxy.inspect_idle()
+        self.assertEqual(self.proxy.idle.threads['child']['parent'], 'thread')
+
     def test_pending_request_limit_releases_capacity_after_responses(self):
         """양방향 요청이 상한에 닿으면 거절하고 응답 또는 승인 해결 뒤에는 용량을 돌려준다."""
         self.proxy.request_limit = 2
