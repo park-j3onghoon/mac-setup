@@ -29,6 +29,7 @@ def collect(profiles):
 def monitor(runtime, profiles, stop, state):
     state.setdefault("preferred", "company")
     next_poll = 0
+    next_release = 0
     retry_switch_at = 0
     desired = None
     check_limited = False
@@ -36,6 +37,13 @@ def monitor(runtime, profiles, stop, state):
         if not runtime.running():
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
+        if now >= next_release:
+            try:
+                runtime.release_subscriptions()
+                state.pop("release_error", None)
+            except Exception as error:
+                state["release_error"] = type(error).__name__
+            next_release = now + 60
         if now >= next_poll:
             fresh, errors = collect(profiles)
             state["errors"] = errors

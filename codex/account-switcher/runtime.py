@@ -20,6 +20,14 @@ CONTINUE_PROMPT = "이어서 해줘"
 QUIET = ("idle", "notLoaded", "systemError")
 
 
+def raise_file_limit():
+    """새 Codex 프로세스의 용량을 보완하며 hard limit은 유지한다."""
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target = 4096 if hard == resource.RLIM_INFINITY else min(4096, hard)
+    if soft != resource.RLIM_INFINITY and soft < target:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+
+
 def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
                  config=PROFILES["company"] / "config.toml"):
     home = Path(home)
@@ -100,10 +108,7 @@ class Runtime:
                 probe.close()
         # Every loaded conversation can retain MCP pipes and sockets in this one process.
         # macOS's inherited soft limit of 256 is insufficient for the shared server.
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        target = 4096 if hard == resource.RLIM_INFINITY else min(4096, hard)
-        if soft != resource.RLIM_INFINITY and soft < target:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+        raise_file_limit()
         # The company config locks logins to the company workspace; the shared server must also
         # accept the personal workspace. A terminal attached to it does not enforce the lock
         # (both measured on 0.168.0, 2026-11-13).
@@ -151,6 +156,18 @@ class Runtime:
             if profile.account_id == previous:
                 return profile.tokens(force=True)
         raise UsageUnavailable("Unknown account requested a token refresh")
+
+    def release_subscriptions(self):
+        """감독 연결에 자동으로 붙은 구독을 해제하고 실제 작업은 유지한다."""
+        if self.client.closed:
+            self.client.close()
+            self.attach()
+        for thread_id, thread in loaded_threads(self.client):
+            if not quiet(thread):
+                continue
+            terminals = self.client.request("thread/backgroundTerminals/list", {"threadId": thread_id})
+            if not terminals["data"]:
+                self.client.request("thread/unsubscribe", {"threadId": thread_id})
 
     def select(self, name):
         if self.client.closed:

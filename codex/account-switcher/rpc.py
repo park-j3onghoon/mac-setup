@@ -127,6 +127,8 @@ class Rpc:
         except (OSError, EOFError, ValueError, queue.Full):
             pass
         finally:
+            if self.websocket:
+                self.websocket.close()
             with self.lock:
                 # Nobody is left to deliver replies; later requests must fail now, not time out.
                 self.closed = True

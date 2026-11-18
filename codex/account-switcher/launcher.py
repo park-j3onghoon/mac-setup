@@ -8,6 +8,7 @@ import sys
 import time
 
 from policy import UsageUnavailable, choose
+from runtime import raise_file_limit
 from usage import read_usage, read_snapshot
 from state import RUNTIME, load, record, save
 
@@ -119,6 +120,7 @@ def cmux_tab_overrides():
 
 
 def main(arguments):
+    raise_file_limit()
     if arguments == ["--account-status"]:
         return show_status()
     # Explicit CODEX_HOME always wins, including invocations from existing sessions.

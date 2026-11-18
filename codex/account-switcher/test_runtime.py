@@ -58,6 +58,34 @@ class StateTest(unittest.TestCase):
 
 
 class HomeTest(unittest.TestCase):
+    def test_standalone_launcher_inherits_capacity_for_more_than_256_open_files(self):
+        """CODEX_HOME을 지정한 --no-daemon도 exec 전에 파일 한도를 보완한다."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "codex"
+            binary.write_text(
+                f"#!{sys.executable}\n"
+                "import json, resource\nfrom pathlib import Path\n"
+                "handles = [open('/dev/null') for _ in range(300)]\n"
+                "Path(__file__).with_name('capacity.json').write_text(json.dumps(\n"
+                "    resource.getrlimit(resource.RLIMIT_NOFILE)))\n"
+            )
+            binary.chmod(0o700)
+            script = """
+import os, resource, sys
+from pathlib import Path
+import launcher
+resource.setrlimit(resource.RLIMIT_NOFILE, (256, resource.RLIM_INFINITY))
+launcher.BINARY = Path(sys.argv[1]) / 'codex'
+os.environ['CODEX_HOME'] = sys.argv[1]
+launcher.main(['--no-daemon'])
+"""
+
+            subprocess.run([sys.executable, "-c", script, directory], cwd=Path(__file__).parent,
+                           check=True, timeout=10)
+
+            self.assertEqual(json.loads((root / "capacity.json").read_text())[0], 4096)
+
     def test_new_runtime_inherits_capacity_for_more_than_256_open_files(self):
         """낮은 기본 한도를 높여 자식이 파일 300개를 열고, hard limit과 더 높은 한도는 보존한다."""
         for soft, hard, expected in ((256, resource.RLIM_INFINITY, 4096),
@@ -139,6 +167,28 @@ finally:
 
 
 class IdleTest(unittest.TestCase):
+    def test_observer_releases_only_its_quiet_subscriptions_without_background_jobs(self):
+        """감독 연결은 유휴 구독만 놓고 active·백그라운드 명령이 있는 대화는 보존한다."""
+        runtime = Runtime({})
+        runtime.client = Mock(closed=False)
+        def answer(method, params=None):
+            if method == "thread/loaded/list":
+                return {"data": ["idle", "active", "background"]}
+            if method == "thread/read":
+                return {"thread": {"status": {"type": "active" if params["threadId"] == "active" else "idle"}}}
+            if method == "thread/backgroundTerminals/list":
+                return {"data": ["running"] if params["threadId"] == "background" else []}
+            if method == "thread/unsubscribe":
+                return {"status": "unsubscribed"}
+            raise AssertionError(method)
+        runtime.client.request.side_effect = answer
+
+        runtime.release_subscriptions()
+
+        releases = [call.args[1]["threadId"] for call in runtime.client.request.call_args_list
+                    if call.args[0] == "thread/unsubscribe"]
+        self.assertEqual(releases, ["idle"])
+
     def test_all_pages_are_checked(self):
         client = Mock()
         client.request.side_effect = [
@@ -291,6 +341,13 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
+    def test_observer_cleanup_runs_even_when_usage_is_unavailable(self):
+        """계정을 고를 수 없어도 감독 구독의 정리는 계속한다."""
+        self.run_monitor([({}, {"company": "Timeout"})])
+
+        self.runtime.release_subscriptions.assert_called_once_with()
+        self.runtime.select.assert_not_called()
+
     def run_monitor(self, batches, preferred="company"):
         clock = [1000]
         stop = Mock()

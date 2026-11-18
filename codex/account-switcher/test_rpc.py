@@ -1,5 +1,6 @@
 import json
 import queue
+import socket
 import time
 import unittest
 from unittest.mock import patch
@@ -29,7 +30,7 @@ class Socket:
             yield item
 
     def close(self):
-        pass
+        self.incoming.put(EOFError())
 
 
 def connect():
@@ -39,6 +40,23 @@ def connect():
 
 
 class RpcTest(unittest.TestCase):
+    def test_reader_failure_releases_the_socket_without_owner_cleanup(self):
+        """reader가 실패하면 다음 계정 조회를 기다리지 않고 실제 descriptor를 회수한다."""
+        left, right = socket.socketpair()
+        transport = Socket(None)
+        transport.close = left.close
+        try:
+            with patch("rpc.UnixWebSocket", return_value=transport):
+                client = Rpc(None, None, "/fixture.sock")
+
+            transport.incoming.put(OSError("fixture read failure"))
+            client.reader.join(timeout=2)
+
+            self.assertEqual(left.fileno(), -1)
+        finally:
+            left.close()
+            right.close()
+
     def test_requests_fail_at_once_after_the_reader_stops(self):
         """수신이 멈춘 연결은 닫힌 것으로 보고, 다음 요청을 시간 초과까지 기다리지 않고 바로 실패시킨다."""
         client, socket = connect()
