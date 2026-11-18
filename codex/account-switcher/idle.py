@@ -161,11 +161,32 @@ class ClientSocket(UnixWebSocket):
             self.socket.sendall(header + data)
 
 
+class ForwardQueue(queue.Queue):
+    """Bound retained payloads without ever blocking the RPC reader."""
+
+    def __init__(self, max_bytes=256 << 20):
+        super().__init__()
+        self.max_bytes = max_bytes
+        self.queued_bytes = 0
+
+    def _put(self, event):
+        size = len(event[1]) if event[1] is not None else 0
+        if size and (self.queued_bytes + size > self.max_bytes or len(self.queue) >= 4096):
+            raise queue.Full
+        self.queued_bytes += size
+        super()._put(event)
+
+    def _get(self):
+        event = super()._get()
+        self.queued_bytes -= len(event[1]) if event[1] is not None else 0
+        return event
+
+
 class Proxy:
     def __init__(self, client, upstream, delay):
         self.client, self.upstream = client, upstream
         self.upstream.message_limit = ClientSocket.message_limit
-        self.events = queue.Queue()
+        self.events = ForwardQueue()
         self.pending = {}
         self.client_requests = {}
         self.server_requests = set()
@@ -203,7 +224,10 @@ class Proxy:
             for payload in transport.messages():
                 self.receive(side, payload)
                 del payload
-        except (OSError, EOFError, ValueError, queue.Full):
+        except queue.Full:
+            # A blocking put could prevent the same reader from delivering our RPC response.
+            self.close()
+        except (OSError, EOFError, ValueError):
             pass
         finally:
             self.events.put((side, None))
@@ -252,10 +276,18 @@ class Proxy:
                     self.forward_server(message, payload)
                 del message, payload
         finally:
-            self.client.close()
-            self.upstream.close()
+            self.close()
             for reader in readers:
                 reader.join(timeout=2)
+
+    def close(self):
+        self.client.close()
+        self.upstream.close()
+        for response in list(self.pending.values()):
+            try:
+                response.put_nowait({'error': {'message': 'Proxy connection ended'}})
+            except queue.Full:
+                pass
 
     def forward_client(self, message, payload):
         method, params = message.get("method"), message.get("params") or {}

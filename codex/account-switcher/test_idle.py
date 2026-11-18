@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 from idle import IdleThreads, Proxy
 from policy import UsageUnavailable
+import queue
 
 
 class Server:
@@ -108,6 +109,33 @@ class ProxyTest(unittest.TestCase):
 
     def send_server(self, message):
         self.proxy.forward_server(message, json.dumps(message).encode())
+
+    def test_slow_consumer_disconnects_at_byte_budget_without_blocking_reader(self):
+        """소비자가 멈춰도 byte 상한에서 종료하며 내부 RPC reader를 막지 않는다."""
+        self.proxy.events.max_bytes = 100
+        payload = json.dumps({'method': 'fixture', 'params': {'data': 'x' * 35}}).encode()
+        self.server.messages.return_value = iter([payload, payload])
+
+        self.proxy.read('server', self.server)
+
+        self.client.close.assert_called()
+        self.server.close.assert_called()
+        self.assertLessEqual(self.proxy.events.queued_bytes, 100)
+
+    def test_forwarded_bytes_release_queue_budget_and_internal_replies_bypass_it(self):
+        """전달한 payload의 예산을 반환하고 내부 응답은 가득 찬 전달 queue를 우회한다."""
+        self.proxy.events.max_bytes = 100
+        payload = b'{"method":"fixture","params":{}}'
+        self.proxy.receive('server', payload)
+        self.proxy.events.get_nowait()
+        self.assertEqual(self.proxy.events.queued_bytes, 0)
+        response = queue.Queue(maxsize=1)
+        self.proxy.pending['internal'] = response
+        self.proxy.events.max_bytes = 1
+
+        self.proxy.receive('server', b'{"id":"internal","result":{}}')
+
+        self.assertEqual(response.get_nowait()['result'], {})
 
     def test_failed_wake_rejects_before_forwarding_user_input(self):
         """resume 실패는 제출 전 거절로 반환하여 TUI가 입력을 composer에 복원하게 한다."""
