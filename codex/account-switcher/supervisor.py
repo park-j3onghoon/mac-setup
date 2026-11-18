@@ -61,23 +61,22 @@ def monitor(runtime, profiles, stop, state):
                                  preferred=state["preferred"])
             except UsageUnavailable:
                 desired = None
+            try:
+                previous = state.get("active", runtime.active)
+                runtime.observe_account()
+                state["account_observed_at"] = time.time()
+                state.pop("account_error", None)
+                if previous is not None and previous != runtime.active:
+                    state["last_external_change"] = {
+                        "from": previous, "to": runtime.active,
+                        "observed_at": state["account_observed_at"],
+                    }
+            except Exception as error:
+                state["account_error"] = type(error).__name__
             next_poll = time.time() + poll_delay(state.get("accounts", {}), runtime.active)
             state["next_check_at"] = next_poll
             check_limited = True
         state["desired"] = desired
-        try:
-            previous = state.get("active", runtime.active)
-            runtime.observe_account()
-            state["account_observed_at"] = time.time()
-            state.pop("account_error", None)
-            if previous is not None and previous != runtime.active:
-                state["last_external_change"] = {
-                    "from": previous, "to": runtime.active,
-                    "observed_at": state["account_observed_at"],
-                }
-                check_limited = True
-        except Exception as error:
-            state["account_error"] = type(error).__name__
         if (desired is not None and time.time() >= retry_switch_at
                 and "account_error" not in state):
             try:

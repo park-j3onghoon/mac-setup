@@ -343,6 +343,30 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
+    def test_account_observation_runs_only_with_usage_polling(self):
+        """2초마다 도는 대기 루프에서는 조회하지 않고 사용량 조회 주기에 계정도 확인한다."""
+        clock = [1000]
+        stop = Mock()
+        stop.is_set.side_effect = lambda: clock[0] > 1122
+        stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 2)
+        runtime = Mock(active="company")
+        runtime.select.return_value = True
+        observed_at, polled_at = [], []
+        runtime.observe_account.side_effect = lambda: observed_at.append(clock[0])
+        fresh = {"company": usage(80, 9999, 1000), "personal": usage(0, 9999, 1000)}
+
+        def collect(_):
+            polled_at.append(clock[0])
+            return fresh, {}
+
+        with patch("supervisor.time.time", side_effect=lambda: clock[0]), \
+             patch("supervisor.collect", side_effect=collect), patch("supervisor.save"), \
+             patch("supervisor.preference", return_value={}):
+            monitor(runtime, {}, stop, {})
+
+        self.assertEqual(polled_at, [1000, 1120])
+        self.assertEqual(observed_at, polled_at)
+
     def test_dashboard_preference_changes_the_running_monitor(self):
         """대시보드의 개인 계정 선택은 사용량을 다시 확인하고 기존 전환 경로를 쓴다."""
         fresh = {"company": usage(20, 9999, 1000), "personal": usage(10, 9999, 1000)}
@@ -388,6 +412,7 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(state["active"], "personal")
         self.assertEqual(state["status"], "ready")
         self.assertEqual(state["account_observed_at"], 1000)
+        self.assertEqual(state["next_check_at"], 1540)
         self.assertEqual(state["last_external_change"],
                          {"from": "company", "to": "personal", "observed_at": 1000})
         self.assertEqual(state["switch_count"], 3)
