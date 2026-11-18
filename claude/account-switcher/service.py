@@ -210,7 +210,12 @@ class Switcher:
                     runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
                 except SwitcherError:
                     errors[candidate] = 'authentication_needs_attention'
-            decision = choose_account(email, *self.accounts, readings, now,
+            preference = self.state.load('preference')
+            preferred = preference.get('preferred', self.config['primary'])
+            if preferred not in self.accounts:
+                raise SwitcherError('Preferred account is not configured')
+            fallback = next(candidate for candidate in self.accounts if candidate != preferred)
+            decision = choose_account(email, preferred, fallback, readings, now,
                                       self.config['threshold'], 90)
             report = {'observed_at': now, 'active': email, 'target': decision.target,
                       'reason': decision.reason, 'apply': apply, 'switched': False,
@@ -219,7 +224,8 @@ class Switcher:
             for candidate in self.accounts:
                 if candidate not in report['usage'] and candidate in previous:
                     report['usage'][candidate] = dict(previous[candidate], stale=True)
-            runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors)
+            runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
+                           preferred=preferred, preference_at=preference.get('requested_at'), target=decision.target)
             self.state.save('runtime', runtime)
             if apply and decision.target and decision.target != email:
                 if now < settle_until:

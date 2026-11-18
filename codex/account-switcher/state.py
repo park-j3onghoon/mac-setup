@@ -14,6 +14,11 @@ RUNTIME = Path.home() / ".codex-auto"
 STATE_FILE = RUNTIME / "account-switcher.json"
 
 
+def preference():
+    value = load(RUNTIME / "preference.json")
+    return value if isinstance(value, dict) and value.get("preferred") in ("company", "personal") else {}
+
+
 def snapshot(result, observed_at=None):
     observed_at = time.time() if observed_at is None else observed_at
     used = utilization(result)

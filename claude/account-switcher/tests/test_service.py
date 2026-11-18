@@ -9,6 +9,22 @@ from storage import SwitcherError, read_json
 
 
 class ServiceTests(unittest.TestCase):
+    def test_dashboard_personal_preference_uses_existing_capacity_checks(self):
+        """개인 ID를 선택하면 여유가 있을 때 유지하고, 한도에 닿으면 회사로 전환한다."""
+        app = self.app
+        app.state.save('preference', {'preferred': 'personal@example.com', 'requested_at': NOW})
+        app.api.percent['token-personal'] = 10
+
+        report = app.tick(apply=True, now=NOW)
+
+        self.assertEqual(report['target'], 'personal@example.com')
+        self.assertFalse(report['switched'])
+        self.assertEqual(app.state.load('runtime')['preference_at'], NOW)
+        app.api.percent['token-personal'] = 95
+        report = app.tick(apply=True, now=NOW + 1)
+        self.assertEqual(report['target'], 'work@example.com')
+        self.assertTrue(report['switched'])
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

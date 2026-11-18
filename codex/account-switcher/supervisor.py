@@ -11,7 +11,7 @@ import time
 from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile
 from runtime import Runtime, prepare_home
-from state import RUNTIME, load, poll_delay, record, save
+from state import RUNTIME, load, poll_delay, preference, record, save
 
 
 def collect(profiles):
@@ -37,6 +37,10 @@ def monitor(runtime, profiles, stop, state):
         if not runtime.running():
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
+        requested = preference()
+        if requested and requested.get("requested_at") != state.get("preference_at"):
+            state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"))
+            next_poll = retry_switch_at = 0
         if now >= next_release:
             try:
                 runtime.release_subscriptions()

@@ -193,9 +193,17 @@ def run(app, apply):
             'poll_seconds': app.config['poll_seconds'],
             'supported_version': app.config['supported_version']})
         while not stopping.is_set():
+            requested = app.state.load('preference')
             report, delay, last_outcome = tick_once(app, apply, last_outcome)
             record_if_switched(app.state, report)
-            stopping.wait(measure_and_review(app, measurement, report, delay))
+            deadline = time.monotonic() + measure_and_review(app, measurement, report, delay)
+            while not stopping.is_set() and time.monotonic() < deadline:
+                if app.state.load('preference') != requested:
+                    # A halted service must keep its backoff even when a request is pending.
+                    if (not app.state.load('halt')
+                            and time.time() >= app.state.load('runtime').get('retry_after', 0)):
+                        break
+                stopping.wait(min(2, max(0, deadline - time.monotonic())))
 
 
 def install_service(app):

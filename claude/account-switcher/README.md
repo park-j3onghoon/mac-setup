@@ -151,6 +151,12 @@ python3 "$tool" init --primary personal@example.com --fallback work@example.com 
 
 ## 운용
 
+대시보드의 ID 변경은 상태 디렉터리 `preference.json`에 `preferred`(등록된 이메일)와
+`requested_at`을 기록한다. 서비스는 대기 중에도 2초마다 요청 변경을 확인하고, 선택한
+계정을 우선하되 기존 한도 확인·캐시 안정화·복구 규칙을 유지한다. 기본 우선 계정은
+기존 `primary`다. 처리한 요청 시각은 `runtime.json`의 `preference_at`에 기록한다.
+Keychain 문제로 중단된 서비스는 요청을 받아도 자동으로 중단 상태를 해제하지 않는다.
+
 ```sh
 python3 "$tool" status             # 저장된 상태만 확인
 python3 "$tool" measure-status     # 주기별 토큰·한도 사용률 측정 결과

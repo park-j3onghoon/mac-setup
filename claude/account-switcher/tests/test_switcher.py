@@ -3,7 +3,7 @@ import io
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from compatibility import FAILURE
 from helpers import make_app
@@ -11,7 +11,37 @@ from macos import KeychainError, system_awake
 from storage import SwitcherError
 from refresh import switch_pending
 from switcher import (HALT_POLL_SECONDS, halts_keychain_work, record_if_switched,
-                      run_state_command, tick_once)
+                      run, run_state_command, tick_once)
+
+
+class PreferencePollingTests(unittest.TestCase):
+    def test_new_preference_wakes_polling_but_preserves_retry_after(self):
+        """새 ID 요청은 대기를 깨우되 서버가 정한 재시도 시각까지 기다린다."""
+        for retry_after, expected in ((0, 2), (10, 10)):
+            with self.subTest(retry_after=retry_after), tempfile.TemporaryDirectory() as folder:
+                app = make_app(folder)
+                app.state.save('runtime', {'retry_after': retry_after})
+                clock, ticks = [0], []
+                stop = Mock()
+                stop.is_set.side_effect = lambda: len(ticks) >= 2
+
+                def wait(seconds):
+                    clock[0] += seconds
+                    app.state.save('preference', {'preferred': 'personal@example.com', 'requested_at': 1})
+
+                def tick(*args):
+                    ticks.append(clock[0])
+                    return None, 60, None
+
+                stop.wait.side_effect = wait
+                with patch('switcher.threading.Event', return_value=stop), patch('switcher.signal.signal'), \
+                        patch('switcher.time.monotonic', side_effect=lambda: clock[0]), \
+                        patch('switcher.time.time', side_effect=lambda: clock[0]), \
+                        patch('switcher.tick_once', side_effect=tick), patch('switcher.Measurement'), \
+                        patch('switcher.measure_and_review', return_value=60):
+                    run(app, True)
+
+                self.assertEqual(ticks, [0, expected])
 
 
 class KeychainHaltRuleTests(unittest.TestCase):

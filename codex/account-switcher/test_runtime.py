@@ -341,6 +341,14 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
+    def test_dashboard_preference_changes_the_running_monitor(self):
+        """대시보드의 개인 계정 선택은 사용량을 다시 확인하고 기존 전환 경로를 쓴다."""
+        fresh = {"company": usage(20, 9999, 1000), "personal": usage(10, 9999, 1000)}
+        selected, state = self.run_monitor([(fresh, {})],
+            requested={"preferred": "personal", "requested_at": 999})
+        self.assertEqual(selected, ["personal"])
+        self.assertEqual(state["preference_at"], 999)
+
     def test_observer_cleanup_runs_even_when_usage_is_unavailable(self):
         """계정을 고를 수 없어도 감독 구독의 정리는 계속한다."""
         self.run_monitor([({}, {"company": "Timeout"})])
@@ -348,7 +356,7 @@ class MonitorTest(unittest.TestCase):
         self.runtime.release_subscriptions.assert_called_once_with()
         self.runtime.select.assert_not_called()
 
-    def run_monitor(self, batches, preferred="company"):
+    def run_monitor(self, batches, preferred="company", requested=None):
         clock = [1000]
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] >= 1000 + len(batches) * 61
@@ -365,7 +373,8 @@ class MonitorTest(unittest.TestCase):
         runtime.select.side_effect = select
         state = {"preferred": preferred}
         with patch("supervisor.time.time", side_effect=lambda: clock[0]), \
-             patch("supervisor.collect", side_effect=batches), patch("supervisor.save"):
+             patch("supervisor.collect", side_effect=batches), patch("supervisor.save"), \
+             patch("supervisor.preference", return_value=requested or {}):
             monitor(runtime, {}, stop, state)
         self.runtime = runtime
         return selected, state
