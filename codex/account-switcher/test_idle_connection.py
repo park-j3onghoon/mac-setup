@@ -133,6 +133,40 @@ class ProxyConnectionTest(unittest.TestCase):
 
         self.assert_endpoint_removed()
 
+    def test_replacement_follows_existing_terminal_instead_of_its_spawner(self):
+        """별도 프로세스에서 띄운 교체용 proxy도 지정한 terminal의 생존 기간을 따른다."""
+        directory = Path(self.directory.name) / 'replacement'
+        directory.mkdir()
+        endpoint = directory / 'tui.sock'
+        replacement = subprocess.Popen([sys.executable, str(Path(__file__).with_name('idle.py')),
+                                       str(self.upstream), str(endpoint), '900', str(self.owner.pid)],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic() + 3
+            while not endpoint.exists() and replacement.poll() is None and time.monotonic() < deadline:
+                threading.Event().wait(.01)
+            self.assertTrue(endpoint.exists(), 'replacement rejected an existing owner')
+            client = UnixWebSocket(endpoint)
+            self.addCleanup(client.close)
+            client.socket.settimeout(3)
+            server = ClientSocket(self.listener.accept()[0])
+            self.addCleanup(server.close)
+            self.exchange(client, server, {'id': 1, 'method': 'initialize', 'params': {}}, {})
+            status = json.loads(endpoint.with_suffix('.json').read_text())
+            self.assertTrue(status['connected'])
+            self.assertEqual(status['connections'], 1)
+            client.close()
+            self.stop_owner()
+
+            replacement.wait(timeout=4)
+
+            self.assertFalse(endpoint.exists())
+        finally:
+            if replacement.poll() is None:
+                replacement.terminate()
+                replacement.wait(timeout=3)
+            replacement.stderr.close()
+
     def test_forwarding_preserves_original_json_bytes_in_both_directions(self):
         """계정·유휴 정책이 내용을 바꾸지 않는 요청과 응답은 원문 그대로 전달한다."""
         client, server = self.connect()

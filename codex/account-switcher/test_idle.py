@@ -233,6 +233,44 @@ class ProxyTest(unittest.TestCase):
         self.assertEqual(saved['params']['cwd'], '/fixture')
         self.assertTrue(saved['blocked'])
 
+    def reach_unsubscribe(self):
+        self.proxy.initialized = True
+        server = Server()
+        for _ in range(20):
+            self.proxy.inspect_idle()
+            request = json.loads(self.server.send.call_args.args[0])
+            if request['method'] == 'thread/unsubscribe':
+                return self.proxy.pending[request['id']]
+            self.proxy.pending[request['id']].put({'result': server.request(request['method'], request['params'])})
+        self.fail('unsubscribe was not requested')
+
+    def test_rejected_unsubscribe_does_not_hide_real_thread_closed(self):
+        """명시적으로 거절된 회수는 sleeping을 되돌려 진짜 종료 알림을 보존한다."""
+        response = self.reach_unsubscribe()
+        response.put({'error': {'message': 'rejected'}})
+
+        self.proxy.inspect_idle()
+
+        self.assertNotIn('thread', self.proxy.idle.sleeping)
+        payload = b'{"method":"thread/closed","params":{"threadId":"thread"}}'
+        self.proxy.receive('server', payload)
+        self.assertEqual(self.proxy.events.get_nowait()[1], payload)
+
+    def test_timed_out_unsubscribe_resumes_before_next_input(self):
+        """회수 응답이 유실되면 실제 회수 여부를 모르므로 다음 입력 전에 resume한다."""
+        self.reach_unsubscribe()
+        request_id = self.proxy.check_id
+        self.proxy.check_deadline = 0
+
+        self.proxy.inspect_idle()
+
+        self.assertIn('thread', self.proxy.idle.sleeping)
+        self.proxy.receive('server', json.dumps({'id': request_id, 'result': {}}).encode())
+        self.assertTrue(self.proxy.events.empty())
+        self.proxy.idle.request = Mock(return_value={})
+        self.send_client({'id': 99, 'method': 'turn/start', 'params': {'threadId': 'thread'}})
+        self.proxy.idle.request.assert_called_once_with('thread/resume', {'threadId': 'thread', 'excludeTurns': True})
+
     def test_slow_consumer_disconnects_at_byte_budget_without_blocking_reader(self):
         """소비자가 멈춰도 byte 상한에서 종료하며 내부 RPC reader를 막지 않는다."""
         self.proxy.events.max_bytes = 100

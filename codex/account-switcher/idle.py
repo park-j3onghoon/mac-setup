@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import select
 import socket
 import struct
 import subprocess
@@ -91,7 +92,10 @@ class IdleThreads:
         try:
             while True:
                 method, params = checks.send(result)
-                result = self.request(method, params)
+                try:
+                    result = self.request(method, params)
+                except Exception as error:
+                    checks.throw(error)
         except StopIteration:
             pass
         finally:
@@ -289,11 +293,14 @@ class Proxy:
 
     def receive(self, side, payload):
         message = json.loads(payload)
-        target = self.pending.get(message.get("id"))
-        if side == "server" and "method" not in message and target is not None:
-            target.put_nowait(message)
-            if message.get('id') == self.check_id:
-                self.events.put(('maintenance', None))
+        request_id = message.get('id')
+        target = self.pending.get(request_id)
+        if side == 'server' and 'method' not in message and (
+                target is not None or isinstance(request_id, str) and request_id.startswith(self.prefix)):
+            if target is not None:
+                target.put_nowait(message)
+                if request_id == self.check_id:
+                    self.events.put(('maintenance', None))
             return
         params = message.get("params") or {}
         thread_id = params.get("threadId") or (params.get("thread") or {}).get("id")
@@ -353,7 +360,7 @@ class Proxy:
             self.pending.pop(self.check_id)
             self.check_id = None
             if 'error' in response:
-                self.cancel_inspection()
+                self.cancel_inspection(UsageUnavailable('Idle resource request failed'))
                 return
             result = response['result']
         try:
@@ -367,8 +374,13 @@ class Proxy:
         self.check_deadline = now + 30
         self.upstream.send(json.dumps({'id': self.check_id, 'method': method, 'params': params}).encode())
 
-    def cancel_inspection(self):
+    def cancel_inspection(self, error=None):
         if self.checks is not None:
+            if error is not None:
+                try:
+                    self.checks.throw(error)
+                except (UsageUnavailable, StopIteration):
+                    pass
             self.checks.close()
             self.checks = None
             for thread_id in self.idle.threads:
@@ -483,14 +495,20 @@ def start_proxy(upstream, delay):
 def serve(upstream, endpoint, delay, owner_pid):
     endpoint = Path(endpoint)
     listener = socket.socket(socket.AF_UNIX)
+    owner = select.kqueue()
+    status = {'pid': os.getpid(), 'owner_pid': owner_pid, 'started_at': time.time(),
+              'source_revision': SOURCE_REVISION, 'connected': False, 'connections': 0}
     try:
-        save({'pid': os.getpid(), 'owner_pid': owner_pid, 'started_at': time.time(),
-              'source_revision': SOURCE_REVISION}, endpoint.with_suffix('.json'))
+        # Kernel registration follows this process incarnation, even after reparenting/PID reuse.
+        owner.control([select.kevent(owner_pid, filter=select.KQ_FILTER_PROC,
+                                     flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                                     fflags=select.KQ_NOTE_EXIT)], 0, 0)
+        save(status, endpoint.with_suffix('.json'))
         listener.bind(str(endpoint))
         os.chmod(endpoint, 0o600)
         listener.listen(1)
         listener.settimeout(1)
-        while os.getppid() == owner_pid:
+        while not owner.control([], 1, 0):
             try:
                 connection, _ = listener.accept()
             except socket.timeout:
@@ -499,6 +517,9 @@ def serve(upstream, endpoint, delay, owner_pid):
             try:
                 client = ClientSocket(connection)
                 server = UnixWebSocket(upstream)
+                status.update(connected=True, connections=status['connections'] + 1,
+                              connected_at=time.time())
+                save(status, endpoint.with_suffix('.json'))
                 # TUI가 새 initialize/resume로 복구한다. 이전 요청은 재전송하지 않는다.
                 Proxy(client, server, delay).run()
             except (OSError, EOFError):
@@ -508,7 +529,10 @@ def serve(upstream, endpoint, delay, owner_pid):
                 connection.close()
                 if server:
                     server.close()
+                status['connected'] = False
+                save(status, endpoint.with_suffix('.json'))
     finally:
+        owner.close()
         listener.close()
         endpoint.unlink(missing_ok=True)
         endpoint.with_suffix('.json').unlink(missing_ok=True)
