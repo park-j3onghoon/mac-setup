@@ -47,12 +47,13 @@ def monitor(runtime, profiles, stop, state):
             immediate = requested.get("immediate") is True
             next_poll = retry_switch_at = 0
         if now >= next_release:
+            complete = True
             try:
-                runtime.release_subscriptions()
+                complete = runtime.release_subscriptions()
                 state.pop("release_error", None)
             except Exception as error:
                 state["release_error"] = type(error).__name__
-            next_release = now + 60
+            next_release = time.time() + (2 if complete is False else 60)
         if now >= next_poll:
             fresh, errors = collect(profiles)
             state["errors"] = errors

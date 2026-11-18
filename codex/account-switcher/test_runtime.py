@@ -168,11 +168,32 @@ finally:
 
 
 class IdleTest(unittest.TestCase):
+    def test_cleanup_returns_between_threads_and_bounds_each_rpc(self):
+        """대화가 많아도 한 주기에는 하나만 정리하고 각 RPC에 남은 시간만 준다."""
+        runtime = Runtime({})
+        runtime.client = Mock(closed=False)
+        def answer(method, params=None, timeout=30):
+            self.assertLessEqual(timeout, 2)
+            if method == 'thread/loaded/list':
+                return {'data': [str(number) for number in range(100)]}
+            if method == 'thread/read':
+                return {'thread': {'status': {'type': 'idle'}}}
+            return {'data': []}
+        runtime.client.request.side_effect = answer
+
+        self.assertFalse(runtime.release_subscriptions())
+        self.assertLessEqual(runtime.client.request.call_count, 4)
+        for _ in range(99):
+            complete = runtime.release_subscriptions()
+        self.assertTrue(complete)
+        self.assertEqual(sum(call.args[0] == 'thread/unsubscribe'
+                             for call in runtime.client.request.call_args_list), 100)
+
     def test_observer_releases_only_its_quiet_subscriptions_without_background_jobs(self):
         """감독 연결은 유휴 구독만 놓고 active·백그라운드 명령이 있는 대화는 보존한다."""
         runtime = Runtime({})
         runtime.client = Mock(closed=False)
-        def answer(method, params=None):
+        def answer(method, params=None, **kwargs):
             if method == "thread/loaded/list":
                 return {"data": ["idle", "active", "background"]}
             if method == "thread/read":
@@ -184,7 +205,9 @@ class IdleTest(unittest.TestCase):
             raise AssertionError(method)
         runtime.client.request.side_effect = answer
 
-        runtime.release_subscriptions()
+        for _ in range(3):
+            complete = runtime.release_subscriptions()
+        self.assertTrue(complete)
 
         releases = [call.args[1]["threadId"] for call in runtime.client.request.call_args_list
                     if call.args[0] == "thread/unsubscribe"]

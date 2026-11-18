@@ -1,6 +1,7 @@
 """Own an isolated app-server; account changes stay in that server's memory."""
 
 import os
+from collections import deque
 from pathlib import Path
 import resource
 import socket
@@ -88,6 +89,8 @@ class Runtime:
         self.pid = None
         self.active = None
         self.continued = set()
+        self.release_ids = deque()
+        self.release_cursor = None
 
     def start(self, existing_pid=None):
         prepare_home(self.home)
@@ -165,15 +168,33 @@ class Runtime:
         raise UsageUnavailable("Unknown account requested a token refresh")
 
     def release_subscriptions(self):
-        """감독 연결에 자동으로 붙은 구독을 해제하고 실제 작업은 유지한다."""
+        """한 대화씩 최대 2초 안에 정리하여 감독 루프에 제어를 돌려준다."""
         if self.client.closed:
-            self.observe_account()
-        for thread_id, thread in loaded_threads(self.client):
-            if not quiet(thread):
-                continue
-            terminals = self.client.request("thread/backgroundTerminals/list", {"threadId": thread_id})
-            if not terminals["data"]:
-                self.client.request("thread/unsubscribe", {"threadId": thread_id})
+            self.release_ids.clear()
+            self.release_cursor = None
+            return True
+        deadline = time.monotonic() + 2
+
+        def request(method, params):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise UsageUnavailable('Subscription cleanup budget exhausted')
+            return self.client.request(method, params, timeout=remaining)
+
+        if not self.release_ids:
+            page = request('thread/loaded/list', {'cursor': self.release_cursor})
+            self.release_ids.extend(page.get('data', []))
+            self.release_cursor = page.get('nextCursor')
+        if self.release_ids:
+            thread_id = self.release_ids[0]
+            params = {'threadId': thread_id}
+            try:
+                thread = request('thread/read', {**params, 'includeTurns': False}).get('thread', {})
+                if quiet(thread) and not request('thread/backgroundTerminals/list', params)['data']:
+                    request('thread/unsubscribe', params)
+            finally:
+                self.release_ids.popleft()
+        return not self.release_ids and not self.release_cursor
 
     def select(self, name, *, force=False):
         if self.client.closed:
