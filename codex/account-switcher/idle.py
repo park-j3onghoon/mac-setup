@@ -16,6 +16,7 @@ import time
 import uuid
 
 from policy import UsageUnavailable
+from state import save
 from unix_ws import UnixWebSocket
 
 
@@ -24,6 +25,9 @@ RESUME_FIELDS = {"model", "modelProvider", "serviceTier", "cwd", "runtimeWorkspa
                  "baseInstructions", "developerInstructions", "personality"}
 READ_METHODS = {"thread/read", "thread/turns/list", "thread/items/list", "thread/goal/get",
                 "thread/queue/list", "thread/backgroundTerminals/list"}
+SOURCE_REVISION = hashlib.sha256(b''.join(
+    Path(__file__).with_name(name).read_bytes() for name in ('idle.py', 'unix_ws.py')
+)).hexdigest()
 
 
 class IdleThreads:
@@ -351,6 +355,8 @@ def serve(upstream, endpoint, delay, owner_pid):
     endpoint = Path(endpoint)
     listener = socket.socket(socket.AF_UNIX)
     try:
+        save({'pid': os.getpid(), 'owner_pid': owner_pid, 'started_at': time.time(),
+              'source_revision': SOURCE_REVISION}, endpoint.with_suffix('.json'))
         listener.bind(str(endpoint))
         os.chmod(endpoint, 0o600)
         listener.listen(1)
@@ -376,6 +382,7 @@ def serve(upstream, endpoint, delay, owner_pid):
     finally:
         listener.close()
         endpoint.unlink(missing_ok=True)
+        endpoint.with_suffix('.json').unlink(missing_ok=True)
         endpoint.parent.rmdir()
 
 

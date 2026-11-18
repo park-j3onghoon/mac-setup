@@ -112,6 +112,10 @@ class ProxyConnectionTest(unittest.TestCase):
 
     def test_client_reconnects_repeatedly_and_owner_exit_removes_endpoint(self):
         """터미널의 반복 재접속을 받되 터미널 종료 후에는 중계 주소를 회수한다."""
+        status = json.loads(self.endpoint.with_suffix('.json').read_text())
+        self.assertEqual(status['owner_pid'], self.owner.pid)
+        self.assertGreater(status['pid'], 1)
+        self.assertEqual(len(status['source_revision']), 64)
         for _ in range(3):
             client, server = self.connect()
             self.exchange(client, server, {"id": 1, "method": "initialize", "params": {}}, {})
