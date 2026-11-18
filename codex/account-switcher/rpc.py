@@ -11,6 +11,7 @@ from policy import UsageUnavailable
 from unix_ws import UnixWebSocket, WRITE_TIMEOUT, write_all
 
 
+SERVER_REQUEST_LIMIT = 8
 # The app-server subscribes every initialized connection to the threads it creates itself
 # (sub-agents; app-server/src/lib.rs in 0.169.0). On 2026-11-18 one sub-agent's turn/diff/updated,
 # the whole diff of a turn that added 84 MB of files, passed the 16 MiB frame limit and ended the
@@ -64,6 +65,7 @@ class Rpc:
         self.pending = {}
         self.lock = threading.Lock()
         self.write_lock = threading.Lock()
+        self.handlers = threading.BoundedSemaphore(SERVER_REQUEST_LIMIT)
         self.serial = 0
         self.closed = False
         self.reader = threading.Thread(target=self._read, daemon=True)
@@ -131,7 +133,13 @@ class Rpc:
                 except (ValueError, UnicodeDecodeError):
                     continue
                 if "method" in message and "id" in message:
-                    threading.Thread(target=self._respond, args=(message,), daemon=True).start()
+                    if not self.handlers.acquire(blocking=False):
+                        raise UsageUnavailable('Too many pending server requests')
+                    try:
+                        threading.Thread(target=self._respond, args=(message,), daemon=True).start()
+                    except RuntimeError:
+                        self.handlers.release()
+                        raise
                 elif "id" in message:
                     with self.lock:
                         target = self.pending.get(message["id"])
@@ -165,6 +173,8 @@ class Rpc:
             self.send(reply)
         except (OSError, UsageUnavailable):
             pass
+        finally:
+            self.handlers.release()
 
     def close(self):
         self.closed = True

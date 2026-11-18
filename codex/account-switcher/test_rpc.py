@@ -42,6 +42,33 @@ def connect():
 
 
 class RpcTest(unittest.TestCase):
+    def test_server_request_burst_closes_connection_instead_of_growing_workers(self):
+        """처리 중인 서버 요청이 상한을 넘으면 추가 스레드 대신 연결을 닫는다."""
+        client, transport = connect()
+        self.addCleanup(client.close)
+        release = threading.Event()
+        entered = threading.Event()
+        calls = []
+
+        def handler(method, params):
+            calls.append(method)
+            entered.set()
+            release.wait(2)
+            return {}
+
+        client.handler = handler
+        try:
+            for request_id in range(9):
+                transport.incoming.put(json.dumps({'id': request_id, 'method': 'fixture/refresh'}).encode())
+            self.assertTrue(entered.wait(1))
+            client.reader.join(timeout=.3)
+            closed, count = client.closed, len(calls)
+        finally:
+            release.set()
+
+        self.assertTrue(closed)
+        self.assertLessEqual(count, 8)
+
     def test_blocked_write_obeys_request_deadline_without_holding_response_lock(self):
         """상대가 읽지 않아도 요청이 제한시간 안에 실패하고 응답 잠금은 점유하지 않는다."""
         left, right = socket.socketpair()
