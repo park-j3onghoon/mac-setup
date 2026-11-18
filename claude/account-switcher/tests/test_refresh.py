@@ -237,6 +237,21 @@ class SwitchRecordTests(unittest.TestCase):
 
 
 class SelfRestartTests(unittest.TestCase):
+    def test_initial_failed_ps_does_not_mean_the_session_exited(self):
+        """첫 ps 실패도 살아 있는 세션의 종료로 판단하지 않고 다음 확인에서 재시도한다."""
+        fixture = self.fixture()
+        normal = FakeRunner(fixture)
+        failed = [False]
+        def runner(argv, **kwargs):
+            if argv[0] == '/bin/ps' and not failed[0]:
+                failed[0] = True
+                return Mock(returncode=1, stdout='')
+            return normal(argv, **kwargs)
+        with patch('refresh.os.kill'):
+            outcome = fixture.restart(runner).run()
+        self.assertEqual(outcome, 'restarted')
+        self.assertEqual(normal.typed, ['/restart', 'enter'])
+
     def test_exited_session_stops_helper_without_waiting_eight_hours(self):
         """한도 오류 기록이 남아 있어도 세션 프로세스가 종료되면 도우미도 끝난다."""
         fixture = self.fixture(status='waiting')

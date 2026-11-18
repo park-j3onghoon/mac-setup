@@ -137,6 +137,14 @@ def live_session(config_home, session_id, runner=subprocess.run):
             continue
         result = runner(['/bin/ps', '-o', 'lstart=', '-p', str(entry['pid'])], capture_output=True,
                         text=True, timeout=5, check=False, env={'LC_ALL': 'C', 'TZ': 'UTC'})
+        if result.returncode:
+            try:
+                os.kill(entry['pid'], 0)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                pass
+            raise subprocess.CalledProcessError(result.returncode, '/bin/ps')
         if result.stdout.strip() == entry.get('procStart'):
             return entry
     return None
