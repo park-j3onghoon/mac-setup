@@ -81,6 +81,33 @@ class IdleTest(unittest.TestCase):
         self.assertEqual(params["threadId"], "thread")
         self.assertEqual(params["config"]["shell_environment_policy.set.TAB"], "original")
 
+    def test_idle_batch_reads_loaded_graph_once(self):
+        """50개 대화 검사에서 목록과 부모 관계를 공유하고 각 대화 상태를 재검증한다."""
+        self.server.loaded = [str(i) for i in range(50)]
+        idle = IdleThreads(self.server.request, delay=1)
+        for thread_id in self.server.loaded:
+            idle.track({'thread': {'id': thread_id, 'ephemeral': False}}, {}, 0)
+
+        idle.park(10)
+
+        self.assertEqual(idle.sleeping, set(self.server.loaded))
+        methods = [method for method, _ in self.server.calls]
+        self.assertEqual(methods.count('thread/loaded/list'), 1)
+        self.assertLessEqual(methods.count('thread/read'), 100)
+
+    def test_child_on_later_loaded_page_preserves_parent(self):
+        """loaded 목록 다음 페이지의 ephemeral 자식도 parent 회수를 막는다."""
+        request = self.server.request
+        def paginated(method, params):
+            if method == 'thread/loaded/list':
+                return {'data': ['child']} if params.get('cursor') else {'data': ['thread'], 'nextCursor': 'next'}
+            return request(method, params)
+        self.idle.request = paginated
+
+        self.idle.park(20)
+
+        self.assertFalse(self.idle.sleeping)
+
     def test_work_and_undurable_history_are_never_parked(self):
         """응답·승인 대기·백그라운드 작업·goal·queue·기록 없는 대화는 회수하지 않는다."""
         cases = (("state", "active"), ("background", [{}]), ("goal", {"status": "active"}),

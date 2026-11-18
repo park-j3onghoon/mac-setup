@@ -73,6 +73,7 @@ class IdleThreads:
             checks.close()
 
     def inspect(self, now):
+        ancestors = None
         for thread_id, saved in list(self.threads.items()):
             activity = saved['last_activity']
             was_sleeping = thread_id in self.sleeping
@@ -85,20 +86,26 @@ class IdleThreads:
                 saved["blocked"] = True
                 continue
             # 영속 목록에 없는 ephemeral 자식도 보존한다.
-            loaded = yield "thread/loaded/list", {}
-            has_child = False
-            for other_id in loaded["data"]:
-                seen = {other_id}
-                while other_id != thread_id:
-                    other = (yield "thread/read", {"threadId": other_id})["thread"]
-                    other_id = other.get("parentThreadId")
-                    if not other_id or other_id in seen:
+            if ancestors is None:
+                ancestors, parents = set(), {}
+                cursor = None
+                while True:
+                    loaded = yield 'thread/loaded/list', {'cursor': cursor}
+                    for other_id in loaded['data']:
+                        seen = {other_id}
+                        while other_id:
+                            if other_id not in parents:
+                                other = (yield 'thread/read', {'threadId': other_id})['thread']
+                                parents[other_id] = other.get('parentThreadId')
+                            other_id = parents[other_id]
+                            if not other_id or other_id in seen:
+                                break
+                            ancestors.add(other_id)
+                            seen.add(other_id)
+                    cursor = loaded.get('nextCursor')
+                    if not cursor:
                         break
-                    seen.add(other_id)
-                if other_id == thread_id and len(seen) > 1:
-                    has_child = True
-                    break
-            if has_child:
+            if thread_id in ancestors:
                 saved["blocked"] = True
                 continue
             params = {"threadId": thread_id}
