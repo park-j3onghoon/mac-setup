@@ -186,6 +186,9 @@ class Switcher:
                     self.vault.write(email, active)
             runtime = self.state.load('runtime')
             settle_until = runtime.get('settle_until', 0)
+            preference = self.state.load('preference')
+            immediate = (preference.get('immediate') is True
+                         and preference.get('requested_at') != runtime.get('preference_at'))
             readings, errors, reading_tokens = {}, {}, {}
             for candidate in self.accounts:
                 bundle = active if candidate == email else self.vault.read(candidate)
@@ -196,7 +199,7 @@ class Switcher:
                     expiry = bundle['oauth'].get('expiresAt')
                     if (candidate != email and isinstance(expiry, (int, float))
                             and expiry <= (now + 120) * 1000):
-                        if not apply or now < settle_until:
+                        if not apply or (now < settle_until and not immediate):
                             errors[candidate] = 'inactive_token_needs_refresh'
                             continue
                         bundle['oauth'] = self.api.refresh(bundle['oauth'], now)
@@ -210,7 +213,6 @@ class Switcher:
                     runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
                 except SwitcherError:
                     errors[candidate] = 'authentication_needs_attention'
-            preference = self.state.load('preference')
             preferred = preference.get('preferred', self.config['primary'])
             if preferred not in self.accounts:
                 raise SwitcherError('Preferred account is not configured')
@@ -225,16 +227,20 @@ class Switcher:
                 if candidate not in report['usage'] and candidate in previous:
                     report['usage'][candidate] = dict(previous[candidate], stale=True)
             runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
-                           preferred=preferred, preference_at=preference.get('requested_at'), target=decision.target)
+                           preferred=preferred, target=decision.target)
             self.state.save('runtime', runtime)
             if apply and decision.target and decision.target != email:
-                if now < settle_until:
+                if now < settle_until and not immediate:
                     report['reason'] = 'waiting_for_credential_cache'
                 else:
                     self.switch_to(active, decision.target, now, readings[decision.target],
                                    reading_tokens[decision.target])
                     report['switched'] = True
             self.state.save('last_report', report)
+            if apply:
+                runtime = self.state.load('runtime')
+                runtime['preference_at'] = preference.get('requested_at')
+                self.state.save('runtime', runtime)
             return report
 
     def next_delay(self, now):

@@ -175,12 +175,12 @@ class Runtime:
             if not terminals["data"]:
                 self.client.request("thread/unsubscribe", {"threadId": thread_id})
 
-    def select(self, name):
+    def select(self, name, *, force=False):
         if self.client.closed:
             self.observe_account()
         if name == self.active:
             return True
-        if not all_idle(self.client):
+        if not force and not all_idle(self.client):
             return False
         old = self.active
         profile = self.profiles[name]

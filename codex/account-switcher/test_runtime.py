@@ -297,6 +297,36 @@ class SwitchingTest(unittest.TestCase):
         self.assertTrue(self.runtime.select("personal"))
         self.assertEqual(self.runtime.active, "personal")
 
+    def test_manual_switch_reauthenticates_without_waiting_for_active_work(self):
+        """수동 전환은 실행 중인 대화가 있어도 새 계정으로 로그인하고 검증한다."""
+        def request(method, params=None):
+            if method == "thread/loaded/list":
+                return {"data": ["working"]}
+            if method == "thread/read":
+                return {"thread": {"status": {"type": "active"}}}
+            if method == "account/login/start":
+                return {"type": "chatgptAuthTokens"}
+            if method == "account/rateLimits/read":
+                return {"accountId": "personal"}
+            raise AssertionError(method)
+        self.runtime.client.request.side_effect = request
+
+        changed = self.runtime.select("personal", force=True)
+
+        self.assertTrue(changed)
+        self.assertEqual(self.runtime.active, "personal")
+
+    def test_failed_manual_switch_restores_the_previous_account(self):
+        """수동 전환에서도 다른 계정이 확인되면 이전 인증으로 복구한다."""
+        self.runtime.client.request.side_effect = [
+            {}, {"accountId": "unexpected"}, {}, {"accountId": "company"},
+        ]
+
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.select("personal", force=True)
+
+        self.assertEqual(self.runtime.active, "company")
+
     def test_closed_connection_is_replaced_without_logging_in_again(self):
         """감독 연결이 끊기면 같은 서버에 새로 붙는다. 계정이 그대로면 다시 로그인하지 않는다(로그인하면 모든 스레드의 MCP가 재시작된다)."""
         old = self.runtime.client
@@ -374,6 +404,19 @@ class MonitorTest(unittest.TestCase):
             requested={"preferred": "personal", "requested_at": 999})
         self.assertEqual(selected, ["personal"])
         self.assertEqual(state["preference_at"], 999)
+
+    def test_immediate_preference_bypasses_idle_only_for_the_requested_account(self):
+        """수동 선택 계정에 여유가 있으면 즉시 전환하고, 한도 대체 계정에는 자동 규칙을 쓴다."""
+        for percent, target, force in ((10, "personal", True), (95, "company", False)):
+            with self.subTest(percent=percent):
+                fresh = {"company": usage(20, 9999, 1000), "personal": usage(percent, 9999, 1000)}
+
+                selected, state = self.run_monitor([(fresh, {})],
+                    requested={"preferred": "personal", "requested_at": 999, "immediate": True})
+
+                self.assertEqual(selected, [target])
+                self.runtime.select.assert_called_once_with(target, force=force)
+                self.assertEqual(state["active"], target)
 
     def observe_external_login(self, response, fresh, errors):
         runtime = Runtime({name: Mock(account_id=name) for name in ("company", "personal")})
@@ -479,7 +522,7 @@ class MonitorTest(unittest.TestCase):
         runtime.process.poll.return_value = None
         selected = []
 
-        def select(name):
+        def select(name, *, force=False):
             selected.append(name)
             runtime.active = name
             return True

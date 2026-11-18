@@ -152,8 +152,10 @@ python3 "$tool" init --primary personal@example.com --fallback work@example.com 
 ## 운용
 
 대시보드의 ID 변경은 상태 디렉터리 `preference.json`에 `preferred`(등록된 이메일)와
-`requested_at`을 기록한다. 서비스는 대기 중에도 2초마다 요청 변경을 확인하고, 선택한
-계정을 우선하되 기존 한도 확인·캐시 안정화·복구 규칙을 유지한다. 기본 우선 계정은
+`requested_at`, `immediate: true`를 기록한다. 서비스는 대기 중에도 2초마다 요청 변경을 확인하고,
+수동 선택은 캐시 안정화 시간을 기다리지 않고 로그인을 교체한다. 한도 확인·잠금·복구는
+유지한다. 이미 열린 Claude 세션은 재시작해야 새 로그인을 읽으며 기존 재시작 훅도 유지한다.
+대시보드는 실제 로그인 교체를 확인한 뒤 완료를 표시한다. 기본 우선 계정은
 기존 `primary`다. 처리한 요청 시각은 `runtime.json`의 `preference_at`에 기록한다.
 Keychain 문제로 중단된 서비스는 요청을 받아도 자동으로 중단 상태를 해제하지 않는다.
 

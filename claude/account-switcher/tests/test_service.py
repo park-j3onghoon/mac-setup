@@ -9,6 +9,32 @@ from storage import SwitcherError, read_json
 
 
 class ServiceTests(unittest.TestCase):
+    def test_manual_switch_does_not_wait_for_credential_cache(self):
+        """수동 전환은 직전 교체의 캐시 대기 시간에도 선택한 로그인으로 바꾼다."""
+        app = self.app
+        app.state.save('runtime', {'active': 'personal@example.com', 'settle_until': NOW + 45})
+        app.state.save('preference', {'preferred': 'work@example.com', 'requested_at': NOW,
+                                      'immediate': True})
+
+        report = app.tick(apply=True, now=NOW)
+
+        self.assertTrue(report['switched'])
+        self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
+        self.assertEqual(app.live.read()[1]['emailAddress'], 'work@example.com')
+
+    def test_dry_run_preserves_the_pending_manual_switch(self):
+        """사전 확인이 수동 선택을 소비하지 않아 다음 실제 전환도 대기 없이 적용된다."""
+        app = self.app
+        app.state.save('runtime', {'active': 'personal@example.com', 'settle_until': NOW + 45})
+        app.state.save('preference', {'preferred': 'work@example.com', 'requested_at': NOW,
+                                      'immediate': True})
+
+        app.tick(apply=False, now=NOW)
+        report = app.tick(apply=True, now=NOW + 1)
+
+        self.assertTrue(report['switched'])
+        self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
+
     def test_dashboard_personal_preference_uses_existing_capacity_checks(self):
         """개인 ID를 선택하면 여유가 있을 때 유지하고, 한도에 닿으면 회사로 전환한다."""
         app = self.app
