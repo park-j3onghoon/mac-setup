@@ -36,6 +36,8 @@ class Profile:
         self.lock = threading.Lock()
 
     def _connect(self):
+        if self.client is not None and self.client.closed:
+            self._disconnect()
         if self.client is None:
             self.client = Rpc(self.binary, self.home)
         return self.client
@@ -44,7 +46,11 @@ class Profile:
         with self.lock:
             value = credentials(self.home)
             if force or value["expires"] < time.time() + 300:
-                self._connect().request("account/read", {"refreshToken": True}, timeout=8)
+                try:
+                    self._connect().request("account/read", {"refreshToken": True}, timeout=8)
+                except UsageUnavailable:
+                    self._disconnect()
+                    raise
                 value = credentials(self.home)
             if value["chatgptAccountId"] != self.account_id:
                 raise UsageUnavailable(f"The saved {self.name} workspace changed")
@@ -60,13 +66,14 @@ class Profile:
                     raise UsageUnavailable(f"The {self.name} usage belongs to another workspace")
                 return snapshot(result)
             except Exception:
-                if self.client:
-                    self.client.close()
-                    self.client = None
+                self._disconnect()
                 raise
 
     def close(self):
         with self.lock:
-            if self.client:
-                self.client.close()
-                self.client = None
+            self._disconnect()
+
+    def _disconnect(self):
+        if self.client:
+            self.client.close()
+            self.client = None
