@@ -1,10 +1,29 @@
 import json
+import queue
+import threading
 import unittest
 from unittest.mock import Mock
 
 from idle import IdleThreads, Proxy
 from policy import UsageUnavailable
-import queue
+
+
+class Transport:
+    def __init__(self):
+        self.incoming, self.outgoing = queue.Queue(), queue.Queue()
+
+    def messages(self):
+        while True:
+            payload = self.incoming.get()
+            if payload is None:
+                return
+            yield payload
+
+    def send(self, payload):
+        self.outgoing.put(payload)
+
+    def close(self):
+        self.incoming.put(None)
 
 
 class Server:
@@ -86,6 +105,21 @@ class IdleTest(unittest.TestCase):
 
         self.assertFalse(self.idle.sleeping)
 
+    def test_activity_during_idle_checks_prevents_unsubscribe(self):
+        """조회 중 입력을 받은 대화는 오래된 idle 검사 결과로 unsubscribe하지 않는다."""
+        request = self.server.request
+        def receive_input(method, params):
+            result = request(method, params)
+            if method == 'thread/turns/list':
+                self.idle.touch('thread', 21)
+            return result
+        self.idle.request = receive_input
+
+        self.idle.park(now=20)
+
+        self.assertFalse(self.idle.sleeping)
+        self.assertFalse(any(method == 'thread/unsubscribe' for method, _ in self.server.calls))
+
     def test_inspecting_a_parked_child_cannot_retain_a_new_automatic_subscription(self):
         """다른 연결의 단순 child resume가 붙인 구독도 다음 유휴 검사에서 다시 해제한다."""
         self.server.loaded = ["child"]
@@ -109,6 +143,28 @@ class ProxyTest(unittest.TestCase):
 
     def send_server(self, message):
         self.proxy.forward_server(message, json.dumps(message).encode())
+
+    def test_user_request_is_forwarded_while_idle_query_has_no_reply(self):
+        """idle RPC가 응답하지 않아도 사용자 요청은 즉시 전달한다."""
+        client, server = Transport(), Transport()
+        proxy = Proxy(client, server, 0)
+        proxy.initialized = True
+        proxy.idle.track({'thread': {'id': 'thread', 'ephemeral': False}}, {}, 0)
+        worker = threading.Thread(target=proxy.run, daemon=True)
+        worker.start()
+        try:
+            query = json.loads(server.outgoing.get(timeout=3))
+            self.assertEqual(query['method'], 'thread/list')
+            payload = b'{"id":42,"method":"thread/read","params":{"threadId":"thread"}}'
+            client.incoming.put(payload)
+
+            forwarded = server.outgoing.get(timeout=1)
+
+            self.assertEqual(forwarded, payload)
+        finally:
+            proxy.close()
+            worker.join(timeout=3)
+            self.assertFalse(worker.is_alive())
 
     def test_slow_consumer_disconnects_at_byte_budget_without_blocking_reader(self):
         """소비자가 멈춰도 byte 상한에서 종료하며 내부 RPC reader를 막지 않는다."""

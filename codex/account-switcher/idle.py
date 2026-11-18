@@ -61,23 +61,36 @@ class IdleThreads:
             self.threads[thread_id]["last_activity"] = now
 
     def park(self, now):
+        checks = self.inspect(now)
+        result = None
+        try:
+            while True:
+                method, params = checks.send(result)
+                result = self.request(method, params)
+        except StopIteration:
+            pass
+        finally:
+            checks.close()
+
+    def inspect(self, now):
         for thread_id, saved in list(self.threads.items()):
+            activity = saved['last_activity']
             was_sleeping = thread_id in self.sleeping
             if (saved["blocked"] or (was_sleeping and not saved["parent"])
                     or now - saved["last_activity"] < self.delay):
                 continue
             # root runtime은 내려간 자식의 mailbox·environment도 소유한다 (0.169.0).
-            children = self.request("thread/list", {"parentThreadId": thread_id, "limit": 1})
+            children = yield "thread/list", {"parentThreadId": thread_id, "limit": 1}
             if children["data"]:
                 saved["blocked"] = True
                 continue
             # 영속 목록에 없는 ephemeral 자식도 보존한다.
-            loaded = self.request("thread/loaded/list", {})
+            loaded = yield "thread/loaded/list", {}
             has_child = False
             for other_id in loaded["data"]:
                 seen = {other_id}
                 while other_id != thread_id:
-                    other = self.request("thread/read", {"threadId": other_id})["thread"]
+                    other = (yield "thread/read", {"threadId": other_id})["thread"]
                     other_id = other.get("parentThreadId")
                     if not other_id or other_id in seen:
                         break
@@ -89,27 +102,31 @@ class IdleThreads:
                 saved["blocked"] = True
                 continue
             params = {"threadId": thread_id}
-            thread = self.request("thread/read", params)["thread"]
+            thread = (yield "thread/read", params)["thread"]
             if thread["status"]["type"] != "idle" or thread["ephemeral"]:
                 saved["last_activity"] = now
                 continue
-            terminals = self.request("thread/backgroundTerminals/list", params)
-            goal = self.request("thread/goal/get", params)["goal"]
-            queued = self.request("thread/queue/list", params)
-            turns = self.request("thread/turns/list", {
+            terminals = yield "thread/backgroundTerminals/list", params
+            goal = (yield "thread/goal/get", params)["goal"]
+            queued = yield "thread/queue/list", params
+            turns = yield "thread/turns/list", {
                 **params, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
-            })
+            }
             if (terminals["data"] or queued["data"] or not turns["data"]
                     or (goal and goal["status"] != "complete")):
                 saved["last_activity"] = now
                 continue
             if not self.can_park():
                 return
+            if (self.threads.get(thread_id) is not saved or saved['blocked']
+                    or saved['last_activity'] != activity):
+                continue
             # thread/closed 종료 알림보다 먼저 표시한다. TUI는 이 알림을 받으면 종료한다.
             self.sleeping.add(thread_id)
             try:
-                self.request("thread/unsubscribe", params)
-                saved["last_activity"] = now
+                yield "thread/unsubscribe", params
+                if saved['last_activity'] == activity:
+                    saved["last_activity"] = now
             except Exception:
                 if not was_sleeping:
                     self.sleeping.discard(thread_id)
@@ -190,10 +207,15 @@ class Proxy:
         self.pending = {}
         self.client_requests = {}
         self.server_requests = set()
-        self.idle = IdleThreads(self.request, delay, self.events.empty)
+        self.idle = IdleThreads(self.request, delay, lambda: (
+            self.events.empty() and not self.client_requests and not self.server_requests
+        ))
         self.initialized = False
         self.prefix = "idle-" + uuid.uuid4().hex + "-"
         self.serial = 0
+        self.checks = None
+        self.check_id = None
+        self.check_deadline = 0
 
     def request(self, method, params):
         self.serial += 1
@@ -237,6 +259,8 @@ class Proxy:
         target = self.pending.get(message.get("id"))
         if side == "server" and "method" not in message and target is not None:
             target.put_nowait(message)
+            if message.get('id') == self.check_id:
+                self.events.put(('maintenance', None))
             return
         params = message.get("params") or {}
         thread_id = params.get("threadId") or (params.get("thread") or {}).get("id")
@@ -259,13 +283,10 @@ class Proxy:
                 try:
                     side, payload = self.events.get(timeout=1)
                 except queue.Empty:
-                    if self.initialized and not self.client_requests and not self.server_requests:
-                        try:
-                            self.idle.park(time.monotonic())
-                        except UsageUnavailable:
-                            # 조회 실패는 회수하지 않는 쪽으로 처리하며 TUI의 연결은 유지한다.
-                            for thread_id in self.idle.threads:
-                                self.idle.touch(thread_id, time.monotonic())
+                    self.inspect_idle()
+                    continue
+                if side == 'maintenance':
+                    self.inspect_idle()
                     continue
                 if payload is None:
                     break
@@ -276,9 +297,51 @@ class Proxy:
                     self.forward_server(message, payload)
                 del message, payload
         finally:
+            self.cancel_inspection()
             self.close()
             for reader in readers:
                 reader.join(timeout=2)
+
+    def inspect_idle(self):
+        now = time.monotonic()
+        if self.checks is None:
+            if not self.initialized or self.client_requests or self.server_requests:
+                return
+            self.checks = self.idle.inspect(now)
+        result = None
+        if self.check_id is not None:
+            try:
+                response = self.pending[self.check_id].get_nowait()
+            except queue.Empty:
+                if now >= self.check_deadline:
+                    self.cancel_inspection()
+                return
+            self.pending.pop(self.check_id)
+            self.check_id = None
+            if 'error' in response:
+                self.cancel_inspection()
+                return
+            result = response['result']
+        try:
+            method, params = self.checks.send(result)
+        except StopIteration:
+            self.checks = None
+            return
+        self.serial += 1
+        self.check_id = self.prefix + str(self.serial)
+        self.pending[self.check_id] = queue.Queue(maxsize=1)
+        self.check_deadline = now + 30
+        self.upstream.send(json.dumps({'id': self.check_id, 'method': method, 'params': params}).encode())
+
+    def cancel_inspection(self):
+        if self.checks is not None:
+            self.checks.close()
+            self.checks = None
+            for thread_id in self.idle.threads:
+                self.idle.touch(thread_id, time.monotonic())
+        if self.check_id is not None:
+            self.pending.pop(self.check_id, None)
+            self.check_id = None
 
     def close(self):
         self.client.close()
