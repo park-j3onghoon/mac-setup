@@ -40,6 +40,21 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(report['target'], 'work@example.com')
         self.assertEqual(app.vault.active_writes, 0)
 
+    def test_external_login_replaces_the_recorded_active_account(self):
+        """다른 프로그램이 회사 계정으로 로그인하면 다음 주기에 실제 계정을 기록한다."""
+        app = self.app
+        app.state.save('runtime', {'active': 'personal@example.com'})
+        external = app.vault.read('work@example.com')
+        app.vault.active['claudeAiOauth'] = external['oauth']
+        app.live.write_account(external['account'])
+
+        report = app.tick(apply=True, now=NOW)
+
+        self.assertEqual(report['active'], 'work@example.com')
+        self.assertFalse(report['switched'])
+        self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
+        self.assertEqual(app.vault.active_writes, 0)
+
     def test_switch_reuses_the_verified_target_usage_without_duplicate_api_calls(self):
         app = self.app
         app.api.usage = Mock(wraps=app.api.usage)

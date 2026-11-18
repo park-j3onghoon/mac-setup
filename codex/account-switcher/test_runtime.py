@@ -130,7 +130,8 @@ finally:
         with patch("runtime.prepare_home"), patch.object(Path, "exists", return_value=True), \
              patch("runtime.socket.socket"), patch("runtime.os.kill"), \
              patch("runtime.Rpc") as rpc, patch("runtime.subprocess.Popen") as popen:
-            rpc.return_value.request.return_value = {"accountId": "company"}
+            rpc.return_value.request.return_value = {
+                "account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "company"}}
 
             runtime.start(existing_pid=4321)
             running = runtime.running()
@@ -301,7 +302,8 @@ class SwitchingTest(unittest.TestCase):
         old = self.runtime.client
         old.closed = True
         with patch("runtime.Rpc") as rpc:
-            rpc.return_value.request.return_value = {"accountId": "company"}
+            rpc.return_value.request.return_value = {
+                "account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "company"}}
 
             changed = self.runtime.select("company")
 
@@ -309,7 +311,7 @@ class SwitchingTest(unittest.TestCase):
         self.assertEqual(self.runtime.client, rpc.return_value)
         old.close.assert_called_once_with()
         self.assertEqual([call.args[0] for call in rpc.return_value.request.call_args_list],
-                         ["account/rateLimits/read"])
+                         ["account/read"])
 
     def test_wrong_identity_rolls_back(self):
         self.runtime.client.request.side_effect = [
@@ -348,6 +350,93 @@ class MonitorTest(unittest.TestCase):
             requested={"preferred": "personal", "requested_at": 999})
         self.assertEqual(selected, ["personal"])
         self.assertEqual(state["preference_at"], 999)
+
+    def observe_external_login(self, response, fresh, errors):
+        runtime = Runtime({name: Mock(account_id=name) for name in ("company", "personal")})
+        runtime.active = "company"
+        runtime.client = Mock(closed=False)
+
+        def request(method, params=None, **kwargs):
+            if method == "account/read":
+                if isinstance(response, Exception):
+                    raise response
+                return response
+            if method == "thread/loaded/list":
+                return {"data": []}
+            raise AssertionError(method)
+
+        runtime.client.request.side_effect = request
+        stop = Mock()
+        stop.is_set.side_effect = [False, True]
+        state = {"preferred": "company", "switch_count": 3}
+        with patch.object(runtime, "running", return_value=True), \
+             patch.object(runtime, "release_subscriptions"), \
+             patch.object(runtime, "continue_limited") as continued, \
+             patch("supervisor.collect", return_value=(fresh, errors)), \
+             patch("supervisor.time.time", return_value=1000), patch("supervisor.save"), \
+             patch("supervisor.preference", return_value={}):
+            monitor(runtime, {}, stop, state)
+        return state, runtime.client, continued
+
+    def test_external_login_updates_state_without_redundant_login(self):
+        """다른 연결에서 개인으로 바꿨으면 실제 계정을 기록하고 다시 로그인하지 않는다."""
+        response = {"account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "personal"}}
+        fresh = {"company": usage(95, 9999, 1000), "personal": usage(0, 9999, 1000)}
+
+        state, client, continued = self.observe_external_login(response, fresh, {})
+
+        self.assertEqual(state["active"], "personal")
+        self.assertEqual(state["status"], "ready")
+        self.assertEqual(state["account_observed_at"], 1000)
+        self.assertEqual(state["last_external_change"],
+                         {"from": "company", "to": "personal", "observed_at": 1000})
+        self.assertEqual(state["switch_count"], 3)
+        self.assertNotIn("account/login/start", [call.args[0] for call in client.request.call_args_list])
+        continued.assert_called_once_with()
+
+    def test_external_login_is_observed_even_when_usage_queries_fail(self):
+        """사용량을 몰라 자동 전환을 못 해도 외부에서 바뀐 현재 계정은 기록한다."""
+        response = {"account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "personal"}}
+
+        state, client, _ = self.observe_external_login(response, {}, {"company": "Timeout"})
+
+        self.assertEqual(state["active"], "personal")
+        self.assertEqual(state["account_observed_at"], 1000)
+        self.assertEqual(state["status"], "degraded")
+        self.assertEqual([call.args[0] for call in client.request.call_args_list], ["account/read"])
+
+    def test_external_logout_clears_the_recorded_account(self):
+        """로그아웃을 확인하면 사용량 조회 실패 중에도 이전 계정을 현재로 남기지 않는다."""
+        state, client, _ = self.observe_external_login({"account": None}, {}, {"company": "Timeout"})
+
+        self.assertIsNone(state["active"])
+        self.assertEqual(state["account_observed_at"], 1000)
+        self.assertEqual(state["last_external_change"]["to"], None)
+        self.assertNotIn("account_error", state)
+        self.assertEqual([call.args[0] for call in client.request.call_args_list], ["account/read"])
+
+    def test_unregistered_external_account_is_not_overwritten(self):
+        """등록되지 않은 계정이면 이전 계정으로 표시하거나 자동 로그인을 덮어쓰지 않는다."""
+        response = {"account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "other"}}
+        fresh = {"company": usage(0, 9999, 1000), "personal": usage(0, 9999, 1000)}
+
+        state, client, _ = self.observe_external_login(response, fresh, {})
+
+        self.assertIsNone(state["active"])
+        self.assertEqual(state["status"], "degraded")
+        self.assertEqual(state["account_error"], "UsageUnavailable")
+        self.assertEqual([call.args[0] for call in client.request.call_args_list], ["account/read"])
+
+    def test_failed_identity_read_does_not_report_the_previous_account_as_current(self):
+        """현재 계정 조회가 실패하면 캐시를 현재 계정으로 단정하지 않고 전환을 보류한다."""
+        fresh = {"company": usage(0, 9999, 1000), "personal": usage(0, 9999, 1000)}
+
+        state, client, _ = self.observe_external_login(UsageUnavailable("unavailable"), fresh, {})
+
+        self.assertIsNone(state["active"])
+        self.assertEqual(state["status"], "degraded")
+        self.assertNotIn("account_observed_at", state)
+        self.assertEqual([call.args[0] for call in client.request.call_args_list], ["account/read"])
 
     def test_observer_cleanup_runs_even_when_usage_is_unavailable(self):
         """계정을 고를 수 없어도 감독 구독의 정리는 계속한다."""

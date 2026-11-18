@@ -57,6 +57,17 @@ class PolicyTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_unverified_running_account_is_not_displayed_as_the_preferred_account(self):
+        """현재 계정을 확인할 수 없을 때 우선 계정을 실제 로그인처럼 표시하지 않는다."""
+        output = StringIO()
+        state = {"active": None, "preferred": "company", "status": "degraded",
+                 "account_error": "UsageUnavailable"}
+        with patch("service.running", return_value=True), \
+             patch.object(launcher, "load", return_value=state), redirect_stdout(output):
+            launcher.show_status()
+
+        self.assertIn("selected: unknown", output.getvalue())
+
     def setUp(self):
         proxy_patch = patch.object(launcher, "start_proxy", return_value=SOCKET)
         self.proxy = proxy_patch.start()

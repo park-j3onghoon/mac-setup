@@ -30,7 +30,8 @@ MANAGEMENT = {
 def show_status():
     from service import running
     state = load()
-    if running(state):
+    is_running = running(state)
+    if is_running:
         state = dict(state)
     else:
         state["active"] = None
@@ -56,13 +57,15 @@ def show_status():
                      if window.get("last_reset_confirmed_at")]
         if confirmed:
             print("  last reset confirmed: " + datetime.fromtimestamp(max(confirmed)).astimezone().isoformat())
-    selected = state.get("active") or choose({
-        name: value["used_percent"] for name, value in state.get("accounts", {}).items()
-    }, preferred=state.get("preferred", "company"))
+    selected = state.get("active") or "unknown"
+    if not is_running:
+        selected = choose({
+            name: value["used_percent"] for name, value in state.get("accounts", {}).items()
+        }, preferred=state.get("preferred", "company"))
     print(f"selected: {selected}; service: {state.get('status', 'not started')}")
     if state.get("desired") and state["desired"] != state.get("active"):
         print(f"waiting for active work to finish: {state['desired']}")
-    if state.get("errors") or state.get("runtime_error"):
+    if state.get("errors") or state.get("runtime_error") or state.get("account_error"):
         print("Some checks failed; recorded usage may be stale.")
     return 0
 

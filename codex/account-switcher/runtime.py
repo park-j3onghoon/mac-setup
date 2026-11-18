@@ -102,7 +102,7 @@ class Runtime:
                     raise UsageUnavailable("An existing automatic runtime is still listening")
                 os.kill(existing_pid, 0)
                 self.pid = existing_pid
-                self.attach()
+                self.observe_account()
                 return
             finally:
                 probe.close()
@@ -126,14 +126,21 @@ class Runtime:
             time.sleep(0.1)
         self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
 
-    def attach(self):
-        """Connect to the running server and keep the account it already uses.
+    def observe_account(self):
+        """Read the server's current identity even when another client changed it.
 
         Logging in again would restart every loaded thread's MCP servers, and token refresh
         requests reach every connection anyway (app-server/src/outgoing_message.rs in 0.169.0).
         """
-        self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
-        account = self.client.request("account/rateLimits/read").get("accountId")
+        self.active = None
+        if self.client is None or self.client.closed:
+            if self.client:
+                self.client.close()
+            self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+        response = self.client.request("account/read", {"refreshToken": False})
+        if response.get("account") is None:
+            return
+        account = (response.get("workspaceRouting") or {}).get("chatgptAccountId")
         self.active = next((name for name, profile in self.profiles.items()
                             if profile.account_id == account), None)
         if self.active is None:
@@ -160,8 +167,7 @@ class Runtime:
     def release_subscriptions(self):
         """감독 연결에 자동으로 붙은 구독을 해제하고 실제 작업은 유지한다."""
         if self.client.closed:
-            self.client.close()
-            self.attach()
+            self.observe_account()
         for thread_id, thread in loaded_threads(self.client):
             if not quiet(thread):
                 continue
@@ -171,8 +177,7 @@ class Runtime:
 
     def select(self, name):
         if self.client.closed:
-            self.client.close()
-            self.attach()
+            self.observe_account()
         if name == self.active:
             return True
         if not all_idle(self.client):
