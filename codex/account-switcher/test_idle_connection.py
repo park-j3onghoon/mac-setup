@@ -87,7 +87,7 @@ class ProxyConnectionTest(unittest.TestCase):
 
     def assert_endpoint_removed(self):
         deadline = time.monotonic() + 5
-        while self.endpoint.exists() and time.monotonic() < deadline:
+        while self.endpoint.parent.exists() and time.monotonic() < deadline:
             threading.Event().wait(.02)
         self.assertFalse(self.endpoint.exists(), "proxy outlived its terminal")
         self.assertFalse(self.endpoint.parent.exists())

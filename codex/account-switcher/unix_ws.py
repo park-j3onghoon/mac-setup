@@ -44,6 +44,7 @@ def mask_payload(data, mask):
 
 class UnixWebSocket:
     message_limit = 16 * 1024 * 1024
+    fragment_limit = 4096
 
     def __init__(self, path):
         self.socket = socket.socket(socket.AF_UNIX)
@@ -133,6 +134,8 @@ class UnixWebSocket:
             if (length > self.message_limit
                     or (opcode in (0, 1) and message_size + length > self.message_limit)):
                 raise OSError("Oversized Codex socket message")
+            if opcode in (0, 1) and len(chunks) >= self.fragment_limit:
+                raise OSError('Too many Codex socket fragments')
             mask = self._read(4) if second & 128 else None
             data = self._read(length)
             if mask:

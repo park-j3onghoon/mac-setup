@@ -32,6 +32,13 @@ def connection(incoming=b""):
 
 
 class WebSocketTest(unittest.TestCase):
+    def test_empty_fragment_flood_is_rejected(self):
+        """내용이 없는 fragment도 개수 상한을 넘으면 중단해 byte 상한 우회를 막는다."""
+        client = connection(b'\x01\x00' + b'\x00\x00' * 4096 + b'\x80\x00')
+
+        with self.assertRaises(OSError):
+            next(client.messages())
+
     def setUp(self):
         ready = patch('unix_ws.select.select', side_effect=lambda read, write, *_: (read, write, []))
         ready.start()
