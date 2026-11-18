@@ -3,6 +3,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
+import json
 import os
 import signal
 import threading
@@ -33,6 +34,8 @@ def monitor(runtime, profiles, stop, state):
     retry_switch_at = 0
     desired = None
     check_limited = False
+    saved_content = None
+    saved_at = 0
     while not stop.is_set():
         if not runtime.running():
             raise UsageUnavailable("Automatic runtime exited")
@@ -99,8 +102,13 @@ def monitor(runtime, profiles, stop, state):
                 retry_switch_at = time.time() + 60
         else:
             state["status"] = "degraded"
-        state.update(active=runtime.active, updated_at=time.time())
-        save(state)
+        state['active'] = runtime.active
+        content = json.dumps({key: value for key, value in state.items() if key != 'updated_at'},
+                             sort_keys=True)
+        if content != saved_content or time.time() - saved_at >= 30:
+            state['updated_at'] = time.time()
+            save(state)
+            saved_content, saved_at = content, state['updated_at']
         stop.wait(2)
 
 

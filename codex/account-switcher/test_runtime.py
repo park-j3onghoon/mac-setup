@@ -513,6 +513,26 @@ class MonitorTest(unittest.TestCase):
         self.runtime.release_subscriptions.assert_called_once_with()
         self.runtime.select.assert_not_called()
 
+    def test_unchanged_status_writes_heartbeat_but_preference_is_saved_immediately(self):
+        """변화가 없으면 30초마다 저장하고 수동 선택은 다음 2초 주기에 바로 기록한다."""
+        clock = [1000]
+        stop = Mock()
+        stop.is_set.side_effect = lambda: clock[0] > 1060
+        stop.wait.side_effect = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+        runtime = Mock(active='company')
+        runtime.select.return_value = True
+        fresh = {'company': usage(10, 9999, 1000), 'personal': usage(10, 9999, 1000)}
+        written = []
+        with patch('supervisor.time.time', side_effect=lambda: clock[0]), \
+             patch('supervisor.collect', return_value=(fresh, {})), \
+             patch('supervisor.save', side_effect=lambda state: written.append(state['updated_at'])), \
+             patch('supervisor.preference', side_effect=lambda: (
+                 {'preferred': 'personal', 'requested_at': 1010} if clock[0] >= 1010 else {})):
+
+            monitor(runtime, {}, stop, {})
+
+        self.assertEqual(written, [1000, 1010, 1040])
+
     def run_monitor(self, batches, preferred="company", requested=None):
         clock = [1000]
         stop = Mock()
