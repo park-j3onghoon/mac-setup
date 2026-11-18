@@ -184,10 +184,10 @@ class Switcher:
                 # Capture Claude's latest token generation, never a startup-time copy.
                 with self.live.locked():
                     latest, identity = self.live.read()
-                    if (identity != account or fingerprint(latest['claudeAiOauth'])
-                            != fingerprint(active['oauth'])):
+                    if identity != account or latest['claudeAiOauth'] != active['oauth']:
                         raise SwitcherError('Claude renewed its login; retry on the next poll')
-                    self.vault.write(email, active)
+                    if self.vault.read(email) != active:
+                        self.vault.write(email, active)
             runtime = self.state.load('runtime')
             settle_until = runtime.get('settle_until', 0)
             preference = self.state.load('preference')

@@ -201,6 +201,24 @@ class MeasurementTests(unittest.TestCase):
 
 
 class ObserverTests(unittest.TestCase):
+    def test_unchanged_credentials_skip_backup_but_refresh_token_changes_are_saved(self):
+        """접근 토큰이 같아도 갱신 토큰 변경은 저장하고 동일한 인증정보의 반복 저장은 생략한다."""
+        for mode in ('switcher', 'measurement'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                app = make_app(tmp)
+                app.api.percent['token-personal'] = 20
+                app.vault.read_active_for_measurement = app.vault.read_active
+                app.vault.write = Mock(wraps=app.vault.write)
+                with patch('measurement.time.time', return_value=NOW):
+                    for _ in range(10):
+                        observe(app) if mode == 'measurement' else app.tick(apply=True, now=NOW)
+                    app.vault.write.assert_not_called()
+                    app.vault.active['claudeAiOauth']['refreshToken'] = 'rotated-only-refresh'
+                    observe(app) if mode == 'measurement' else app.tick(apply=True, now=NOW)
+                self.assertEqual(app.vault.write.call_count, 1)
+                self.assertEqual(app.vault.read('personal@example.com')['oauth']['refreshToken'],
+                                 'rotated-only-refresh')
+
     def test_measurement_refreshes_only_inactive_account_and_does_not_swap(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_app(tmp)

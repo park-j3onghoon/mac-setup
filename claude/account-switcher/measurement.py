@@ -174,7 +174,7 @@ def observe(app):
                 if verified.get(candidate) != token_id:
                     app.verify_identity(bundle)
                     verified[candidate] = token_id
-                if candidate == email and active:
+                if candidate == email and active and app.vault.read(email) != active:
                     app.vault.write(email, active)
                 reading = app.api.usage(bundle['oauth'], time.time())
                 readings[candidate] = asdict(reading)
