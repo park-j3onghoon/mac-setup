@@ -209,7 +209,7 @@ class SelfRestart:
         return 'restarted_and_continued'
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
-        """The first truthy result of check(), tried every step seconds; None after timeout."""
+        """Check immediately, then back off to 30 seconds; every check reads fresh state."""
         deadline = self.clock() + timeout
         while True:
             try:
@@ -222,7 +222,8 @@ class SelfRestart:
                 pass
             if self.clock() >= deadline:
                 return None
-            self.sleep(step)
+            self.sleep(min(step, max(0, deadline - self.clock())))
+            step = min(step * 2, LIMIT_WAIT_STEP_SECONDS)
 
     def ready(self, old_started):
         """This session once it is quiet with an empty input box, else None; usage-limit choices

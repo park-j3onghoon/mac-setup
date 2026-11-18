@@ -295,6 +295,17 @@ class SelfRestartTests(unittest.TestCase):
         # then
         self.assertEqual(runner.typed, [])
 
+    def test_waiting_background_work_backs_off_process_snapshots(self):
+        """오래 도는 작업은 전체 ps를 매 3초 반복하지 않고 점차 30초까지 늦춘다."""
+        fixture = self.fixture()
+        runner = Mock(wraps=FakeRunner(fixture, children='201 101 /bin/zsh\n'))
+
+        outcome = fixture.restart(runner).run()
+
+        self.assertEqual(outcome, 'not_ready')
+        snapshots = [call for call in runner.call_args_list if '-ax' in call.args[0]]
+        self.assertLessEqual(len(snapshots), 30)
+
     def test_limit_stopped_session_waits_out_long_background_work(self):
         """한도에 멈춘 세션은 다시 시도할 턴 끝이 없으므로, 백그라운드 셸이 10분 넘게 돌아도 끝날 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
         # given
