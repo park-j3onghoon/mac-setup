@@ -17,6 +17,18 @@ from unix_ws import UnixWebSocket
 
 
 class ProxyConnectionTest(unittest.TestCase):
+    def test_malformed_handshake_rejects_only_that_connection(self):
+        """필수 헤더가 빠진 연결 뒤에도 같은 중계기 주소로 정상 연결을 받는다."""
+        with socket.socket(socket.AF_UNIX) as invalid:
+            invalid.settimeout(3)
+            invalid.connect(str(self.endpoint))
+            invalid.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+            self.assertEqual(invalid.recv(1), b'')
+
+        client, server = self.connect()
+
+        self.exchange(client, server, {'id': 1, 'method': 'initialize', 'params': {}}, {})
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="idle-test-", dir="/tmp")
         self.addCleanup(self.directory.cleanup)

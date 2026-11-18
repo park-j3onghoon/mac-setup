@@ -193,10 +193,17 @@ class ClientSocket(UnixWebSocket):
                 raise OSError("Invalid local TUI handshake")
             self.buffer += block
         header, self.buffer = self.buffer.split(b"\r\n\r\n", 1)
-        headers = {name.lower().strip(): value.strip() for name, value in
-                   (line.split(":", 1) for line in header.decode("ascii").split("\r\n")[1:] if ":" in line)}
+        try:
+            headers = {name.lower().strip(): value.strip() for name, value in
+                       (line.split(':', 1) for line in header.decode('ascii').split('\r\n')[1:]
+                        if ':' in line)}
+            key = headers.get('sec-websocket-key', '')
+            if len(header) > 16384 or len(base64.b64decode(key, validate=True)) != 16:
+                raise ValueError('Invalid WebSocket key')
+        except ValueError as error:
+            raise OSError('Invalid local TUI handshake') from error
         accepted = base64.b64encode(hashlib.sha1(
-            (headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()
         ).digest()).decode()
         connection.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                             "Connection: Upgrade\r\nSec-WebSocket-Accept: " + accepted + "\r\n\r\n").encode())
