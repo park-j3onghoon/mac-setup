@@ -1,0 +1,7 @@
+{
+  "name": "codex-shared-playwright",
+  "private": true,
+  "dependencies": {
+    "@playwright/mcp": "0.0.85"
+  }
+}
