@@ -85,6 +85,22 @@ class TokenTailTests(unittest.TestCase):
         self.append('a.jsonl', [event('a', self.now + 10, output=10002)], self.now + 60)
         self.assertEqual(self.tail.sample(self.now + 60)['by_model']['claude-opus-5-5']['output_tokens'], 2)
 
+    def test_directory_cache_keeps_appends_and_discovers_new_files_immediately(self):
+        """목록은 재사용하되 기존 대화 append와 새 하위 폴더의 첫 요청은 빠짐없이 센다."""
+        self.append('a.jsonl', [event('a', self.now)], self.now)
+        self.tail.sample(self.now)
+        self.append('a.jsonl', [event('b', self.now + 30)], self.now + 30)
+        with patch('measurement.os.scandir', wraps=os.scandir) as scan:
+            counts = self.tail.sample(self.now + 30)['by_model']['claude-opus-5-5']
+        self.assertEqual(counts['requests'], 1)
+        self.assertEqual(scan.call_count, 0)
+        (self.root / 'new-project').mkdir()
+        self.append('new-project/new.jsonl', [event('c', self.now + 60)], self.now + 60)
+
+        counts = self.tail.sample(self.now + 60)['by_model']['claude-opus-5-5']
+
+        self.assertEqual(counts['requests'], 1)
+
 
 class QuotaDeltaTests(unittest.TestCase):
     def test_delta_and_duration_are_actual_observations(self):

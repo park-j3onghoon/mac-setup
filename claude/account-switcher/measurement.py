@@ -27,13 +27,47 @@ class TokenTail:
         self.last_scan = None
         self.files = {}
         self.seen = {}
+        self.directories = {}
+        self.next_discovery = 0
+
+    def discover(self, now):
+        """Reuse unchanged directory listings, still stat files to detect resumed old sessions."""
+        paths, visited, stack = [], set(), [self.projects]
+        errors = 0
+        while stack:
+            directory = stack.pop()
+            try:
+                info = directory.stat()
+                identity = (info.st_dev, info.st_ino, info.st_mtime_ns)
+                cached = self.directories.get(directory)
+                if cached is None or cached[0] != identity or now >= self.next_discovery:
+                    children, files = [], []
+                    with os.scandir(directory) as entries:
+                        for entry in entries:
+                            if entry.is_dir(follow_symlinks=False):
+                                children.append(Path(entry.path))
+                            elif entry.name.endswith('.jsonl'):
+                                files.append(Path(entry.path))
+                    cached = (identity, children, files)
+                    self.directories[directory] = cached
+                visited.add(directory)
+                stack.extend(cached[1])
+                paths.extend(cached[2])
+            except FileNotFoundError:
+                continue
+            except OSError:
+                errors += 1
+        self.directories = {path: value for path, value in self.directories.items() if path in visited}
+        if now >= self.next_discovery:
+            self.next_discovery = now + 600
+        return paths, errors
 
     def sample(self, now):
         baseline = self.last_scan is None
         cutoff = max(self.started_at - 900, now - 7200)
         counts = defaultdict(lambda: dict.fromkeys(TOKEN_FIELDS + ('requests',), 0))
-        errors = 0
-        for path in self.projects.rglob('*.jsonl'):
+        paths, errors = self.discover(now)
+        for path in paths:
             try:
                 info = path.stat()
                 if info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
