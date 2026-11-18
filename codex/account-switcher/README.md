@@ -147,6 +147,15 @@ CODEX_IDLE_SECONDS=0 codex           # 이 터미널은 유휴 프록시 사용 
 이 프록시가 소급 적용되지 않는다. 연결을 추가로 붙인 도구가 구독을 유지하면 회수도
 기다린다. 감독은 자신의 유휴 구독을 별도로 60초마다 반환한다.
 
+프록시는 터미널 프로세스가 살아 있는 동안 같은 Unix 소켓으로 재접속을 받는다.
+서버 연결이 끊기면 해당 연결만 닫고, Codex TUI의 새 `initialize`·`thread/resume`로
+복구한다. 이전 연결의 요청을 프록시가 다시 보내지 않는다. 터미널 종료 시 프록시와
+임시 소켓도 정리한다.
+
+Codex 0.169.0 TUI의 자동 재접속 시한은 120초다. 서버가 그 안에 돌아와야 자동 복구되며,
+이미 `Reconnect failed`가 된 화면은 입력 초안을 복사한 뒤 `Ctrl+C`로 종료하고
+`codex resume`으로 기존 대화를 선택한다. 이 수정은 새로 실행한 터미널부터 적용된다.
+
 ### 불필요한 로컬 MCP 줄이기
 
 데이터 조회나 Chrome 도구가 필요 없는 독립 코딩 세션에서만 다음처럼 끈다.
@@ -173,6 +182,7 @@ Chrome 브리지의 공용 데몬은 이미 공유되므로 다른 대화가 쓰
 
 ```sh
 python3 -m unittest discover -s codex/account-switcher -p 'test_*.py' -v
+python3 codex/account-switcher/probe_subscriptions.py --proxy --reconnect
 codex --account-status
 ```
 

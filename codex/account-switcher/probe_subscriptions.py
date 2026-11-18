@@ -86,6 +86,9 @@ def wait_turn(client, thread_id, turn_id):
             turns=[]
         for turn in turns:
             if turn['id'] == turn_id and turn['status'] in ('completed', 'failed', 'interrupted'):
+                # 0.169.0은 live 상태보다 먼저 읽은 미완료 기록을 interrupted로 정규화한다.
+                if turn['status'] == 'interrupted' and turn['completedAt'] is None:
+                    continue
                 assert turn['status'] == 'completed', turn
                 return
         if time.monotonic()>deadline:raise TimeoutError('fixture turn')
@@ -135,6 +138,50 @@ thread_unload_delay_secs = {5 if '--child-restart' in sys.argv else 1}
             parent = owner.request('thread/start', {'cwd': directory})['thread']['id']
             initial = owner.request('turn/start', {'threadId': parent, 'input': [{'type':'text', 'text':'Spawn child'}]})
             wait_turn(observer, parent, initial['turn']['id'])
+            if '--reconnect' in sys.argv:
+                assert '--proxy' in sys.argv
+                before = owner.request('thread/read', {'threadId': parent, 'includeTurns': True})['thread']['turns']
+                calls = Model.count
+                p.terminate()
+                p.wait(timeout=10)
+                owner.reader.join(timeout=5)
+                assert owner.closed, 'server exit did not disconnect the terminal'
+                owner.close()
+                observer.close()
+                owner = observer = None
+                assert endpoint.exists(), 'proxy endpoint disappeared with the server'
+                try:
+                    unavailable = Rpc(None, None, endpoint)
+                except (UsageUnavailable, OSError):
+                    pass
+                else:
+                    unavailable.close()
+                    raise AssertionError('stopped server still accepted requests')
+                with (root/'restart-stderr').open('w') as stderr:
+                    p = subprocess.Popen(p.args, env=dict(os.environ, CODEX_HOME=directory),
+                                         stdout=subprocess.DEVNULL, stderr=stderr)
+                deadline = time.monotonic() + 15
+                while True:
+                    try:
+                        owner = Rpc(None, None, endpoint)
+                        break
+                    except (UsageUnavailable, OSError):
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError('restarted server')
+                        time.sleep(.1)
+                resumed = owner.request('thread/resume', {'threadId': parent, 'cwd': directory})
+                assert resumed['thread']['id'] == parent
+                turn = owner.request('turn/start', {'threadId': parent, 'input': [
+                    {'type': 'text', 'text': 'Resume same history'},
+                ]})
+                wait_turn(owner, parent, turn['turn']['id'])
+                history = owner.request('thread/read', {'threadId': parent, 'includeTurns': True})['thread']['turns']
+                assert [t['id'] for t in history] == [t['id'] for t in before] + [turn['turn']['id']]
+                assert Model.count == calls + 1, 'reconnect replayed a model request'
+                print(json.dumps({'same_endpoint': str(endpoint), 'same_thread': parent,
+                                  'turns_before': len(before), 'turns_after': len(history),
+                                  'new_model_requests': Model.count - calls}), flush=True)
+                return
             deadline=time.monotonic()+20
             while True:
                 threads = owner.request('thread/loaded/list')['data']
@@ -237,11 +284,12 @@ thread_unload_delay_secs = {5 if '--child-restart' in sys.argv else 1}
             assert not result['loaded'], result
             records.append(result); print(json.dumps(result),flush=True)
         finally:
-            if sys.exc_info()[0] is not None and observer:
+            diagnostic = observer or owner
+            if sys.exc_info()[0] is not None and diagnostic:
                 try:
                     failure = {}
-                    for tid in observer.request('thread/loaded/list')['data']:
-                        failure[tid] = observer.request('thread/read', {'threadId':tid,'includeTurns':True})
+                    for tid in diagnostic.request('thread/loaded/list')['data']:
+                        failure[tid] = diagnostic.request('thread/read', {'threadId':tid,'includeTurns':True})
                     Path('/private/tmp/codex-fixture-failure.json').write_text(json.dumps(failure,indent=2))
                 except (UsageUnavailable, OSError):
                     # 진단 실패가 격리 서버와 MCP의 정리를 막지 않게 한다.

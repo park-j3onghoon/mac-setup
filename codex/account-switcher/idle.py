@@ -325,7 +325,8 @@ def start_proxy(upstream, delay):
     directory = Path(tempfile.mkdtemp(prefix="codex-idle-"))
     endpoint = directory / "tui.sock"
     process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), str(upstream), str(endpoint), str(delay)],
+        [sys.executable, str(Path(__file__).resolve()), str(upstream), str(endpoint), str(delay),
+         str(os.getpid())],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
@@ -340,29 +341,37 @@ def start_proxy(upstream, delay):
     return endpoint
 
 
-def serve(upstream, endpoint, delay):
+def serve(upstream, endpoint, delay, owner_pid):
     endpoint = Path(endpoint)
     listener = socket.socket(socket.AF_UNIX)
-    connection = client = server = None
     try:
         listener.bind(str(endpoint))
         os.chmod(endpoint, 0o600)
         listener.listen(1)
-        listener.settimeout(30)
-        connection, _ = listener.accept()
-        listener.close()
-        client = ClientSocket(connection)
-        server = UnixWebSocket(upstream)
-        Proxy(client, server, delay).run()
+        listener.settimeout(1)
+        while os.getppid() == owner_pid:
+            try:
+                connection, _ = listener.accept()
+            except socket.timeout:
+                continue
+            server = None
+            try:
+                client = ClientSocket(connection)
+                server = UnixWebSocket(upstream)
+                # TUI가 새 initialize/resume로 복구한다. 이전 요청은 재전송하지 않는다.
+                Proxy(client, server, delay).run()
+            except (OSError, EOFError):
+                # 서버가 아직 없거나 연결이 끊겨도 같은 주소로 다음 재접속을 받는다.
+                pass
+            finally:
+                connection.close()
+                if server:
+                    server.close()
     finally:
         listener.close()
-        if connection:
-            connection.close()
-        if server:
-            server.close()
         endpoint.unlink(missing_ok=True)
         endpoint.parent.rmdir()
 
 
 if __name__ == "__main__":
-    serve(sys.argv[1], sys.argv[2], float(sys.argv[3]))
+    serve(sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]))
