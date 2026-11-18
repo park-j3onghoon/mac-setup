@@ -34,6 +34,7 @@ class Profile:
         self.account_id = credentials(home)["chatgptAccountId"]
         self.client = None
         self.lock = threading.Lock()
+        self.refresh_generation = 0
 
     def _connect(self):
         if self.client is not None and self.client.closed:
@@ -43,9 +44,11 @@ class Profile:
         return self.client
 
     def tokens(self, force=False):
+        generation = self.refresh_generation
         with self.lock:
             value = credentials(self.home)
-            if force or value["expires"] < time.time() + 300:
+            refresh = (force and generation == self.refresh_generation) or value['expires'] < time.time() + 300
+            if refresh:
                 try:
                     self._connect().request("account/read", {"refreshToken": True}, timeout=8)
                 except UsageUnavailable:
@@ -54,6 +57,8 @@ class Profile:
                 value = credentials(self.home)
             if value["chatgptAccountId"] != self.account_id:
                 raise UsageUnavailable(f"The saved {self.name} workspace changed")
+            if refresh:
+                self.refresh_generation += 1
             value.pop("expires")
             return value
 
