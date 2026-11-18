@@ -70,8 +70,14 @@ url = "https://mcp.atlassian.com/v1/mcp"
 enabled = false
 
 [mcp_servers.chrome-devtools]
+enabled = false
 command = "/opt/homebrew/bin/node"
 args = ["/Users/teddy.park/git/mac-setup/codex/chrome-devtools/bridge.mjs"]
+startup_timeout_sec = 60
+tool_timeout_sec = 60
+
+[mcp_servers.playwright]
+url = "http://127.0.0.1:8931/mcp"
 startup_timeout_sec = 60
 tool_timeout_sec = 60
 
