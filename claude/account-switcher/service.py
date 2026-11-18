@@ -7,6 +7,7 @@ import time
 from api import ApiError
 from compatibility import check as check_compatibility
 from policy import choose_account, poll_seconds
+from refresh import record_switch
 from storage import SwitcherError, fingerprint
 
 
@@ -104,8 +105,10 @@ class Switcher:
             runtime.update(active=recovered_email,
                            settle_until=time.time() + self.config['settle_seconds'])
             if recovered_email == after['account']['emailAddress']:
-                runtime['switched_at'] = time.time()
+                runtime['switched_at'] = journal.get('switched_at', time.time())
             self.state.save('runtime', runtime)
+            if recovered_email == after['account']['emailAddress']:
+                record_switch(self.state, runtime['switched_at'])
             self.vault.delete('__transaction__')
 
     def switch_to(self, expected, target_email, now, reading=None, token_id=None):
@@ -131,7 +134,7 @@ class Switcher:
                 raise SwitcherError('Live login changed during preflight; retry on the next poll')
             before = {'oauth': blob['claudeAiOauth'], 'account': account}
             self.vault.write(account['emailAddress'], before)
-            self.vault.write('__transaction__', {'before': before, 'after': target})
+            self.vault.write('__transaction__', {'before': before, 'after': target, 'switched_at': now})
             patched = dict(blob)
             patched['claudeAiOauth'] = target['oauth']
             try:
@@ -152,11 +155,12 @@ class Switcher:
                       and current_account == before['account']):
                     self.vault.delete('__transaction__')
                 raise SwitcherError('Account swap failed; recovery journal retained if needed') from None
+            runtime = self.state.load('runtime')
+            runtime.update(active=target_email, switched_at=now,
+                           settle_until=now + self.config['settle_seconds'])
+            self.state.save('runtime', runtime)
+            record_switch(self.state, now)
             self.vault.delete('__transaction__')
-        runtime = self.state.load('runtime')
-        runtime.update(active=target_email, switched_at=now,
-                       settle_until=now + self.config['settle_seconds'])
-        self.state.save('runtime', runtime)
 
     def tick(self, apply=False, now=None):
         now = time.time() if now is None else now

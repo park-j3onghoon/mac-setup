@@ -6,11 +6,11 @@ import unittest
 from unittest.mock import Mock, patch
 
 from compatibility import FAILURE
-from helpers import make_app
+from helpers import NOW, make_app
 from macos import KeychainError, system_awake
 from storage import SwitcherError
 from refresh import switch_pending
-from switcher import (HALT_POLL_SECONDS, halts_keychain_work, record_if_switched,
+from switcher import (HALT_POLL_SECONDS, halts_keychain_work,
                       run, run_state_command, tick_once)
 
 
@@ -131,21 +131,23 @@ class RecordSwitchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.state = make_app(self.tmp.name).state
+        self.app = make_app(self.tmp.name)
+        self.state = self.app.state
 
     def test_switch_is_recorded_for_session_restarts(self):
         """계정을 바꾼 보고는 그 시각을 남겨, 각 세션의 훅이 그 전에 시작된 세션을 다시 띄우게 한다."""
         # when
-        record_if_switched(self.state, {'switched': True, 'observed_at': 1_000.0})
+        self.app.tick(apply=True, now=NOW)
         # then
-        self.assertEqual(switch_pending(self.state, 1_060.0), 1_000.0)
+        self.assertEqual(switch_pending(self.state, NOW + 60), NOW)
 
     def test_report_without_a_switch_records_nothing(self):
         """계정을 바꾸지 않은 보고는 재시작할 시각을 남기지 않는다."""
         # when
-        record_if_switched(self.state, {'switched': False, 'observed_at': 1_000.0})
+        self.app.api.percent['token-personal'] = 20
+        self.app.tick(apply=True, now=NOW)
         # then
-        self.assertIsNone(switch_pending(self.state, 1_060.0))
+        self.assertIsNone(switch_pending(self.state, NOW + 60))
 
 
 if __name__ == '__main__':

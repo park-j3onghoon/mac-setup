@@ -2,13 +2,52 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from helpers import NOW, make_app
 from storage import SwitcherError, read_json
 
 
 class ServiceTests(unittest.TestCase):
+    def test_switch_metadata_failure_is_recovered_with_session_marker(self):
+        """인증 교체 뒤 runtime 저장이 실패해도 다음 복구가 세션 재시작 신호까지 남긴다."""
+        app = self.app
+        expected = app.vault.read('personal@example.com')
+        save = app.state.save
+
+        def fail_runtime(name, value):
+            if name == 'runtime':
+                raise OSError('synthetic state failure')
+            save(name, value)
+
+        with patch.object(app.state, 'save', side_effect=fail_runtime):
+            with self.assertRaises(OSError):
+                app.switch_to(expected, 'work@example.com', NOW)
+        app.recover()
+
+        self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
+        self.assertEqual(app.state.load('session_refresh')['since'], NOW)
+        self.assertIsNone(app.vault.read('__transaction__'))
+
+    def test_session_marker_failure_keeps_recoverable_switch(self):
+        """재시작 신호 저장 실패 뒤에도 복구 기록이 남아 같은 전환 시각으로 재시도한다."""
+        app = self.app
+        save = app.state.save
+
+        def fail_marker(name, value):
+            if name == 'session_refresh':
+                raise OSError('synthetic marker failure')
+            save(name, value)
+
+        with patch.object(app.state, 'save', side_effect=fail_marker):
+            with self.assertRaises(OSError):
+                app.switch_to(app.vault.read('personal@example.com'), 'work@example.com', NOW)
+        app.recover()
+
+        self.assertEqual(app.state.load('session_refresh')['since'], NOW)
+        self.assertEqual(app.live.read()[1]['emailAddress'], 'work@example.com')
+        self.assertIsNone(app.vault.read('__transaction__'))
+
     def test_manual_switch_does_not_wait_for_credential_cache(self):
         """수동 전환은 직전 교체의 캐시 대기 시간에도 선택한 로그인으로 바꾼다."""
         app = self.app

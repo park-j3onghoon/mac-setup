@@ -175,12 +175,6 @@ def measure_and_review(app, measurement, report, delay):
     return delay
 
 
-def record_if_switched(state, report):
-    """Each session's Stop/StopFailure hook restarts it after this time (refresh_hook.py)."""
-    if report is not None and report['switched']:
-        record_switch(state, report['observed_at'])
-
-
 def run(app, apply):
     stopping = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
@@ -195,7 +189,6 @@ def run(app, apply):
         while not stopping.is_set():
             requested = app.state.load('preference')
             report, delay, last_outcome = tick_once(app, apply, last_outcome)
-            record_if_switched(app.state, report)
             deadline = time.monotonic() + measure_and_review(app, measurement, report, delay)
             while not stopping.is_set() and time.monotonic() < deadline:
                 if app.state.load('preference') != requested:
@@ -321,7 +314,6 @@ def run_app_command(args, state, app):
         return doctor(app)
     elif args.command == 'once':
         report = app.tick(apply=args.apply)
-        record_if_switched(state, report)
         print(json.dumps(report, indent=2))
     elif args.command == 'measure-once':
         with state.lock('daemon'):
