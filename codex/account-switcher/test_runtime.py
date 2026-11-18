@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+import resource
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -55,6 +58,43 @@ class StateTest(unittest.TestCase):
 
 
 class HomeTest(unittest.TestCase):
+    def test_new_runtime_inherits_capacity_for_more_than_256_open_files(self):
+        """낮은 기본 한도를 높여 자식이 파일 300개를 열고, hard limit과 더 높은 한도는 보존한다."""
+        for soft, hard, expected in ((256, resource.RLIM_INFINITY, 4096),
+                                     (256, 512, 512), (8192, 8192, 8192)):
+            with self.subTest(soft=soft, hard=hard), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                binary = root / "codex"
+                binary.write_text(
+                    f"#!{sys.executable}\n"
+                    "import json, resource\nfrom pathlib import Path\n"
+                    "handles = [open('/dev/null') for _ in range(300)]\n"
+                    "Path(__file__).with_name('capacity.json').write_text(json.dumps(\n"
+                    "    resource.getrlimit(resource.RLIMIT_NOFILE)))\n"
+                )
+                binary.chmod(0o700)
+                script = """
+import resource, sys
+from pathlib import Path
+import runtime
+resource.setrlimit(resource.RLIMIT_NOFILE, (int(sys.argv[2]), int(sys.argv[3])))
+runtime.prepare_home = lambda home: None
+root = Path(sys.argv[1])
+server = runtime.Runtime({}, home=root, binary=root / 'codex')
+try:
+    server.start()
+except runtime.UsageUnavailable:
+    pass
+finally:
+    server.close()
+"""
+
+                subprocess.run([sys.executable, "-c", script, directory, str(soft), str(hard)],
+                               cwd=Path(__file__).parent, check=True, timeout=10)
+
+                self.assertEqual(json.loads((root / "capacity.json").read_text()),
+                                 [expected, hard])
+
     def test_existing_runtime_is_reattached_without_restarting_conversations(self):
         """감독 프로세스만 바뀌면 실행 중인 서버와 대화를 그대로 사용한다."""
         profiles = {name: Mock(account_id=name) for name in ("company", "personal")}

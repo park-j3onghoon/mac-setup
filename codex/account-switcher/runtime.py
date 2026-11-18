@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import resource
 import socket
 import subprocess
 import time
@@ -101,6 +102,12 @@ class Runtime:
                 return
             finally:
                 probe.close()
+        # Every loaded conversation can retain MCP pipes and sockets in this one process.
+        # macOS's inherited soft limit of 256 is insufficient for the shared server.
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = 4096 if hard == resource.RLIM_INFINITY else min(4096, hard)
+        if soft != resource.RLIM_INFINITY and soft < target:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
         # The company config locks logins to the company workspace; the shared server must also
         # accept the personal workspace. A terminal attached to it does not enforce the lock
         # (both measured on 0.168.0, 2026-11-13).
