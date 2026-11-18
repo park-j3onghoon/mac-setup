@@ -182,7 +182,8 @@ class ClientSocket(UnixWebSocket):
         else:
             header = bytes([0x80 | opcode, 127]) + struct.pack("!Q", length)
         with self.lock:
-            self.socket.sendall(header + data)
+            self.socket.sendall(header)
+            self.socket.sendall(data)
 
 
 class ForwardQueue(queue.Queue):

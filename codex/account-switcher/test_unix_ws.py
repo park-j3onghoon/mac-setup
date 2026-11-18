@@ -50,6 +50,19 @@ class WebSocketTest(unittest.TestCase):
         client = connection(b'\x81\x7e' + struct.pack("!H", len(data)) + data)
         self.assertEqual(next(client.messages()), data)
 
+    def test_masked_fragment_bytes_survive_unaligned_lengths(self):
+        """여러 바이트 값·4바이트 경계 밖 길이의 masked frame을 원문 그대로 받는다."""
+        for size in (0, 1, 3, 4, 5, 125, 300, 65537):
+            with self.subTest(size=size):
+                data = (bytes(range(256)) * (size // 256 + 1))[:size]
+                sender = connection()
+                sender.send(data)
+                receiver = connection(sender.socket.sent)
+
+                received = next(receiver.messages())
+
+                self.assertEqual(received, data)
+
     def test_oversize_is_rejected_before_reading_payload(self):
         client = connection(b'\x81\x7f' + struct.pack("!Q", 20 * 1024 * 1024))
         with self.assertRaises(OSError):

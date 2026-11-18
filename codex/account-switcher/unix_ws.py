@@ -8,6 +8,16 @@ import struct
 import threading
 
 
+XOR_TABLES = tuple(bytes(value ^ key for value in range(256)) for key in range(256))
+
+
+def mask_payload(data, mask):
+    result = bytearray(data)
+    for index, key in enumerate(mask):
+        result[index::4] = data[index::4].translate(XOR_TABLES[key])
+    return result
+
+
 class UnixWebSocket:
     message_limit = 16 * 1024 * 1024
 
@@ -51,9 +61,10 @@ class UnixWebSocket:
         else:
             header = bytes([0x80 | opcode, 0xFF]) + struct.pack("!Q", length)
         mask = os.urandom(4)
-        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+        masked = mask_payload(data, mask)
         with self.lock:
-            self.socket.sendall(header + mask + masked)
+            self.socket.sendall(header + mask)
+            self.socket.sendall(masked)
 
     def send(self, data):
         self.send_frame(1, data)
@@ -90,7 +101,7 @@ class UnixWebSocket:
             mask = self._read(4) if second & 128 else None
             data = self._read(length)
             if mask:
-                data = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+                data = mask_payload(data, mask)
             if opcode == 8:
                 return
             if opcode == 9:
