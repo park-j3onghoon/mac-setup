@@ -24,8 +24,10 @@ class ProxyConnectionTest(unittest.TestCase):
         self.listen()
         self.owner = subprocess.Popen(
             [sys.executable, "-u", "-c",
-             "import sys; from idle import start_proxy; "
-             "print(start_proxy(sys.argv[1], 900), flush=True); sys.stdin.read()",
+             "import os, sys; from idle import start_proxy; "
+             "endpoint = start_proxy(sys.argv[1], 900); "
+             "os.execv(sys.executable, [sys.executable, '-u', '-c', "
+             "'import sys; print(sys.argv[1], flush=True); sys.stdin.read()', str(endpoint)])",
              str(self.upstream)],
             cwd=Path(__file__).parent, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True,
