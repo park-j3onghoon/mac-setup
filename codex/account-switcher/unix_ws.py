@@ -9,6 +9,8 @@ import threading
 
 
 class UnixWebSocket:
+    message_limit = 16 * 1024 * 1024
+
     def __init__(self, path):
         self.socket = socket.socket(socket.AF_UNIX)
         self.lock = threading.Lock()
@@ -78,7 +80,7 @@ class UnixWebSocket:
                 length = struct.unpack("!H", self._read(2))[0]
             elif length == 127:
                 length = struct.unpack("!Q", self._read(8))[0]
-            if length > 16 * 1024 * 1024:
+            if length > self.message_limit:
                 raise OSError("Oversized Codex socket message")
             mask = self._read(4) if second & 128 else None
             data = self._read(length)
@@ -96,7 +98,7 @@ class UnixWebSocket:
             elif opcode != 0 or not started:
                 raise OSError("Invalid Codex socket frame sequence")
             message += data
-            if len(message) > 16 * 1024 * 1024:
+            if len(message) > self.message_limit:
                 raise OSError("Oversized Codex socket message")
             if final:
                 yield message

@@ -112,10 +112,61 @@ execve로 터미널 pid가 된다)를 `-c shell_environment_policy.set.*`로 넘
 
 ## 검증
 
+### 열린 터미널의 유휴 자원 회수
+
+새 자동 세션은 터미널마다 작은 로컬 프록시를 거친다. 기본 15분 동안 활동이 없고,
+대화가 `idle`이며 실행 중인 백그라운드 명령·미완료 goal·대기 입력이 없으면 프록시가
+자신의 구독을 해제한다. 다른 연결의 구독도 없으면 공식 서버가 기본 60초 유예 뒤
+대화 런타임과 해당 MCP를 회수한다. 터미널과 입력 초안은 유지하고, 다음 요청 전에
+같은 thread ID로 재개한다. 기록 파일을 삭제하거나 서버를 재시작하지 않는다.
+
+기록이 없는 대화, ephemeral 대화, realtime, 복원할 수 없는 설정·동적 도구·환경이 있는
+대화는 유지한다. 자식의 미전달 메시지와 환경을 가진 부모도 유지한다. 기존 기록을
+`resume`·`fork`로 연 최상위 대화는 숨은 자식 상태를 확인할 수 없어 자동 회수하지 않는다.
+하위 대화는 부모를 유지한 채 유휴 상태에서 회수하며, 다시 실행되면 구독을 복구한다.
+이 제한은 실행 중인 작업과 메모리에만 있는 상태를 보존하기 위한 것이다.
+
+```sh
+codex                              # 새 자동 세션: 15분 유휴 검사
+CODEX_IDLE_SECONDS=1800 codex        # 이 터미널은 30분
+CODEX_IDLE_SECONDS=0 codex           # 이 터미널은 유휴 프록시 사용 안 함
+```
+
+이미 열린 터미널, `--no-daemon`, 고정 계정, 명시적 `CODEX_HOME`·`--remote`에는
+이 프록시가 소급 적용되지 않는다. 연결을 추가로 붙인 도구가 구독을 유지하면 회수도
+기다린다. 감독은 자신의 유휴 구독을 별도로 60초마다 반환한다.
+
+### 불필요한 로컬 MCP 줄이기
+
+데이터 조회나 Chrome 도구가 필요 없는 독립 코딩 세션에서만 다음처럼 끈다.
+전역 설정과 다른 대화에는 영향을 주지 않는다.
+
+```sh
+codex --no-daemon \
+  -c 'plugins."<data-plugin>@<marketplace>".enabled=false' \
+  -c 'mcp_servers.chrome-devtools.enabled=false'
+```
+
+데이터 플러그인의 로컬 DataHub·Redash 실행과 Chrome 브리지 클라이언트를 줄이는 설정이다.
+연결된 원격 앱은 그 자체로 로컬 MCP 자식 프로세스를 만드는 것은 아니다.
+Chrome 브리지의 공용 데몬은 이미 공유되므로 다른 대화가 쓰는 데몬을 종료하지 않는다.
+
+`codex --no-daemon --enable mcp_lazy_stdio_startup`도 선택할 수 있다. 0.169.0의
+실험 기능이며, 격리 실험에서는 첫 도구 목록 수집 때 MCP를 시작한 뒤 캐시가 있는
+후속 대화에서는 실제 도구 호출까지 시작을 미뤘다. 모든 플러그인·필수 MCP의 시작을
+미룬다고 보장하지 않는다. 도구 설명의 지연 노출과 프로세스의 지연 시작은 별개다.
+`mcp_connection_sharing`도 실험 기능이고 서버 프로토콜 지원이 필요하므로,
+기존 stdio 서버를 플래그 하나로 전부 공유할 수 있다고 가정하지 않는다.
+
+### 테스트와 측정
+
 ```sh
 python3 -m unittest discover -s codex/account-switcher -p 'test_*.py' -v
 codex --account-status
 ```
+
+실제 0.169.0 바이너리, 임시 홈, 가짜 로컬 모델·MCP를 사용한 재현 명령과
+FD·프로세스 측정 결과는 [자원 회수 검증 보고서](RESOURCE_REPORT.md)에 남겼다.
 
 공식 문서: [인증](https://learn.chatgpt.com/docs/auth),
 [app-server 인증·사용량·대화 상태](https://learn.chatgpt.com/docs/app-server).

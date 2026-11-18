@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import time
 
+from idle import start_proxy
 from policy import UsageUnavailable, choose
 from runtime import raise_file_limit
 from usage import read_usage, read_snapshot
@@ -100,7 +101,12 @@ def launch_automatic(arguments):
     # A remote terminal sends no directory unless told, and the thread then runs in the
     # server's own directory (measured on 0.168.0, 2026-11-13).
     directory = [] if any(arg.startswith(("-C", "--cd")) for arg in arguments) else ["-C", os.getcwd()]
-    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(SOCKET), *directory,
+    try:
+        idle_seconds = float(os.environ.get("CODEX_IDLE_SECONDS", "900"))
+    except ValueError as error:
+        raise UsageUnavailable("CODEX_IDLE_SECONDS must be a number") from error
+    endpoint = start_proxy(SOCKET, idle_seconds) if idle_seconds > 0 else SOCKET
+    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(endpoint), *directory,
                             *cmux_tab_overrides(), *arguments], environment)
 
 

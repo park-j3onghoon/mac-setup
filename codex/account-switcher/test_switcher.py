@@ -57,6 +57,29 @@ class PolicyTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def setUp(self):
+        proxy_patch = patch.object(launcher, "start_proxy", return_value=SOCKET)
+        self.proxy = proxy_patch.start()
+        self.addCleanup(proxy_patch.stop)
+
+    def test_automatic_terminal_gets_idle_proxy_and_can_opt_out(self):
+        """새 자동 터미널은 15분 회수 proxy를 사용하고 0으로 기존 직접 연결을 선택한다."""
+        with patch("service.ensure", return_value={"active": "company"}), \
+             patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                launcher.launch_automatic([])
+
+        self.assertEqual(self.proxy.call_args.args[1], 900)
+        self.proxy.reset_mock()
+        with patch("service.ensure", return_value={"active": "company"}), \
+             patch.dict(launcher.os.environ, {"CODEX_IDLE_SECONDS": "0"}, clear=True), \
+             patch.object(launcher.os, "execve", side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                launcher.launch_automatic([])
+
+        self.proxy.assert_not_called()
+
     def test_stopped_service_status_honors_saved_personal_preference(self):
         """서비스가 꺼져 있어도 다음 실행에서 선택할 개인 계정을 표시한다."""
         output = StringIO()
