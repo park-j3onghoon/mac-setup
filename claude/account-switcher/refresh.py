@@ -22,6 +22,7 @@ is the agent-view hint, also shown by a fresh session, and Claude Code's own
 """
 
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -168,6 +169,10 @@ def background_work(session, children, projects_dir, now):
                for path in Path(projects_dir).glob(pattern))
 
 
+class SessionEnded(Exception):
+    pass
+
+
 class SelfRestart:
     """Restart one session through its own cmux surface after an account switch."""
 
@@ -178,9 +183,28 @@ class SelfRestart:
         self.runner, self.sleep, self.clock = runner, sleep, clock
         self.cmux_path = cmux or find_cmux()
         self.projects = self.config_home / 'projects'
+        self.last_session = None
+        self.watch_exit = True
 
     def session(self):
-        return live_session(self.config_home, self.session_id, self.runner)
+        session = live_session(self.config_home, self.session_id, self.runner)
+        if session:
+            self.last_session = session
+        elif self.watch_exit:
+            if self.last_session is None:
+                raise SessionEnded
+            pid = self.last_session['pid']
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError as error:
+                raise SessionEnded from error
+            except PermissionError:
+                return None
+            result = self.runner(['/bin/ps', '-o', 'lstart=', '-p', str(pid)], capture_output=True,
+                                 text=True, timeout=5, check=False, env={'LC_ALL': 'C', 'TZ': 'UTC'})
+            if result.returncode == 0 and result.stdout.strip() != self.last_session['procStart']:
+                raise SessionEnded
+        return session
 
     def limited(self):
         return ended_with_limit_error(self.projects, self.session_id)
@@ -188,11 +212,17 @@ class SelfRestart:
     def needed(self):
         """True when the latest switch happened after this session's process started."""
         since = switch_pending(self.state, self.clock())
-        session = self.session() if since else None
-        return bool(session and session.get('startedAt', 0) / 1000 < since)
+        session = self.session()
+        return bool(since and session and session.get('startedAt', 0) / 1000 < since)
 
     def run(self):
         """Wait for the switch and a quiet moment, restart, and continue after a limit stop."""
+        try:
+            return self._run()
+        except SessionEnded:
+            return 'session_ended'
+
+    def _run(self):
         if not self.wait(self.needed, SWITCH_TIMEOUT_SECONDS):
             return 'no_switch'
         session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
@@ -202,6 +232,8 @@ class SelfRestart:
         if session is None:
             return 'not_ready'
         limited = self.limited()
+        # 직접 요청한 재시작 중에는 registry와 프로세스가 잠시 사라질 수 있다.
+        self.watch_exit = False
         self.type('/restart')
         if self.wait(lambda: self.ready(session.get('startedAt')), RESTART_TIMEOUT_SECONDS) is None:
             return 'restart_unconfirmed'

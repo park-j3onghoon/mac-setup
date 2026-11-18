@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from refresh import (CONTINUE_PROMPT, READY_TIMEOUT_SECONDS, REFRESH_WINDOW_SECONDS,
                      SelfRestart, ended_with_limit_error, input_ready, live_session,
@@ -237,6 +237,29 @@ class SwitchRecordTests(unittest.TestCase):
 
 
 class SelfRestartTests(unittest.TestCase):
+    def test_exited_session_stops_helper_without_waiting_eight_hours(self):
+        """한도 오류 기록이 남아 있어도 세션 프로세스가 종료되면 도우미도 끝난다."""
+        fixture = self.fixture(status='waiting')
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        normal = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        exited = [False]
+        def exit_session():
+            exited[0] = True
+            (fixture.home / 'sessions' / '101.json').unlink()
+        def runner(argv, **kwargs):
+            if exited[0] and argv[0] == '/bin/ps':
+                return Mock(returncode=1, stdout='')
+            return normal(argv, **kwargs)
+        started = fixture.clock()
+        fixture.clock.at(started + 10, exit_session)
+
+        with patch('os.kill', side_effect=ProcessLookupError):
+            outcome = fixture.restart(runner).run()
+
+        self.assertEqual(outcome, 'session_ended')
+        self.assertLess(fixture.clock() - started, 60)
+        self.assertEqual(normal.typed, [])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
