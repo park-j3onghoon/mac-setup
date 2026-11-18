@@ -410,6 +410,31 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
+    def test_busy_switch_checks_back_off_and_manual_request_runs_immediately(self):
+        """유휴 확인 실패는 간격을 늘리고 새 수동 요청은 대기 간격을 초기화한다."""
+        for manual in (False, True):
+            with self.subTest(manual=manual):
+                clock, selected = [1000], []
+                stop = Mock()
+                stop.is_set.side_effect = lambda: clock[0] > 1060
+                stop.wait.side_effect = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+                runtime = Mock(active='company')
+                runtime.select.side_effect = lambda *args, **kwargs: selected.append(clock[0]) or False
+                fresh = {'company': usage(95, 9999, 1000), 'personal': usage(10, 9999, 1000)}
+                state = {}
+                with patch('supervisor.time.time', side_effect=lambda: clock[0]), \
+                        patch('supervisor.collect', return_value=(fresh, {})), patch('supervisor.save'), \
+                        patch('supervisor.preference', side_effect=lambda: (
+                            {'preferred': 'personal', 'requested_at': 1010, 'immediate': True}
+                            if manual and clock[0] >= 1010 else {})):
+                    monitor(runtime, {}, stop, state)
+                self.assertLessEqual(len(selected), 10)
+                self.assertEqual(state['status'], 'waiting_for_idle')
+                if manual:
+                    self.assertIn(1010, selected)
+                else:
+                    self.assertEqual(selected, [1000, 1002, 1006, 1014, 1030, 1060])
+
     def test_account_observation_runs_only_with_usage_polling(self):
         """2초마다 도는 대기 루프에서는 조회하지 않고 사용량 조회 주기에 계정도 확인한다."""
         clock = [1000]

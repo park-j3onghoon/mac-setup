@@ -33,6 +33,7 @@ def monitor(runtime, profiles, stop, state):
     next_poll = 0
     next_release = 0
     retry_switch_at = 0
+    idle_retry_delay = 2
     desired = None
     check_limited = False
     saved_content = None
@@ -47,6 +48,7 @@ def monitor(runtime, profiles, stop, state):
             state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"))
             immediate = requested.get("immediate") is True
             next_poll = retry_switch_at = 0
+            idle_retry_delay = 2
         if now >= next_release:
             complete = True
             try:
@@ -56,6 +58,7 @@ def monitor(runtime, profiles, stop, state):
                 state["release_error"] = type(error).__name__
             next_release = time.time() + (2 if complete is False else 60)
         if now >= next_poll:
+            previous_desired = desired
             fresh, errors = collect(profiles)
             state["errors"] = errors
             state["last_attempt_at"] = time.time()
@@ -68,6 +71,8 @@ def monitor(runtime, profiles, stop, state):
                                  preferred=state["preferred"])
             except UsageUnavailable:
                 desired = None
+            if desired != previous_desired:
+                retry_switch_at, idle_retry_delay = 0, 2
             try:
                 previous = state.get("active", runtime.active)
                 runtime.observe_account()
@@ -97,12 +102,17 @@ def monitor(runtime, profiles, stop, state):
                     runtime.continue_limited()
                     check_limited = False
                 state["status"] = "ready" if changed else "waiting_for_idle"
+                if changed:
+                    retry_switch_at, idle_retry_delay = 0, 2
+                else:
+                    retry_switch_at = time.time() + idle_retry_delay
+                    idle_retry_delay = min(idle_retry_delay * 2, 30)
                 state.pop("runtime_error", None)
             except Exception as error:
                 state["status"] = "degraded"
                 state["runtime_error"] = type(error).__name__
                 retry_switch_at = time.time() + 60
-        else:
+        elif desired is None or 'account_error' in state:
             state["status"] = "degraded"
         state['active'] = runtime.active
         content = json.dumps({key: value for key, value in state.items() if key != 'updated_at'},
