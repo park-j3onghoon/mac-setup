@@ -242,6 +242,9 @@ class ForwardQueue(queue.Queue):
 
 
 class Proxy:
+    request_limit = 4096
+    request_byte_limit = 256 << 20
+
     def __init__(self, client, upstream, delay):
         self.client, self.upstream = client, upstream
         self.upstream.message_limit = ClientSocket.message_limit
@@ -249,6 +252,8 @@ class Proxy:
         self.pending = {}
         self.client_requests = {}
         self.server_requests = set()
+        self.request_sizes = {}
+        self.request_bytes = 0
         self.idle = IdleThreads(self.request, delay, lambda: (
             self.events.empty() and not self.client_requests and not self.server_requests
         ))
@@ -426,8 +431,10 @@ class Proxy:
                 self.idle.sleeping.discard(thread_id)
         if "id" in message:
             if method:
+                self.retain_request('client', message['id'], len(payload))
                 self.client_requests[message["id"]] = (method, params)
             else:
+                self.release_request('server', message['id'])
                 self.server_requests.discard(message["id"])
         self.upstream.send(payload)
 
@@ -444,8 +451,10 @@ class Proxy:
                 self.idle.touch(thread_id, time.monotonic() - self.idle.delay)
         if "id" in message:
             if method:
+                self.retain_request('server', message['id'], len(payload))
                 self.server_requests.add(message["id"])
             else:
+                self.release_request('client', message['id'])
                 request = self.client_requests.pop(message["id"], None)
                 if request and "result" in message and request[0] in ("thread/start", "thread/resume", "thread/fork"):
                     self.idle.track(message["result"], request[1], time.monotonic())
@@ -460,6 +469,7 @@ class Proxy:
         if method == "thread/settings/updated":
             self.idle.preserve(thread_id)
         if method == "serverRequest/resolved":
+            self.release_request('server', params['requestId'])
             self.server_requests.discard(params["requestId"])
         # 자식부터 회수한다. parent의 loaded 자식 검사가 끝날 때까지 parent는 유지된다.
         if method == "thread/started":
@@ -475,6 +485,17 @@ class Proxy:
                 # 알림을 읽기 전에 내려간 대화는 새 구독을 만들지 않는다.
                 pass
         self.client.send(payload)
+
+    def retain_request(self, side, request_id, size):
+        key = (side, request_id)
+        if (key in self.request_sizes or len(self.request_sizes) >= self.request_limit
+                or self.request_bytes + size > self.request_byte_limit):
+            raise OSError('Too many pending proxy requests')
+        self.request_sizes[key] = size
+        self.request_bytes += size
+
+    def release_request(self, side, request_id):
+        self.request_bytes -= self.request_sizes.pop((side, request_id), 0)
 
 
 def start_proxy(upstream, delay):

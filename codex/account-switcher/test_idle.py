@@ -160,6 +160,31 @@ class IdleTest(unittest.TestCase):
 
 
 class ProxyTest(unittest.TestCase):
+    def test_pending_request_limit_releases_capacity_after_responses(self):
+        """양방향 요청이 상한에 닿으면 거절하고 응답 또는 승인 해결 뒤에는 용량을 돌려준다."""
+        self.proxy.request_limit = 2
+        self.send_client({'id': 1, 'method': 'thread/read', 'params': {}})
+        self.send_server({'id': 2, 'method': 'fixture/approval', 'params': {}})
+
+        with self.assertRaises(OSError):
+            self.send_client({'id': 3, 'method': 'thread/read', 'params': {}})
+        self.send_server({'method': 'serverRequest/resolved', 'params': {'requestId': 2}})
+        self.send_client({'id': 3, 'method': 'thread/read', 'params': {}})
+        self.send_server({'id': 1, 'result': {}})
+        self.send_client({'id': 4, 'method': 'thread/read', 'params': {}})
+
+        self.assertEqual(set(self.proxy.client_requests), {3, 4})
+
+    def test_pending_request_byte_limit_is_independent_of_count(self):
+        """소수의 큰 요청도 응답 전 보유량 상한을 넘으면 전달하지 않는다."""
+        self.proxy.request_byte_limit = 100
+        self.proxy.forward_client({'id': 1, 'method': 'fixture', 'params': {}}, b'x' * 60)
+
+        with self.assertRaises(OSError):
+            self.proxy.forward_client({'id': 2, 'method': 'fixture', 'params': {}}, b'x' * 60)
+
+        self.assertEqual(self.server.send.call_count, 1)
+
     def setUp(self):
         self.client, self.server = Mock(), Mock()
         self.proxy = Proxy(self.client, self.server, delay=10)
