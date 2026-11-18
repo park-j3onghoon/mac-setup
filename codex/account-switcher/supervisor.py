@@ -27,12 +27,13 @@ def collect(profiles):
 
 
 def monitor(runtime, profiles, stop, state):
+    state.setdefault("preferred", "company")
     next_poll = 0
     retry_switch_at = 0
     desired = None
     check_limited = False
     while not stop.is_set():
-        if runtime.process.poll() is not None:
+        if not runtime.running():
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
         if now >= next_poll:
@@ -44,7 +45,8 @@ def monitor(runtime, profiles, stop, state):
                     state.get("accounts", {}).get(name), value,
                 )
             try:
-                desired = choose({name: value["used_percent"] for name, value in fresh.items()})
+                desired = choose({name: value["used_percent"] for name, value in fresh.items()},
+                                 preferred=state["preferred"])
             except UsageUnavailable:
                 desired = None
             next_poll = time.time() + poll_delay(state.get("accounts", {}), runtime.active)
@@ -94,8 +96,8 @@ def main():
             if profiles["company"].account_id == profiles["personal"].account_id:
                 raise UsageUnavailable("Two distinct workspaces are required")
             runtime = Runtime(profiles)
-            runtime.start()
-            state["runtime_pid"] = runtime.process.pid
+            runtime.start(existing_pid=state.get("runtime_pid"))
+            state["runtime_pid"] = runtime.pid
             monitor(runtime, profiles, stop, state)
         except Exception as error:
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())

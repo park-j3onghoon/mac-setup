@@ -56,7 +56,7 @@ def show_status():
             print("  last reset confirmed: " + datetime.fromtimestamp(max(confirmed)).astimezone().isoformat())
     selected = state.get("active") or choose({
         name: value["used_percent"] for name, value in state.get("accounts", {}).items()
-    })
+    }, preferred=state.get("preferred", "company"))
     print(f"selected: {selected}; service: {state.get('status', 'not started')}")
     if state.get("desired") and state["desired"] != state.get("active"):
         print(f"waiting for active work to finish: {state['desired']}")

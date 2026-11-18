@@ -55,6 +55,26 @@ class StateTest(unittest.TestCase):
 
 
 class HomeTest(unittest.TestCase):
+    def test_existing_runtime_is_reattached_without_restarting_conversations(self):
+        """감독 프로세스만 바뀌면 실행 중인 서버와 대화를 그대로 사용한다."""
+        profiles = {name: Mock(account_id=name) for name in ("company", "personal")}
+        runtime = Runtime(profiles, home=Path("/auto"))
+        with patch("runtime.prepare_home"), patch.object(Path, "exists", return_value=True), \
+             patch("runtime.socket.socket"), patch("runtime.os.kill"), \
+             patch("runtime.Rpc") as rpc, patch("runtime.subprocess.Popen") as popen:
+            rpc.return_value.request.return_value = {"accountId": "company"}
+
+            runtime.start(existing_pid=4321)
+            running = runtime.running()
+            runtime.close()
+
+        self.assertTrue(running)
+        self.assertEqual(runtime.pid, 4321)
+        self.assertEqual(runtime.active, "company")
+        self.assertTrue(runtime.reauthenticate)
+        popen.assert_not_called()
+        rpc.return_value.close.assert_called_once()
+
     def test_shared_server_opens_with_the_company_config(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -175,6 +195,19 @@ class SwitchingTest(unittest.TestCase):
         self.assertTrue(self.runtime.select("personal"))
         self.assertEqual(self.runtime.active, "personal")
 
+    def test_reattached_runtime_registers_a_new_refresh_handler_when_idle(self):
+        """같은 계정을 유지해도 새 감독 연결이 토큰 갱신을 담당하게 한다."""
+        self.runtime.reauthenticate = True
+        self.runtime.client.request.side_effect = [
+            {"data": []}, {"type": "chatgptAuthTokens"}, {"accountId": "company"},
+        ]
+
+        changed = self.runtime.select("company")
+
+        self.assertTrue(changed)
+        self.assertFalse(self.runtime.reauthenticate)
+        self.profiles["company"].tokens.assert_called_once()
+
     def test_wrong_identity_rolls_back(self):
         self.runtime.client.request.side_effect = [
             {"data": []}, {}, {"accountId": "unexpected"}, {}, {"accountId": "company"},
@@ -205,7 +238,7 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
-    def run_monitor(self, batches):
+    def run_monitor(self, batches, preferred="company"):
         clock = [1000]
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] >= 1000 + len(batches) * 61
@@ -220,12 +253,21 @@ class MonitorTest(unittest.TestCase):
             return True
 
         runtime.select.side_effect = select
-        state = {}
+        state = {"preferred": preferred}
         with patch("supervisor.time.time", side_effect=lambda: clock[0]), \
              patch("supervisor.collect", side_effect=batches), patch("supervisor.save"):
             monitor(runtime, {}, stop, state)
         self.runtime = runtime
         return selected, state
+
+    def test_personal_preference_is_used_by_the_running_monitor(self):
+        """두 계정 모두 여유가 있으면 저장한 개인 우선 설정을 적용한다."""
+        fresh = {"company": usage(76, 9999, 1000), "personal": usage(0, 9999, 1000)}
+
+        selected, state = self.run_monitor([(fresh, {})], preferred="personal")
+
+        self.assertEqual(selected, ["personal"])
+        self.assertEqual(state["preferred"], "personal")
 
     def test_running_monitor_applies_fallback_and_both_high_policy(self):
         batches = [({"company": usage(company, 9999, 1000),

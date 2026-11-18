@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +13,12 @@ from usage import handle_message, read_usage
 
 
 class PolicyTest(unittest.TestCase):
+    def test_personal_preference_keeps_automatic_fallback(self):
+        """개인 계정을 먼저 쓰고 개인 한도에 도달하면 회사로 전환한다."""
+        self.assertEqual(choose({"company": 76, "personal": 0}, preferred="personal"), "personal")
+        self.assertEqual(choose({"company": 76, "personal": 90}, preferred="personal"), "company")
+        self.assertEqual(choose({"company": 95, "personal": 95}, preferred="personal"), "personal")
+
     def test_company_preferred_until_threshold(self):
         self.assertEqual(choose({"company": 89.9}), "company")
         self.assertEqual(choose({"company": 90, "personal": 12}), "personal")
@@ -49,6 +57,19 @@ class PolicyTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_stopped_service_status_honors_saved_personal_preference(self):
+        """서비스가 꺼져 있어도 다음 실행에서 선택할 개인 계정을 표시한다."""
+        output = StringIO()
+        snapshots = [{"used_percent": percent, "observed_at": 100, "windows": {}}
+                     for percent in (76, 0)]
+        with patch("service.running", return_value=False), \
+             patch.object(launcher, "load", return_value={"preferred": "personal"}), \
+             patch.object(launcher, "read_snapshot", side_effect=snapshots), \
+             patch.object(launcher, "save"), redirect_stdout(output):
+            launcher.show_status()
+
+        self.assertIn("selected: personal", output.getvalue())
+
     def test_explicit_home_is_preserved(self):
         with patch.dict(launcher.os.environ, {"CODEX_HOME": "/chosen"}), \
              patch.object(launcher.os, "execv", side_effect=SystemExit) as run:

@@ -73,10 +73,12 @@ class Runtime:
         self.profiles, self.home, self.binary = profiles, Path(home), binary
         self.socket = self.home / "auto.sock"
         self.process = self.client = None
+        self.pid = None
         self.active = None
+        self.reauthenticate = False
         self.continued = set()
 
-    def start(self):
+    def start(self, existing_pid=None):
         prepare_home(self.home)
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
@@ -85,7 +87,18 @@ class Runtime:
             except (ConnectionRefusedError, FileNotFoundError):
                 self.socket.unlink(missing_ok=True)
             else:
-                raise UsageUnavailable("An existing automatic runtime is still listening")
+                if not isinstance(existing_pid, int) or existing_pid < 2:
+                    raise UsageUnavailable("An existing automatic runtime is still listening")
+                os.kill(existing_pid, 0)
+                self.pid = existing_pid
+                self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+                account = self.client.request("account/rateLimits/read").get("accountId")
+                self.active = next((name for name, profile in self.profiles.items()
+                                    if profile.account_id == account), None)
+                if self.active is None:
+                    raise UsageUnavailable("Existing runtime account is outside the saved profiles")
+                self.reauthenticate = True
+                return
             finally:
                 probe.close()
         # The company config locks logins to the company workspace; the shared server must also
@@ -97,12 +110,22 @@ class Runtime:
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=dict(os.environ, CODEX_HOME=str(self.home)),
         )
+        self.pid = self.process.pid
         deadline = time.monotonic() + 20
         while not self.socket.exists():
             if self.process.poll() is not None or time.monotonic() >= deadline:
                 raise UsageUnavailable("Automatic Codex runtime did not start")
             time.sleep(0.1)
         self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+
+    def running(self):
+        if self.process is not None:
+            return self.process.poll() is None
+        try:
+            os.kill(self.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
 
     def refresh(self, method, params):
         if method != "account/chatgptAuthTokens/refresh":
@@ -114,7 +137,7 @@ class Runtime:
         raise UsageUnavailable("Unknown account requested a token refresh")
 
     def select(self, name):
-        if name == self.active:
+        if name == self.active and not self.reauthenticate:
             return True
         if not all_idle(self.client):
             return False
@@ -128,6 +151,7 @@ class Runtime:
             if verified.get("accountId") != profile.account_id:
                 raise UsageUnavailable("Runtime account verification did not match")
             self.active = name
+            self.reauthenticate = False
             return True
         except Exception:
             self.active = None
@@ -139,6 +163,7 @@ class Runtime:
                     restored = self.client.request("account/rateLimits/read")
                     if restored.get("accountId") == self.profiles[old].account_id:
                         self.active = old
+                        self.reauthenticate = False
                 except Exception:
                     pass
             raise

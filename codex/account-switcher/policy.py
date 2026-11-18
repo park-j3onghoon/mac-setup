@@ -51,11 +51,14 @@ def utilization(result):
     return max(values)
 
 
-def choose(usages, threshold=THRESHOLD):
-    for name in ("company", "personal"):
+def choose(usages, threshold=THRESHOLD, preferred="company"):
+    if preferred not in ("company", "personal"):
+        raise UsageUnavailable("Unknown preferred account")
+    order = ("personal", "company") if preferred == "personal" else ("company", "personal")
+    for name in order:
         if name not in usages:
             raise UsageUnavailable(f"Cannot verify {name} plan usage")
         value = usages[name]
         if value < threshold:
             return name
-    return "company"
+    return preferred
