@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 import tempfile
 import time
+import tracemalloc
 import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, timezone
@@ -29,6 +30,28 @@ def snapshot(at, percent, reset=NOW + 5000, **extra):
 
 
 class TokenTailTests(unittest.TestCase):
+    def test_oversized_partial_line_is_skipped_with_bounded_memory(self):
+        """큰 미완성 줄은 제한된 메모리로 건너뛰고 뒤에 완성된 정상 요청은 센다."""
+        path = self.append('large.jsonl', [], self.now)
+        self.tail.sample(self.now)
+        path.write_bytes(b'x' * (8 << 20))
+        os.utime(path, (self.now + 30, self.now + 30))
+        tracemalloc.start()
+        try:
+            result = self.tail.sample(self.now + 30)
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertLess(peak, 4 << 20)
+        self.assertGreater(result['read_errors'], 0)
+        with path.open('a') as stream:
+            stream.write('remaining oversized content\n')
+        self.append('large.jsonl', [event('valid', self.now + 60)], self.now + 60)
+
+        result = self.tail.sample(self.now + 60)
+
+        self.assertEqual(result['by_model']['claude-opus-5-5']['requests'], 1)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

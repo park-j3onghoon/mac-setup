@@ -16,6 +16,7 @@ from storage import SwitcherError, fingerprint, read_json
 
 TOKEN_FIELDS = ('input_tokens', 'cache_creation_input_tokens',
                 'cache_read_input_tokens', 'output_tokens')
+MAX_LINE_BYTES = 1 << 20
 
 
 class TokenTail:
@@ -79,14 +80,22 @@ class TokenTail:
                 if info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
                     continue
                 identity = (info.st_dev, info.st_ino)
-                old_identity, offset = self.files.get(path, (None, 0))
+                old_identity, offset, discarding = self.files.get(path, (None, 0, False))
                 if old_identity != identity or info.st_size < offset:
-                    offset = 0
+                    offset, discarding = 0, False
                 with path.open('rb') as stream:
                     stream.seek(offset)
+                    errors += int(discarding)
                     while True:
-                        line = stream.readline()
-                        if not line or not line.endswith(b'\n'):
+                        line = stream.readline(MAX_LINE_BYTES + 1)
+                        if not line:
+                            break
+                        if discarding or len(line) > MAX_LINE_BYTES:
+                            errors += int(not discarding)
+                            discarding = not line.endswith(b'\n')
+                            offset = stream.tell()
+                            continue
+                        if not line.endswith(b'\n'):
                             break
                         offset = stream.tell()
                         if b'"usage"' not in line or b'"assistant"' not in line:
@@ -117,7 +126,7 @@ class TokenTail:
                         for field, a, b in zip(TOKEN_FIELDS, before, after):
                             counts[model][field] += b - a
                         counts[model]['requests'] += int(prior is None)
-                self.files[path] = (identity, offset)
+                self.files[path] = (identity, offset, discarding)
             except OSError:
                 errors += 1
         self.seen = {k: v for k, v in self.seen.items() if v[0] >= cutoff}
