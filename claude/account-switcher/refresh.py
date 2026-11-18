@@ -144,6 +144,8 @@ def live_session(config_home, session_id, runner=subprocess.run):
 def process_children(runner):
     result = runner(['/bin/ps', '-ax', '-o', 'pid=,ppid=,comm='], capture_output=True,
                     text=True, timeout=5, check=False)
+    if result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, '/bin/ps')
     children = {}
     for line in result.stdout.splitlines():
         parts = line.split(None, 2)
@@ -216,7 +218,7 @@ class SelfRestart:
                 result = check()
                 if result:
                     return result
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
                 # 2026-11-16 11:08: many sessions stopped at a limit at once and five helpers gave
                 # up on one slow ps; a slow check only means "not ready yet".
                 pass

@@ -331,6 +331,22 @@ class SelfRestartTests(unittest.TestCase):
         outcome = fixture.restart(runner).run()
         # then
         self.assertEqual((outcome, runner.typed), ('not_ready', []))
+
+    def test_failed_process_snapshot_never_types_restart(self):
+        """ps가 실패한 동안에는 작업 유무를 확정하지 않고 재시작을 보내지 않는다."""
+        fixture = SessionFixture(self.tmp.name)
+        record_switch(fixture.state, SWITCHED_AT)
+        normal = FakeRunner(fixture)
+
+        def runner(argv, **kwargs):
+            if '-ax' in argv:
+                return Mock(returncode=1, stdout='')
+            return normal(argv, **kwargs)
+
+        outcome = fixture.restart(runner).run()
+
+        self.assertEqual(outcome, 'not_ready')
+        self.assertEqual(normal.typed, [])
         self.assertGreaterEqual(fixture.clock() - started, REFRESH_WINDOW_SECONDS)
 
     def test_session_with_a_recently_written_subagent_is_not_restarted(self):
