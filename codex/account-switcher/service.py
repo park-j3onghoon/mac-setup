@@ -1,6 +1,5 @@
 """Start the user-owned supervisor only when an automatic session is requested."""
 
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,19 +10,25 @@ from runtime import SOCKET, prepare_home
 from state import load
 
 
-def running(state):
-    pid = state.get("pid")
+def process_start(pid):
+    """PID 재사용을 구분하며 명령 인자나 환경의 인증정보는 읽지 않는다."""
     if not isinstance(pid, int) or pid < 2:
-        return False
+        return None
     try:
-        os.kill(pid, 0)
-        return state.get("status") not in ("stopped", "failed")
-    except ProcessLookupError:
+        result = subprocess.run(['/bin/ps', '-o', 'lstart=', '-p', str(pid)],
+                                capture_output=True, text=True, timeout=2, check=False,
+                                env={'LC_ALL': 'C', 'TZ': 'UTC'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def running(state):
+    updated = state.get('updated_at', 0)
+    if (state.get('status') in ('stopped', 'failed') or not state.get('pid_start')
+            or not isinstance(updated, (int, float)) or not 0 <= time.time() - updated < 120):
         return False
-    except PermissionError:
-        # Sandboxed Codex tools may read state but cannot send even signal 0.
-        return (state.get("status") not in ("stopped", "failed")
-                and time.time() - state.get("updated_at", 0) < 120)
+    return process_start(state.get('pid')) == state['pid_start']
 
 
 def ensure():

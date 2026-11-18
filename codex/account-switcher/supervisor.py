@@ -12,6 +12,7 @@ import time
 from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile
 from runtime import Runtime, prepare_home
+from service import process_start
 from state import RUNTIME, load, poll_delay, preference, record, save
 
 
@@ -121,7 +122,8 @@ def main():
         except BlockingIOError:
             return
         state = load()
-        state.update(status="starting", active=None, pid=os.getpid(), updated_at=time.time())
+        state.update(status="starting", active=None, pid=os.getpid(),
+                     pid_start=process_start(os.getpid()), updated_at=time.time())
         save(state)
         stop = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
