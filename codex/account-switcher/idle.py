@@ -30,6 +30,31 @@ SOURCE_REVISION = hashlib.sha256(b''.join(
 )).hexdigest()
 
 
+def routing(message, side):
+    """Keep only policy metadata alongside raw bytes, never decoded diff/output bodies."""
+    route = {key: message[key] for key in ('id', 'method') if key in message}
+    params = message.get('params') or {}
+    fields = {'threadId', 'status', 'requestId'}
+    if side == 'client' and message.get('method') in ('thread/start', 'thread/resume', 'thread/fork'):
+        fields |= RESUME_FIELDS
+    route['params'] = {key: params[key] for key in fields if key in params}
+    for key in ('dynamicTools', 'selectedCapabilityRoots', 'environments', 'history'):
+        if params.get(key):
+            route['params'][key] = True
+    thread = params.get('thread')
+    if thread:
+        route['params']['thread'] = {key: thread[key] for key in
+                                    ('id', 'parentThreadId', 'ephemeral') if key in thread}
+    if 'result' in message:
+        result = message['result']
+        thread = result.get('thread') if isinstance(result, dict) else None
+        route['result'] = {}
+        if thread:
+            route['result']['thread'] = {key: thread[key] for key in
+                                        ('id', 'parentThreadId', 'ephemeral') if key in thread}
+    return route
+
+
 class IdleThreads:
     def __init__(self, request, delay, can_park=lambda: True):
         self.request, self.delay = request, delay
@@ -279,7 +304,7 @@ class Proxy:
                 and not child_woke
                 and message.get("method") in ("thread/closed", "thread/started", "thread/status/changed")):
             return
-        self.events.put((side, payload))
+        self.events.put((side, payload, routing(message, side)))
 
     def run(self):
         readers = [threading.Thread(target=self.read, args=(side, transport), daemon=True)
@@ -289,21 +314,22 @@ class Proxy:
         try:
             while True:
                 try:
-                    side, payload = self.events.get(timeout=1)
+                    event = self.events.get(timeout=1)
                 except queue.Empty:
                     self.inspect_idle()
                     continue
+                side, payload = event[:2]
                 if side == 'maintenance':
                     self.inspect_idle()
                     continue
                 if payload is None:
                     break
-                message = json.loads(payload)
+                message = event[2]
                 if side == "client":
                     self.forward_client(message, payload)
                 else:
                     self.forward_server(message, payload)
-                del message, payload
+                del message, payload, event
         finally:
             self.cancel_inspection()
             self.close()

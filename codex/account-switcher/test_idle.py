@@ -2,7 +2,7 @@ import json
 import queue
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from idle import IdleThreads, Proxy
 from policy import UsageUnavailable
@@ -192,6 +192,46 @@ class ProxyTest(unittest.TestCase):
             proxy.close()
             worker.join(timeout=3)
             self.assertFalse(worker.is_alive())
+
+    def test_forwarding_parses_each_payload_only_once(self):
+        """원문 bytes를 보존하며 전달용 메시지를 한 번만 파싱한다."""
+        client, server = Transport(), Transport()
+        proxy = Proxy(client, server, 900)
+        payload = b'{"method":"fixture","params":{"data":"unchanged"}}'
+        with patch('idle.json.loads', wraps=json.loads) as decode:
+            worker = threading.Thread(target=proxy.run, daemon=True)
+            worker.start()
+            try:
+                client.incoming.put(payload)
+
+                forwarded = server.outgoing.get(timeout=2)
+
+                self.assertEqual(forwarded, payload)
+                self.assertEqual(decode.call_count, 1)
+            finally:
+                proxy.close()
+                worker.join(timeout=3)
+                self.assertFalse(worker.is_alive())
+
+    def test_routing_keeps_resume_configuration_and_blocks_dynamic_tools(self):
+        """본문을 queue에서 제외해도 resume 설정과 복원 불가능한 동적 도구 표시는 유지한다."""
+        request = {'id': 10, 'method': 'thread/start', 'params': {
+            'cwd': '/fixture', 'config': {'permission': 'original'}, 'dynamicTools': [{'name': 'tool'}],
+        }}
+        response = {'id': 10, 'result': {'thread': {'id': 'new', 'ephemeral': False, 'parentThreadId': None}}}
+        for side, message in (('client', request), ('server', response)):
+            raw = json.dumps(message).encode()
+            self.proxy.receive(side, raw)
+            _, payload, route = self.proxy.events.get_nowait()
+            if side == 'client':
+                self.proxy.forward_client(route, payload)
+            else:
+                self.proxy.forward_server(route, payload)
+
+        saved = self.proxy.idle.threads['new']
+        self.assertEqual(saved['params']['config'], {'permission': 'original'})
+        self.assertEqual(saved['params']['cwd'], '/fixture')
+        self.assertTrue(saved['blocked'])
 
     def test_slow_consumer_disconnects_at_byte_budget_without_blocking_reader(self):
         """소비자가 멈춰도 byte 상한에서 종료하며 내부 RPC reader를 막지 않는다."""
