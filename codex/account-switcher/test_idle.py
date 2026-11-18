@@ -160,6 +160,23 @@ class IdleTest(unittest.TestCase):
 
 
 class ProxyTest(unittest.TestCase):
+    def test_failed_discovery_keeps_the_next_unqueried_thread(self):
+        """한 대화 조회가 실패해도 아직 조회하지 않은 다음 대화는 대기 목록에 남긴다."""
+        self.proxy.initialized = True
+        for thread_id in ('first', 'next'):
+            self.send_server({'method': 'thread/status/changed', 'params': {
+                'threadId': thread_id, 'status': {'type': 'idle'},
+            }})
+        self.proxy.inspect_idle()
+        self.proxy.pending[self.proxy.check_id].put({'error': {'message': 'unavailable'}})
+
+        self.proxy.inspect_idle()
+
+        self.assertEqual(list(self.proxy.discoveries), ['next'])
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(request['params'], {'threadId': 'next'})
+
     def test_deleted_thread_releases_resume_state_and_cancels_discovery(self):
         """삭제 알림은 복원 상태를 없애며 늦은 조회 응답으로 되살리지 않는다."""
         self.proxy.initialized = True

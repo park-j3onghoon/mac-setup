@@ -390,8 +390,6 @@ class Proxy:
         for thread_id in list(self.discoveries):
             try:
                 thread = (yield 'thread/read', {'threadId': thread_id})['thread']
-            except UsageUnavailable:
-                continue
             finally:
                 self.discoveries.pop(thread_id, None)
             if thread.get('parentThreadId') and thread_id not in self.idle.threads:
