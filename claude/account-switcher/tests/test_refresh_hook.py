@@ -1,4 +1,5 @@
 import io
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import refresh_hook
+from storage import State, SwitcherError
 
 
 def restart_stub(limited=False, needed=False):
@@ -18,6 +20,31 @@ def restart_stub(limited=False, needed=False):
 
 
 class HookTests(unittest.TestCase):
+    def test_finishing_helper_does_not_break_the_next_helpers_lock(self):
+        """다음 도우미가 잠금을 얻은 직후 이전 도우미가 끝나도 세 번째 도우미는 진입하지 못한다."""
+        original = State.lock
+        holders = []
+
+        @contextmanager
+        def first_lock(state, name):
+            with original(state, name):
+                yield
+            second = original(state, name)
+            second.__enter__()
+            holders.append(second)
+
+        try:
+            with patch.object(State, 'lock', first_lock), patch.object(refresh_hook, 'SelfRestart') as restart:
+                restart.return_value.run.return_value = 'restarted'
+                refresh_hook.helper('fixture', 'surface')
+
+            with self.assertRaises(SwitcherError):
+                with original(State(self.state_dir), 'restart-fixture'):
+                    pass
+        finally:
+            for holder in holders:
+                holder.__exit__(None, None, None)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

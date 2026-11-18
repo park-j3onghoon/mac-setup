@@ -53,7 +53,6 @@ def helper(session_id, surface):
     try:
         with state.lock(lock):
             outcome = SelfRestart(state, Path.home() / '.claude', session_id, surface).run()
-        (state.root / f'{lock}.lock').unlink(missing_ok=True)
     except SwitcherError:
         return 0  # Another helper already handles this session.
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
