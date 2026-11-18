@@ -3,12 +3,36 @@
 import base64
 import hashlib
 import os
+import select
 import socket
 import struct
 import threading
+import time
 
 
 XOR_TABLES = tuple(bytes(value ^ key for value in range(256)) for key in range(256))
+WRITE_TIMEOUT = 30
+
+
+def write_all(connection, parts, deadline):
+    if not isinstance(connection, int) and connection.getblocking():
+        connection.setblocking(False)
+    for data in parts:
+        remaining = memoryview(data)
+        while remaining:
+            timeout = deadline - time.monotonic()
+            if timeout <= 0 or not select.select([], [connection], [], timeout)[1]:
+                raise TimeoutError('Codex transport write timed out')
+            try:
+                if isinstance(connection, int):
+                    count = os.write(connection, remaining)
+                else:
+                    count = connection.send(remaining)
+            except BlockingIOError:
+                continue
+            if not count:
+                raise OSError('Codex transport closed while writing')
+            remaining = remaining[count:]
 
 
 def mask_payload(data, mask):
@@ -52,7 +76,7 @@ class UnixWebSocket:
             self.socket.close()
             raise
 
-    def send_frame(self, opcode, data):
+    def send_frame(self, opcode, data, deadline=None):
         length = len(data)
         if length < 126:
             header = bytes([0x80 | opcode, 0x80 | length])
@@ -62,19 +86,30 @@ class UnixWebSocket:
             header = bytes([0x80 | opcode, 0xFF]) + struct.pack("!Q", length)
         mask = os.urandom(4)
         masked = mask_payload(data, mask)
-        with self.lock:
-            self.socket.sendall(header + mask)
-            self.socket.sendall(masked)
+        self.write((header + mask, masked), deadline)
 
-    def send(self, data):
-        self.send_frame(1, data)
+    def write(self, parts, deadline=None):
+        deadline = time.monotonic() + WRITE_TIMEOUT if deadline is None else deadline
+        if not self.lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise TimeoutError('Codex transport write lock timed out')
+        try:
+            write_all(self.socket, parts, deadline)
+        finally:
+            self.lock.release()
+
+    def send(self, data, deadline=None):
+        self.send_frame(1, data, deadline)
 
     def _read(self, count):
         buffered, self.buffer = self.buffer[:count], self.buffer[count:]
         chunks = [buffered]
         remaining = count - len(buffered)
         while remaining:
-            data = self.socket.recv(max(4096, min(65536, remaining)))
+            try:
+                data = self.socket.recv(max(4096, min(65536, remaining)))
+            except BlockingIOError:
+                select.select([self.socket], [], [])
+                continue
             if not data:
                 raise EOFError("Codex socket closed")
             chunks.append(data[:remaining])

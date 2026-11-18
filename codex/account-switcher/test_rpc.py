@@ -1,12 +1,14 @@
 import json
 import queue
 import socket
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from policy import UsageUnavailable
 from rpc import Rpc
+from unix_ws import UnixWebSocket
 
 
 class Socket:
@@ -16,7 +18,7 @@ class Socket:
         self.sent = []
         self.incoming = queue.Queue()
 
-    def send(self, data):
+    def send(self, data, deadline=None):
         message = json.loads(data)
         self.sent.append(message)
         if message.get("method") == "initialize":
@@ -40,6 +42,42 @@ def connect():
 
 
 class RpcTest(unittest.TestCase):
+    def test_blocked_write_obeys_request_deadline_without_holding_response_lock(self):
+        """상대가 읽지 않아도 요청이 제한시간 안에 실패하고 응답 잠금은 점유하지 않는다."""
+        left, right = socket.socketpair()
+        self.addCleanup(left.close)
+        self.addCleanup(right.close)
+        left.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        client, original = connect()
+        self.addCleanup(client.close)
+        self.addCleanup(original.close)
+        transport = UnixWebSocket.__new__(UnixWebSocket)
+        transport.socket, transport.lock = left, threading.Lock()
+        client.websocket = transport
+        finished = threading.Event()
+        errors = []
+
+        def request():
+            try:
+                client.request('fixture', {'data': 'x' * (2 << 20)}, timeout=.05)
+            except UsageUnavailable as error:
+                errors.append(error)
+            finally:
+                finished.set()
+
+        worker = threading.Thread(target=request, daemon=True)
+        worker.start()
+        completed = finished.wait(.5)
+        acquired = client.lock.acquire(timeout=.05)
+        if acquired:
+            client.lock.release()
+        right.close()
+        worker.join(2)
+
+        self.assertTrue(completed)
+        self.assertTrue(acquired)
+        self.assertEqual(len(errors), 1)
+
     def test_reader_failure_releases_the_socket_without_owner_cleanup(self):
         """reader가 실패하면 다음 계정 조회를 기다리지 않고 실제 descriptor를 회수한다."""
         left, right = socket.socketpair()

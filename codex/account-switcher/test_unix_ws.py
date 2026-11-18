@@ -1,6 +1,7 @@
 import struct
 import threading
 import unittest
+from unittest.mock import patch
 
 from unix_ws import UnixWebSocket
 
@@ -14,8 +15,12 @@ class Socket:
         result, self.incoming = self.incoming[:count], self.incoming[count:]
         return result
 
-    def sendall(self, data):
+    def getblocking(self):
+        return False
+
+    def send(self, data):
         self.sent += data
+        return len(data)
 
 
 def connection(incoming=b""):
@@ -27,6 +32,11 @@ def connection(incoming=b""):
 
 
 class WebSocketTest(unittest.TestCase):
+    def setUp(self):
+        ready = patch('unix_ws.select.select', side_effect=lambda read, write, *_: (read, write, []))
+        ready.start()
+        self.addCleanup(ready.stop)
+
     def test_fragmented_messages_and_ping_are_handled(self):
         client = connection(b'\x01\x02{"' + b'\x89\x01p' + b'\x00\x04a":1' + b'\x80\x01}')
         self.assertEqual(next(client.messages()), b'{"a":1}')

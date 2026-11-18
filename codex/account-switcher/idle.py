@@ -202,7 +202,7 @@ class ClientSocket(UnixWebSocket):
                             "Connection: Upgrade\r\nSec-WebSocket-Accept: " + accepted + "\r\n\r\n").encode())
         connection.settimeout(None)
 
-    def send_frame(self, opcode, data):
+    def send_frame(self, opcode, data, deadline=None):
         length = len(data)
         if length < 126:
             header = bytes([0x80 | opcode, length])
@@ -210,9 +210,7 @@ class ClientSocket(UnixWebSocket):
             header = bytes([0x80 | opcode, 126]) + struct.pack("!H", length)
         else:
             header = bytes([0x80 | opcode, 127]) + struct.pack("!Q", length)
-        with self.lock:
-            self.socket.sendall(header)
-            self.socket.sendall(data)
+        self.write((header, data), deadline)
 
 
 class ForwardQueue(queue.Queue):

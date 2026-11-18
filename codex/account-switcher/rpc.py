@@ -5,9 +5,10 @@ import os
 import queue
 import subprocess
 import threading
+import time
 
 from policy import UsageUnavailable
-from unix_ws import UnixWebSocket
+from unix_ws import UnixWebSocket, WRITE_TIMEOUT, write_all
 
 
 # The app-server subscribes every initialized connection to the threads it creates itself
@@ -58,9 +59,11 @@ class Rpc:
                 [str(binary), "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, env=dict(os.environ, CODEX_HOME=str(home)),
             )
+            os.set_blocking(self.process.stdin.fileno(), False)
         self.handler = handler
         self.pending = {}
         self.lock = threading.Lock()
+        self.write_lock = threading.Lock()
         self.serial = 0
         self.closed = False
         self.reader = threading.Thread(target=self._read, daemon=True)
@@ -76,30 +79,40 @@ class Rpc:
             self.close()
             raise
 
-    def send(self, message):
-        with self.lock:
+    def send(self, message, deadline=None):
+        deadline = time.monotonic() + WRITE_TIMEOUT if deadline is None else deadline
+        if not self.write_lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise UsageUnavailable('Codex write lock timed out')
+        try:
             if self.closed:
                 raise UsageUnavailable("Codex connection is closed")
             try:
                 payload = json.dumps(message).encode()
                 if self.websocket:
-                    self.websocket.send(payload)
+                    self.websocket.send(payload, deadline=deadline)
                 else:
-                    self.process.stdin.write(payload + b"\n")
-                    self.process.stdin.flush()
+                    write_all(self.process.stdin.fileno(), (payload + b'\n',), deadline)
             except (BrokenPipeError, OSError) as error:
+                self.closed = True
+                if self.websocket:
+                    self.websocket.close()
+                elif self.process:
+                    self.process.terminate()
                 raise UsageUnavailable("Codex connection ended") from error
+        finally:
+            self.write_lock.release()
 
     def request(self, method, params=None, timeout=30):
+        deadline = time.monotonic() + timeout
         with self.lock:
             self.serial += 1
             request_id = self.serial
             response = queue.Queue(maxsize=1)
             self.pending[request_id] = response
         try:
-            self.send({"id": request_id, "method": method, "params": params or {}})
+            self.send({"id": request_id, "method": method, "params": params or {}}, deadline)
             try:
-                message = response.get(timeout=timeout)
+                message = response.get(timeout=max(0, deadline - time.monotonic()))
             except queue.Empty as error:
                 raise UsageUnavailable(f"Codex {method} timed out") from error
             if "error" in message:
