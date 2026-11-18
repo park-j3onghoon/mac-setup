@@ -197,25 +197,29 @@ class Proxy:
     def read(self, side, transport):
         try:
             for payload in transport.messages():
-                message = json.loads(payload)
-                target = self.pending.get(message.get("id"))
-                if side == "server" and "method" not in message and target is not None:
-                    target.put_nowait(message)
-                    continue
-                params = message.get("params") or {}
-                thread_id = params.get("threadId") or (params.get("thread") or {}).get("id")
-                child_woke = (message.get("method") == "thread/status/changed"
-                              and params["status"]["type"] != "notLoaded"
-                              and self.idle.threads.get(thread_id, {}).get("parent"))
-                if (side == "server" and thread_id in self.idle.sleeping
-                        and not child_woke
-                        and message.get("method") in ("thread/closed", "thread/started", "thread/status/changed")):
-                    continue
-                self.events.put((side, message))
+                self.receive(side, payload)
+                del payload
         except (OSError, EOFError, ValueError, queue.Full):
             pass
         finally:
             self.events.put((side, None))
+
+    def receive(self, side, payload):
+        message = json.loads(payload)
+        target = self.pending.get(message.get("id"))
+        if side == "server" and "method" not in message and target is not None:
+            target.put_nowait(message)
+            return
+        params = message.get("params") or {}
+        thread_id = params.get("threadId") or (params.get("thread") or {}).get("id")
+        child_woke = (message.get("method") == "thread/status/changed"
+                      and params["status"]["type"] != "notLoaded"
+                      and self.idle.threads.get(thread_id, {}).get("parent"))
+        if (side == "server" and thread_id in self.idle.sleeping
+                and not child_woke
+                and message.get("method") in ("thread/closed", "thread/started", "thread/status/changed")):
+            return
+        self.events.put((side, payload))
 
     def run(self):
         readers = [threading.Thread(target=self.read, args=(side, transport), daemon=True)
@@ -225,7 +229,7 @@ class Proxy:
         try:
             while True:
                 try:
-                    side, message = self.events.get(timeout=1)
+                    side, payload = self.events.get(timeout=1)
                 except queue.Empty:
                     if self.initialized and not self.client_requests and not self.server_requests:
                         try:
@@ -235,19 +239,21 @@ class Proxy:
                             for thread_id in self.idle.threads:
                                 self.idle.touch(thread_id, time.monotonic())
                     continue
-                if message is None:
+                if payload is None:
                     break
+                message = json.loads(payload)
                 if side == "client":
-                    self.forward_client(message)
+                    self.forward_client(message, payload)
                 else:
-                    self.forward_server(message)
+                    self.forward_server(message, payload)
+                del message, payload
         finally:
             self.client.close()
             self.upstream.close()
             for reader in readers:
                 reader.join(timeout=2)
 
-    def forward_client(self, message):
+    def forward_client(self, message, payload):
         method, params = message.get("method"), message.get("params") or {}
         thread_id = params.get("threadId")
         if method == "initialized":
@@ -273,9 +279,9 @@ class Proxy:
                 self.client_requests[message["id"]] = (method, params)
             else:
                 self.server_requests.discard(message["id"])
-        self.upstream.send(json.dumps(message).encode())
+        self.upstream.send(payload)
 
-    def forward_server(self, message):
+    def forward_server(self, message, payload):
         method, params = message.get("method"), message.get("params") or {}
         thread_id = params.get("threadId")
         if (method == "thread/status/changed" and thread_id in self.idle.sleeping
@@ -318,7 +324,7 @@ class Proxy:
             except UsageUnavailable:
                 # 알림을 읽기 전에 내려간 대화는 새 구독을 만들지 않는다.
                 pass
-        self.client.send(json.dumps(message).encode())
+        self.client.send(payload)
 
 
 def start_proxy(upstream, delay):

@@ -129,6 +129,20 @@ class ProxyConnectionTest(unittest.TestCase):
 
         self.assert_endpoint_removed()
 
+    def test_forwarding_preserves_original_json_bytes_in_both_directions(self):
+        """계정·유휴 정책이 내용을 바꾸지 않는 요청과 응답은 원문 그대로 전달한다."""
+        client, server = self.connect()
+        request = b'{ "id": 7, "method": "fixture/echo", "params": {"text": "\\uac00"} }'
+        response = b'{ "id": 7, "result": {"text": "\\uac00"} }'
+
+        client.send(request)
+        received_request = next(server.messages())
+        server.send(response)
+        received_response = next(client.messages())
+
+        self.assertEqual(received_request, request)
+        self.assertEqual(received_response, response)
+
 
 if __name__ == "__main__":
     unittest.main()

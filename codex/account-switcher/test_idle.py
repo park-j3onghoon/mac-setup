@@ -103,27 +103,33 @@ class ProxyTest(unittest.TestCase):
         self.proxy = Proxy(self.client, self.server, delay=10)
         self.proxy.idle.track({"thread": {"id": "thread", "ephemeral": False}}, {}, now=0)
 
+    def send_client(self, message):
+        self.proxy.forward_client(message, json.dumps(message).encode())
+
+    def send_server(self, message):
+        self.proxy.forward_server(message, json.dumps(message).encode())
+
     def test_failed_wake_rejects_before_forwarding_user_input(self):
         """resume 실패는 제출 전 거절로 반환하여 TUI가 입력을 composer에 복원하게 한다."""
         self.proxy.idle.sleeping.add("thread")
         self.proxy.idle.request = Mock(side_effect=UsageUnavailable("fixture"))
 
-        self.proxy.forward_client({"id": 3, "method": "turn/start", "params": {"threadId": "thread"}})
+        self.send_client({"id": 3, "method": "turn/start", "params": {"threadId": "thread"}})
 
         self.server.send.assert_not_called()
         self.assertEqual(json.loads(self.client.send.call_args.args[0])["error"]["code"], -32600)
 
     def test_settings_changed_by_another_connection_keep_current_runtime(self):
         """실제로 변경된 sticky 설정은 이전 start params로 덮어쓰지 않는다."""
-        self.proxy.forward_server({"method": "thread/settings/updated", "params": {"threadId": "thread"}})
+        self.send_server({"method": "thread/settings/updated", "params": {"threadId": "thread"}})
 
         self.assertTrue(self.proxy.idle.threads["thread"]["blocked"])
 
     def test_resolved_server_request_does_not_keep_connection_busy(self):
         """다른 연결이 해결한 승인도 pending 목록에서 제거한다."""
-        self.proxy.forward_server({"id": 8, "method": "item/commandExecution/requestApproval", "params": {}})
+        self.send_server({"id": 8, "method": "item/commandExecution/requestApproval", "params": {}})
 
-        self.proxy.forward_server({"method": "serverRequest/resolved", "params": {"requestId": 8}})
+        self.send_server({"method": "serverRequest/resolved", "params": {"requestId": 8}})
 
         self.assertFalse(self.proxy.server_requests)
 
@@ -133,7 +139,7 @@ class ProxyTest(unittest.TestCase):
         self.proxy.idle.sleeping.add("child")
         self.proxy.idle.request = Mock(return_value={})
 
-        self.proxy.forward_server({"method": "thread/status/changed", "params": {
+        self.send_server({"method": "thread/status/changed", "params": {
             "threadId": "child", "status": {"type": "active"},
         }})
 

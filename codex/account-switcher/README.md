@@ -156,6 +156,38 @@ Codex 0.169.0 TUI의 자동 재접속 시한은 120초다. 서버가 그 안에 
 이미 `Reconnect failed`가 된 화면은 입력 초안을 복사한 뒤 `Ctrl+C`로 종료하고
 `codex resume`으로 기존 대화를 선택한다. 이 수정은 새로 실행한 터미널부터 적용된다.
 
+### 큰 알림을 받을 때의 CPU·메모리
+
+WebSocket은 한 번에 최대 64 KiB를 받고 조각을 한 번만 합친다. 불변 `bytes`에 수신
+조각을 반복 연결하던 방식은 큰 diff에서 크기의 제곱에 비례해 복사 비용이 커졌다.
+작은 프레임은 4 KiB 단위로 미리 읽어 소켓 호출을 줄이고, fragmentation 누적 한도는
+본문을 받기 전에 확인한다.
+
+프록시는 JSON을 유휴 상태·RPC 라우팅에만 해석하고 전달에는 원문을 쓴다. 대기열에는
+원문만 보관하며, 전달 후 메시지 참조를 해제해 다음 알림이 없어도 큰 diff가 남지 않는다.
+수신기의 내부 RPC 응답 처리와 전달 루프가 분리돼 있으므로, 대기열을 단순히 blocking
+bounded queue로 바꾸면 응답을 기다리는 동안 교착할 수 있다. 소비자가 장시간 멈춘 경우의
+대기열 총량 제한은 별도 흐름 제어가 필요하며 이번 수정에는 포함하지 않는다.
+
+2026-11-18 Python 3.10 격리 비교(32 MiB, 실제 모델 호출 없음):
+
+| 측정 | 수정 전 | 수정 후 |
+| --- | ---: | ---: |
+| 16 KiB 조각 수신 CPU 시간 | 9.67초 | 0.034초 |
+| 실제 프록시 알림 전달 시간 | 29.33초 | 0.80초 |
+| 전달 뒤 프록시 RSS | 2,115 MiB | 160 MiB |
+
+수정 후 별도 `tracemalloc` 측정의 살아 있는 Python 할당은 전달 전 1.795 MiB,
+전달 후 1.801 MiB였다. RSS에는 할당자가 보유한 메모리가 포함되므로 살아 있는 메시지와
+구분한다. 위 수치는 이 로컬 재현의 비교값이며 전체 장비·공용 서버의 사용량이 아니다.
+
+```sh
+python3 codex/account-switcher/probe_transport.py --mib 32
+python3 codex/account-switcher/probe_transport.py --proxy --mib 32
+python3 codex/account-switcher/probe_transport.py --proxy --trace --mib 32
+# 다른 worktree와 비교할 때 --source /경로/codex/account-switcher 사용
+```
+
 ### 불필요한 로컬 MCP 줄이기
 
 데이터 조회나 Chrome 도구가 필요 없는 독립 코딩 세션에서만 다음처럼 끈다.

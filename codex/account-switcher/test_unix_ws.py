@@ -59,6 +59,35 @@ class WebSocketTest(unittest.TestCase):
         with self.assertRaises(OSError):
             next(connection(b'\x80\x01x').messages())
 
+    def test_fragment_limit_is_checked_before_reading_continuation_payload(self):
+        """앞 조각과 합쳐 한도를 넘는 continuation은 본문을 받기 전에 거절한다."""
+        client = connection(b'\x01\x03abc' + b'\x80\x03')
+        client.message_limit = 5
+
+        with self.assertRaisesRegex(OSError, "Oversized"):
+            next(client.messages())
+
+    def test_coalesced_frames_and_partial_reads_preserve_messages(self):
+        """한 번에 들어온 프레임과 여러 번 나뉜 읽기 모두 메시지 경계를 유지한다."""
+        client = connection(b'\x81\x03one' + b'\x81\x03two')
+        original_recv = client.socket.recv
+        client.socket.recv = lambda count: original_recv(min(count, 1))
+
+        messages = client.messages()
+        first, second = next(messages), next(messages)
+
+        self.assertEqual((first, second), (b'one', b'two'))
+
+    def test_handshake_buffer_and_following_socket_bytes_preserve_frames(self):
+        """handshake와 함께 온 프레임·다음 프레임 일부를 소켓의 남은 바이트와 연결한다."""
+        client = connection(b'wo')
+        client.buffer = b'\x81\x03one\x81\x03t'
+
+        messages = client.messages()
+        first, second = next(messages), next(messages)
+
+        self.assertEqual((first, second), (b'one', b'two'))
+
 
 if __name__ == "__main__":
     unittest.main()

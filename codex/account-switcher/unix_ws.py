@@ -59,17 +59,21 @@ class UnixWebSocket:
         self.send_frame(1, data)
 
     def _read(self, count):
-        while len(self.buffer) < count:
-            data = self.socket.recv(max(4096, count - len(self.buffer)))
+        buffered, self.buffer = self.buffer[:count], self.buffer[count:]
+        chunks = [buffered]
+        remaining = count - len(buffered)
+        while remaining:
+            data = self.socket.recv(max(4096, min(65536, remaining)))
             if not data:
                 raise EOFError("Codex socket closed")
-            self.buffer += data
-        result, self.buffer = self.buffer[:count], self.buffer[count:]
-        return result
+            chunks.append(data[:remaining])
+            self.buffer = data[remaining:]
+            remaining -= len(chunks[-1])
+        return b"".join(chunks)
 
     def messages(self):
-        message = b""
-        started = False
+        chunks = []
+        message_size = 0
         while True:
             first, second = self._read(2)
             opcode, final = first & 15, bool(first & 128)
@@ -80,7 +84,8 @@ class UnixWebSocket:
                 length = struct.unpack("!H", self._read(2))[0]
             elif length == 127:
                 length = struct.unpack("!Q", self._read(8))[0]
-            if length > self.message_limit:
+            if (length > self.message_limit
+                    or (opcode in (0, 1) and message_size + length > self.message_limit)):
                 raise OSError("Oversized Codex socket message")
             mask = self._read(4) if second & 128 else None
             data = self._read(length)
@@ -93,16 +98,16 @@ class UnixWebSocket:
                 continue
             if opcode == 10:
                 continue
-            if opcode == 1 and not started:
-                started = True
-            elif opcode != 0 or not started:
+            if opcode != (0 if chunks else 1):
                 raise OSError("Invalid Codex socket frame sequence")
-            message += data
-            if len(message) > self.message_limit:
-                raise OSError("Oversized Codex socket message")
+            chunks.append(data)
+            message_size += len(data)
+            del data
             if final:
-                yield message
-                message, started = b"", False
+                payload = b"".join(chunks)
+                chunks, message_size = [], 0
+                yield payload
+                del payload
 
     def close(self):
         try:
