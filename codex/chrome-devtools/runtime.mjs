@@ -52,9 +52,23 @@ export async function loadUpstream() {
     throw new Error('Unexpected chrome-devtools-mcp version');
   }
   const module = relative => import(pathToFileURL(path.join(root, 'build/src', relative)).href);
-  const [{McpServer}, {BrowserManager}, {ConfigParser}, {StdioServerTransport}] = await Promise.all([
+  const [{McpServer}, {BrowserManager}, {ConfigParser}, {StdioServerTransport}, {ServiceWorkerSubscriber}] = await Promise.all([
     module('index.js'), module('BrowserManager.js'), module('config/ConfigParser.js'), module('third_party/index.js'),
+    module('collectors/ServiceWorkerCollector.js'),
   ]);
+  // In 1.12.0 a destroyed extension worker can already have lost its CDP session.
+  // Handle that completed cleanup here; unrelated failures must still propagate.
+  const unsubscribe = ServiceWorkerSubscriber.prototype.unsubscribe;
+  ServiceWorkerSubscriber.prototype.unsubscribe = async function () {
+    try {
+      await unsubscribe.call(this);
+    } catch (error) {
+      if (!(error instanceof Error) ||
+          error.message !== 'Session already detached. Most likely the service_worker has been closed.') {
+        throw error;
+      }
+    }
+  };
   const config = new ConfigParser(version, [process.execPath, 'chrome-devtools-mcp', ...serverArgs], {
     ...process.env, CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY: '1',
   }).parseConfig();
