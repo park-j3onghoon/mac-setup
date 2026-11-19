@@ -422,14 +422,76 @@ class ProxyTest(unittest.TestCase):
         """owner가 다시 실행한 자식은 status 알림에서 실제로 resume하여 후속 background 작업을 보존한다."""
         self.proxy.idle.track({"thread": {"id": "child", "ephemeral": False, "parentThreadId": "thread"}}, {}, now=0)
         self.proxy.idle.sleeping.add("child")
-        self.proxy.idle.request = Mock(return_value={})
+        self.proxy.initialized = True
+        self.proxy.idle.request = Mock(side_effect=AssertionError('blocking wake'))
 
         self.send_server({"method": "thread/status/changed", "params": {
             "threadId": "child", "status": {"type": "active"},
         }})
 
-        self.proxy.idle.request.assert_called_once_with("thread/resume", {"threadId": "child", "excludeTurns": True})
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(request['method'], 'thread/resume')
+        self.assertEqual(request['params'], {'threadId': 'child', 'excludeTurns': True})
+        self.send_client({'id': 40, 'method': 'turn/start', 'params': {'threadId': 'child'}})
+        self.send_client({'id': 41, 'method': 'thread/read', 'params': {'threadId': 'thread'}})
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 41)
+
+        self.proxy.pending[request['id']].put({'result': {}})
+        self.proxy.inspect_idle()
+
         self.assertNotIn("child", self.proxy.idle.sleeping)
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 40)
+
+    def test_known_child_wake_keeps_the_live_forwarder_responsive(self):
+        """자식 resume 응답이 없어도 실제 전달 루프는 다른 대화의 입력을 전달한다."""
+        client, server = Transport(), Transport()
+        proxy = Proxy(client, server, 900)
+        proxy.initialized = True
+        proxy.idle.track({'thread': {'id': 'child', 'ephemeral': False,
+                                    'parentThreadId': 'parent'}}, {}, 0)
+        proxy.idle.sleeping.add('child')
+        worker = threading.Thread(target=proxy.run, daemon=True)
+        worker.start()
+        try:
+            server.incoming.put(json.dumps({'method': 'thread/status/changed', 'params': {
+                'threadId': 'child', 'status': {'type': 'active'}}}).encode())
+            resume = json.loads(server.outgoing.get(timeout=2))
+            self.assertEqual(resume['method'], 'thread/resume')
+            payload = b'{"id":42,"method":"turn/start","params":{"threadId":"other"}}'
+            client.incoming.put(payload)
+            self.assertEqual(server.outgoing.get(timeout=1), payload)
+        finally:
+            proxy.close()
+            worker.join(timeout=3)
+            self.assertFalse(worker.is_alive())
+
+    def test_failed_auto_wake_reports_unsent_input_and_retries_only_resume(self):
+        """자동 재구독 실패는 보류한 입력에 오류를 돌려주며 입력 자체를 재전송하지 않는다."""
+        self.proxy.initialized = True
+        self.proxy.idle.track({'thread': {'id': 'child', 'ephemeral': False,
+                                        'parentThreadId': 'thread'}}, {}, 0)
+        self.proxy.idle.sleeping.add('child')
+        self.send_server({'method': 'thread/status/changed', 'params': {
+            'threadId': 'child', 'status': {'type': 'active'}}})
+        self.proxy.inspect_idle()
+        self.send_client({'id': 42, 'method': 'turn/start', 'params': {'threadId': 'child'}})
+        self.proxy.check_deadline = 0
+
+        self.proxy.inspect_idle()
+
+        response = json.loads(self.client.send.call_args.args[0])
+        self.assertEqual(response['id'], 42)
+        self.assertIn('error', response)
+        self.assertTrue(self.proxy.deferred.empty())
+        self.proxy.wakeups['child'] = 0
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(request['method'], 'thread/resume')
+        self.proxy.pending[request['id']].put({'result': {}})
+        self.proxy.inspect_idle()
+        self.assertNotIn(42, [json.loads(call.args[0]).get('id')
+                              for call in self.server.send.call_args_list])
 
     def test_intentional_unload_never_delivers_tui_exit_notification(self):
         """의도적인 unload의 thread/closed를 TUI에 보내지 않아 입력 초안을 보존한다."""

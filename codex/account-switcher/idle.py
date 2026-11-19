@@ -177,14 +177,26 @@ class IdleThreads:
                 raise
 
     def wake(self, thread_id, now):
+        steps = self.wake_steps(thread_id, now)
+        result = None
+        try:
+            while True:
+                method, params = steps.send(result)
+                result = self.request(method, params)
+        except StopIteration:
+            pass
+        finally:
+            steps.close()
+
+    def wake_steps(self, thread_id, now):
         if thread_id in self.sleeping:
             parent = self.threads[thread_id]["parent"]
             if parent in self.threads:
-                self.wake(parent, now)
-            self.request("thread/resume", {
+                yield from self.wake_steps(parent, now)
+            yield "thread/resume", {
                 **self.threads[thread_id]["params"], "threadId": thread_id, "excludeTurns": True,
-            })
-            self.sleeping.remove(thread_id)
+            }
+            self.sleeping.discard(thread_id)
         self.touch(thread_id, now)
 
 
@@ -263,6 +275,9 @@ class Proxy:
         self.request_sizes = {}
         self.request_bytes = 0
         self.discoveries = {}
+        self.wakeups = {}
+        self.waking = None
+        self.deferred = ForwardQueue()
         self.idle = IdleThreads(self.request, delay, lambda: (
             self.events.empty() and not self.client_requests and not self.server_requests
             and not self.discoveries
@@ -356,19 +371,29 @@ class Proxy:
                     self.forward_client(message, payload)
                 else:
                     self.forward_server(message, payload)
+                if self.wakeups:
+                    self.inspect_idle()
                 del message, payload, event
         finally:
-            self.cancel_inspection()
-            self.close()
+            try:
+                self.cancel_inspection(closing=True)
+            finally:
+                self.close()
             for reader in readers:
                 reader.join(timeout=2)
 
     def inspect_idle(self):
         now = time.monotonic()
         if self.checks is None:
-            if not self.initialized or self.client_requests or self.server_requests:
+            if not self.initialized:
                 return
-            self.checks = self.inspect_threads(now)
+            self.waking = next((key for key, due in self.wakeups.items() if now >= due), None)
+            if self.waking is not None:
+                self.checks = self.idle.wake_steps(self.waking, now)
+            elif self.client_requests or self.server_requests:
+                return
+            else:
+                self.checks = self.inspect_threads(now)
         result = None
         if self.check_id is not None:
             try:
@@ -388,6 +413,10 @@ class Proxy:
             method, params = self.checks.send(result)
         except StopIteration:
             self.checks = None
+            if self.waking is not None:
+                thread_id, self.waking = self.waking, None
+                self.wakeups.pop(thread_id, None)
+                self.flush_deferred(thread_id)
             return
         self.serial += 1
         self.check_id = self.prefix + str(self.serial)
@@ -405,7 +434,7 @@ class Proxy:
                 self.idle.track({'thread': thread}, {}, time.monotonic())
         yield from self.idle.inspect(now)
 
-    def cancel_inspection(self, error=None):
+    def cancel_inspection(self, error=None, *, closing=False):
         if self.checks is not None:
             if error is not None:
                 self.idle.touch(self.idle.inspecting, time.monotonic())
@@ -415,9 +444,26 @@ class Proxy:
                     pass
             self.checks.close()
             self.checks = None
+        if self.waking is not None:
+            thread_id, self.waking = self.waking, None
+            self.wakeups[thread_id] = time.monotonic() + 5
+            if not closing:
+                self.flush_deferred(thread_id, failed=True)
         if self.check_id is not None:
             self.pending.pop(self.check_id, None)
             self.check_id = None
+
+    def flush_deferred(self, thread_id, failed=False):
+        for _ in range(self.deferred.qsize()):
+            owner, payload, message = self.deferred.get_nowait()
+            if owner != thread_id:
+                self.deferred.put_nowait((owner, payload, message))
+            elif failed:
+                self.client.send(json.dumps({'id': message['id'], 'error': {
+                    'code': -32600, 'message': 'Could not resume the idle thread. Retry submission.',
+                }}).encode())
+            else:
+                self.forward_client(message, payload)
 
     def close(self):
         self.client.close()
@@ -434,6 +480,10 @@ class Proxy:
         if method == "initialized":
             self.initialized = True
         if method and thread_id:
+            if (thread_id in self.wakeups and thread_id in self.idle.sleeping
+                    and method not in READ_METHODS and method != 'thread/unsubscribe'):
+                self.deferred.put_nowait((thread_id, payload, message))
+                return
             try:
                 if method not in READ_METHODS and method != "thread/unsubscribe":
                     self.idle.wake(thread_id, time.monotonic())
@@ -466,14 +516,15 @@ class Proxy:
             self.idle.threads.pop(thread_id, None)
             self.idle.sleeping.discard(thread_id)
             self.discoveries.pop(thread_id, None)
+            self.wakeups.pop(thread_id, None)
+            self.flush_deferred(thread_id, failed=True)
         if (method == "thread/status/changed" and thread_id in self.idle.sleeping
                 and params["status"]["type"] != "notLoaded"
                 and self.idle.threads[thread_id]["parent"]):
             # unload 유예 중 owner가 다시 시작한 자식은 자동 재구독되지 않는다.
-            try:
-                self.idle.wake(thread_id, time.monotonic())
-            except UsageUnavailable:
-                self.idle.touch(thread_id, time.monotonic() - self.idle.delay)
+            if self.waking is None:
+                self.cancel_inspection()
+            self.wakeups.setdefault(thread_id, 0)
         if "id" in message:
             if method:
                 self.retain_request('server', message['id'], len(payload))
