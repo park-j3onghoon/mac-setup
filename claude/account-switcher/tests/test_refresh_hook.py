@@ -65,6 +65,16 @@ class HookTests(unittest.TestCase):
         stdin.start()
         self.addCleanup(stdin.stop)
 
+    def test_managed_marker_only_suppresses_its_own_session(self):
+        for owner, calls in [('abc-123', 0), ('different-session', 1)]:
+            with self.subTest(owner=owner), patch.dict(os.environ, MAC_SETUP_MANAGED_CLAUDE_PID='123'), \
+                    patch.object(refresh_hook, 'read_json', return_value={'sessionId': owner}), \
+                    patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=True)), \
+                    patch('subprocess.Popen') as popen, \
+                    patch('sys.stdin', io.StringIO('{"session_id":"abc-123"}')):
+                refresh_hook.hook()
+                self.assertEqual(popen.call_count, calls)
+
     def test_hook_starts_a_detached_helper_when_a_restart_is_needed(self):
         """전환 뒤 아직 재시작 안 한 세션이면 훅은 분리된 도우미를 띄우고 바로 끝낸다."""
         # given

@@ -29,7 +29,12 @@ import subprocess
 import time
 
 CMUX_PATHS = ('/opt/homebrew/bin/cmux', '/Applications/cmux.app/Contents/Resources/bin/cmux')
-CONTINUE_PROMPT = '이어서 해줘'
+CONTINUE_PROMPT = (
+    '계정 전환 전에 하던 작업을 이어서 해줘. 먼저 마지막 요청, 실행 중인 프로세스와 남은 결과를 '
+    '확인해줘. 완료된 작업은 반복하지 말고, 아직 실행 중이면 그 결과를 기다려줘. 중단되거나 실패한 '
+    '작업은 이어갈 수 있는 지점부터 계속하고, 이어갈 수 없으면 그 작업만 처음부터 다시 실행해줘. '
+    '이미 반영됐을 수 있는 작업은 실제 반영 여부부터 확인하고, 사용자 승인이나 답변이 필요하면 다시 물어봐.'
+)
 STATE = 'session_refresh'
 # Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
 # 16:27); after that every session reads the live login on its next request.
@@ -98,24 +103,38 @@ def is_generated(entry):
     return entry.get('isMeta') or text.lstrip().startswith(GENERATED_PREFIXES)
 
 
-def ended_with_limit_error(projects_dir, session_id):
-    """True when the newest conversation entry is Claude's usage-limit error."""
+def latest_message(projects_dir, session_id):
+    """Newest real conversation entry; skip local commands and task notifications."""
     paths = sorted(Path(projects_dir).glob(f'*/{session_id}.jsonl'),
                    key=lambda path: path.stat().st_mtime)
-    if not paths:
-        return False
-    for line in transcript_lines(paths[-1]):
+    return last_entry(paths[-1]) if paths else None
+
+
+def last_entry(path):
+    for line in transcript_lines(path):
         try:
             entry = json.loads(line)
         except ValueError:
             continue
-        if entry.get('type') == 'user' and not is_generated(entry):
-            return False
-        if entry.get('type') == 'assistant':
-            content = (entry.get('message') or {}).get('content') or []
-            text = ''.join(c.get('text', '') for c in content if isinstance(c, dict))
-            return bool(entry.get('isApiErrorMessage')) and bool(LIMIT_ERROR.search(text))
-    return False
+        if not isinstance(entry, dict):
+            continue
+        if entry.get('type') == 'assistant' or entry.get('type') == 'user' and not is_generated(entry):
+            return entry
+    return None
+
+
+def completed(entry):
+    return bool(entry and entry['type'] == 'assistant' and not entry.get('isApiErrorMessage')
+                and (entry.get('message') or {}).get('stop_reason') in ('end_turn', 'stop_sequence'))
+
+
+def ended_with_limit_error(projects_dir, session_id):
+    entry = latest_message(projects_dir, session_id)
+    if not entry or entry['type'] != 'assistant' or not entry.get('isApiErrorMessage'):
+        return False
+    content = (entry.get('message') or {}).get('content') or []
+    text = ''.join(c.get('text', '') for c in content if isinstance(c, dict))
+    return bool(LIMIT_ERROR.search(text))
 
 
 def transcript_lines(path):
@@ -184,7 +203,7 @@ def process_children(runner):
     return children
 
 
-def background_work(session, children, projects_dir, now, runner=subprocess.run):
+def background_work(session, children, projects_dir, now, runner=subprocess.run, *, check_completion=False):
     """True while a shell or a subagent of this session is still working."""
     candidates, stack = [], [session['pid']]
     while stack:
@@ -214,6 +233,7 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run)
                     return True
     pattern = f"*/{session['sessionId']}/subagents/*.jsonl"
     return any(now - path.stat().st_mtime < SUBAGENT_QUIET_SECONDS
+               and (not check_completion or not completed(last_entry(path)))
                for path in Path(projects_dir).glob(pattern))
 
 

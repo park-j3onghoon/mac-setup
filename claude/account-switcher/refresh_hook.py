@@ -18,7 +18,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from refresh import SelfRestart, SessionEnded  # noqa: E402
-from storage import State, SwitcherError  # noqa: E402
+from storage import State, SwitcherError, read_json  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
 LOG = 'session-restarts.log'
@@ -35,6 +35,14 @@ def hook():
         session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
         if not session_id or not surface:
             return 0
+        managed_pid = os.environ.get('MAC_SETUP_MANAGED_CLAUDE_PID', '')
+        if managed_pid.isdecimal():
+            try:
+                managed = read_json(Path.home() / '.claude/sessions' / f'{managed_pid}.json')
+            except (FileNotFoundError, ValueError):
+                managed = {}
+            if managed.get('sessionId') == session_id:
+                return 0
         restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).

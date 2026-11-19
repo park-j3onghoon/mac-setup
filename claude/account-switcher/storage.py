@@ -80,14 +80,15 @@ class State:
         write_json(self.root / f'{name}.json', data)
 
     @contextmanager
-    def lock(self, name='operation'):
+    def lock(self, name='operation', *, blocking=False):
         path = self.root / f'{name}.lock'
         transient = name.startswith('restart-')
         while True:
             fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             try:
                 try:
-                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
+                    fcntl.flock(fd, flags)
                 except BlockingIOError:
                     raise SwitcherError(f'Another switcher process holds {name}') from None
                 if transient:
