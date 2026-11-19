@@ -412,4 +412,3 @@ class SwitcherBoundaryTest(unittest.TestCase):
             self.assertEqual(actions.read_text().splitlines()[-2:], ['bootout', 'bootstrap'])
             self.assertTrue(plistlib.loads(dest.read_bytes())['KeepAlive'])
             self.assertFalse(dest.with_suffix('.reload-pending').exists())
-

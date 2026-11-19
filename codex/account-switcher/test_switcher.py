@@ -152,6 +152,8 @@ class LauncherTest(unittest.TestCase):
 
     def test_full_company_falls_back_without_rewriting_credentials(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
+             patch.object(launcher, "load", return_value={}), \
+             patch("service.running", return_value=False), \
              patch.object(Path, "is_file", return_value=True), \
              patch.object(launcher, "read_usage", side_effect=[90, 5]), \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
