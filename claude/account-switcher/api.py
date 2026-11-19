@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from http.client import HTTPException
 import json
 import math
 import ssl
@@ -63,15 +64,27 @@ def parse_usage(data, now):
     for limit in limits:
         if not isinstance(limit, dict):
             raise ApiError('scoped quota schema')
-        if limit.get('kind') == 'weekly_scoped':
+        kind = limit.get('kind')
+        if kind in ('session', 'weekly_all', 'weekly_scoped'):
             if 'percent' not in limit:
                 raise ApiError('scoped quota schema')
-            name = json.dumps(limit.get('scope', {}), sort_keys=True)
+            name = {'session': 'five_hour', 'weekly_all': 'seven_day'}.get(kind)
+            if name is None:
+                name = json.dumps(limit.get('scope', {}), sort_keys=True)
             windows.append(Window(name, limit['percent'], epoch(limit.get('resets_at')),
                                   limit.get('locked_reason') not in (None, '')))
     if not windows:
         raise ApiError('usage schema: no quota windows')
-    return Usage(now, tuple(windows))
+    combined = {}
+    for window in windows:
+        previous = combined.get(window.name)
+        if previous is not None:
+            percents = (previous.percent, window.percent)
+            resets = (r for r in (previous.resets_at, window.resets_at) if r is not None)
+            window = Window(window.name, None if None in percents else max(percents),
+                            min(resets, default=None), previous.blocked or window.blocked)
+        combined[window.name] = window
+    return Usage(now, tuple(combined.values()))
 
 
 class Anthropic:
@@ -109,7 +122,7 @@ class Anthropic:
                     retry = math.ceil(parsedate_to_datetime(value).timestamp() - time.time())
                 except (ValueError, TypeError, OverflowError, OSError):
                     retry = 60
-            retry = max(30, min(3600, retry))
+            retry = max(30, retry)
             oauth_error = None
             if operation == 'token refresh' and exc.code == 400:
                 try:
@@ -121,11 +134,11 @@ class Anthropic:
                             'invalid_grant', 'invalid_client', 'invalid_request', 'invalid_scope',
                             'unsupported_grant_type', 'unauthorized_client'):
                         oauth_error = code
-                except (OSError, ValueError):
+                except (OSError, ValueError, HTTPException):
                     pass
             exc.close()
             raise ApiError(operation, exc.code, retry, oauth_error) from None
-        except (URLError, TimeoutError, OSError, ValueError):
+        except (URLError, TimeoutError, OSError, ValueError, HTTPException):
             raise ApiError(operation) from None
 
     def profile(self, oauth):

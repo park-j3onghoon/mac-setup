@@ -15,7 +15,7 @@ def poll_seconds(highest_percent: float | None, threshold: float, shortest: floa
     if highest_percent is None:
         return shortest
     headroom = threshold - highest_percent
-    return next((seconds for floor, seconds in POLL_TIERS if headroom >= floor), shortest)
+    return next((max(seconds, shortest) for floor, seconds in POLL_TIERS if headroom >= floor), shortest)
 
 
 @dataclass(frozen=True)
