@@ -160,6 +160,20 @@ class IdleTest(unittest.TestCase):
 
 
 class ProxyTest(unittest.TestCase):
+    def test_failed_idle_check_does_not_delay_other_threads(self):
+        """첫 대화 조회 실패 뒤에도 다른 유휴 대화는 다음 점검에서 바로 검사한다."""
+        self.proxy.initialized = True
+        self.proxy.idle.track({'thread': {'id': 'healthy', 'ephemeral': False}}, {}, 0)
+        self.proxy.inspect_idle()
+        first = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(first['params']['parentThreadId'], 'thread')
+        self.proxy.pending[self.proxy.check_id].put({'error': {'message': 'unavailable'}})
+        self.proxy.inspect_idle()
+        self.proxy.inspect_idle()
+        next_request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(next_request['params']['parentThreadId'], 'healthy')
+        self.assertEqual(self.proxy.idle.threads['healthy']['last_activity'], 0)
+
     def test_failed_discovery_keeps_the_next_unqueried_thread(self):
         """한 대화 조회가 실패해도 아직 조회하지 않은 다음 대화는 대기 목록에 남긴다."""
         self.proxy.initialized = True

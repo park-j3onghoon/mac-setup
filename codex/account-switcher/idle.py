@@ -62,6 +62,7 @@ class IdleThreads:
         self.can_park = can_park
         self.threads = {}
         self.sleeping = set()
+        self.inspecting = None
 
     def track(self, result, params, now):
         thread = result["thread"]
@@ -102,6 +103,12 @@ class IdleThreads:
             checks.close()
 
     def inspect(self, now):
+        try:
+            yield from self.inspect_candidates(now)
+        finally:
+            self.inspecting = None
+
+    def inspect_candidates(self, now):
         ancestors = None
         for thread_id, saved in list(self.threads.items()):
             activity = saved['last_activity']
@@ -109,6 +116,7 @@ class IdleThreads:
             if (saved["blocked"] or (was_sleeping and not saved["parent"])
                     or now - saved["last_activity"] < self.delay):
                 continue
+            self.inspecting = thread_id
             # root runtime은 내려간 자식의 mailbox·environment도 소유한다 (0.169.0).
             children = yield "thread/list", {"parentThreadId": thread_id, "limit": 1}
             if children["data"]:
@@ -367,6 +375,7 @@ class Proxy:
                 response = self.pending[self.check_id].get_nowait()
             except queue.Empty:
                 if now >= self.check_deadline:
+                    self.idle.touch(self.idle.inspecting, now)
                     self.cancel_inspection()
                 return
             self.pending.pop(self.check_id)
@@ -399,14 +408,13 @@ class Proxy:
     def cancel_inspection(self, error=None):
         if self.checks is not None:
             if error is not None:
+                self.idle.touch(self.idle.inspecting, time.monotonic())
                 try:
                     self.checks.throw(error)
                 except (UsageUnavailable, StopIteration):
                     pass
             self.checks.close()
             self.checks = None
-            for thread_id in self.idle.threads:
-                self.idle.touch(thread_id, time.monotonic())
         if self.check_id is not None:
             self.pending.pop(self.check_id, None)
             self.check_id = None
