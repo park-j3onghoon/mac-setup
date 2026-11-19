@@ -13,7 +13,7 @@ const site = http.createServer((request, response) => {
     return;
   }
   response.setHeader('Content-Type', 'text/html');
-  response.end(`<title>${name}</title><h1>${name}</h1><input aria-label="Session value">`);
+  response.end(`<title>${name}</title><h1>${name}</h1><input aria-label="Session value"><button id="click" onclick="this.textContent='clicked'">Click</button><input id="check" type="checkbox">`);
 });
 site.listen(0, '127.0.0.1');
 await once(site, 'listening');
@@ -62,6 +62,12 @@ try {
     for (const other of clients) {
       if (other !== session) assert(!tabs.includes(`${origin}/session-${other.index}`), 'Other client tab exposed');
     }
+    await call(session, 'browser_click', {target: '#click'});
+    await call(session, 'browser_click', {target: '#check'});
+    const controls = await call(session, 'browser_evaluate', {
+      function: '() => ({clicked: document.querySelector("#click").textContent, checked: document.querySelector("#check").checked})',
+    });
+    assert(controls.includes('clicked') && controls.includes('true'), 'Background input did not change the controls');
     await call(session, 'browser_evaluate', {
       function: `() => { document.querySelector('input').value = '${own}'; return document.title; }`,
     });
