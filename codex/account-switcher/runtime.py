@@ -6,6 +6,7 @@ from pathlib import Path
 import resource
 import shutil
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -21,6 +22,30 @@ CONTINUE_PROMPT = "이어서 해줘"
 # A thread in systemError runs nothing; leaving it out of the wait keeps one failed thread
 # from blocking every later switch.
 QUIET = ("idle", "notLoaded", "systemError")
+
+
+def process_start(pid):
+    """명령 인자와 환경을 읽지 않고 PID의 재사용을 구분한다."""
+    if not isinstance(pid, int) or pid < 2:
+        return None
+    try:
+        result = subprocess.run(['/bin/ps', '-o', 'lstart=', '-p', str(pid)],
+                                capture_output=True, text=True, timeout=2, check=False,
+                                env={'LC_ALL': 'C', 'TZ': 'UTC'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def peer_process(connection):
+    # Darwin의 LOCAL_PEERPID=2, LOCAL_PEERCRED=1은 연결한 상대의 커널 정보를 돌려준다.
+    pid = connection.getsockopt(0, 2)
+    credentials = connection.getsockopt(0, socket.LOCAL_PEERCRED, 128)
+    _, uid = struct.unpack_from('II', credentials)
+    started = process_start(pid)
+    if uid != os.getuid() or not started:
+        raise UsageUnavailable('Automatic runtime socket owner could not be verified')
+    return pid, started
 
 
 def raise_file_limit():
@@ -115,24 +140,23 @@ class Runtime:
         self.socket = self.home / "auto.sock"
         self.process = self.client = None
         self.pid = None
+        self.pid_start = None
         self.active = None
         self.continued = set()
         self.release_ids = deque()
         self.release_cursor = None
 
-    def start(self, existing_pid=None):
+    def start(self):
         prepare_home(self.home)
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
             try:
+                probe.settimeout(2)
                 probe.connect(str(self.socket))
             except (ConnectionRefusedError, FileNotFoundError):
                 self.socket.unlink(missing_ok=True)
             else:
-                if not isinstance(existing_pid, int) or existing_pid < 2:
-                    raise UsageUnavailable("An existing automatic runtime is still listening")
-                os.kill(existing_pid, 0)
-                self.pid = existing_pid
+                self.pid, self.pid_start = peer_process(probe)
                 self.observe_account()
                 return
             finally:
@@ -152,13 +176,19 @@ class Runtime:
             start_new_session=True,
         )
         self.pid = self.process.pid
+        self.pid_start = process_start(self.pid)
         try:
             deadline = time.monotonic() + 20
-            while not self.socket.exists():
+            while True:
                 if self.process.poll() is not None or time.monotonic() >= deadline:
                     raise UsageUnavailable("Automatic Codex runtime did not start")
+                if self.socket.exists():
+                    try:
+                        self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+                        break
+                    except (ConnectionRefusedError, FileNotFoundError):
+                        pass
                 time.sleep(0.1)
-            self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
         except Exception:
             self.stop()
             raise
@@ -186,11 +216,7 @@ class Runtime:
     def running(self):
         if self.process is not None:
             return self.process.poll() is None
-        try:
-            os.kill(self.pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
+        return self.pid_start is not None and process_start(self.pid) == self.pid_start
 
     def refresh(self, method, params):
         if method != "account/chatgptAuthTokens/refresh":

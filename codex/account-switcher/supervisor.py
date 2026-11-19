@@ -144,8 +144,8 @@ def main():
             if profiles["company"].account_id == profiles["personal"].account_id:
                 raise UsageUnavailable("Two distinct workspaces are required")
             runtime = Runtime(profiles)
-            runtime.start(existing_pid=state.get("runtime_pid"))
-            state["runtime_pid"] = runtime.pid
+            runtime.start()
+            state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start)
             monitor(runtime, profiles, stop, state)
         except Exception as error:
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())

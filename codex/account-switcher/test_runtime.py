@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 import resource
@@ -60,6 +61,52 @@ class StateTest(unittest.TestCase):
 
 
 class HomeTest(unittest.TestCase):
+    def test_live_socket_recovers_identity_without_saved_runtime_pid(self):
+        """상태 파일을 잃어도 현재 사용자 소켓의 실제 프로세스를 확인해 서버를 이어받는다."""
+        profiles = {'company': Mock(account_id='company')}
+        with tempfile.TemporaryDirectory(dir='/tmp') as directory, socket.socket(socket.AF_UNIX) as listener:
+            server = Runtime(profiles, home=directory)
+            listener.bind(str(server.socket))
+            listener.listen(1)
+            with patch('runtime.prepare_home'), patch('runtime.Rpc') as rpc, \
+                    patch('runtime.process_start', return_value='peer-start', create=True), \
+                    patch('runtime.subprocess.Popen') as spawn:
+                rpc.return_value.request.return_value = {'account': {'type': 'chatgpt'},
+                    'workspaceRouting': {'chatgptAccountId': 'company'}}
+
+                server.start()
+
+                self.assertEqual(server.pid, os.getpid())
+                self.assertEqual(server.pid_start, 'peer-start')
+                self.assertEqual(server.active, 'company')
+                spawn.assert_not_called()
+                server.close()
+
+    def test_reused_native_pid_is_not_a_live_runtime(self):
+        """공유 서버 PID가 다른 프로세스에 재사용되면 살아 있다고 보지 않는다."""
+        server = Runtime({})
+        server.pid, server.pid_start = 4321, 'original'
+        with patch('runtime.os.kill'), patch('runtime.process_start', return_value='reused', create=True):
+            self.assertFalse(server.running())
+
+    def test_start_retries_transient_connect_refusal_after_socket_creation(self):
+        """bind 뒤 listen 전의 연결 거부는 새 서버를 종료하지 않고 시작 예산 안에서 재시도한다."""
+        server = Runtime({}, home='/unused', binary=Path(sys.executable))
+        client = Mock(closed=False)
+        with patch('runtime.prepare_home'), patch('runtime.preserve_server_package', return_value='/fixture'), \
+                patch.object(Path, 'exists', side_effect=[False, True, True]), \
+                patch('runtime.subprocess.Popen') as spawn, \
+                patch('runtime.Rpc', side_effect=[ConnectionRefusedError(), client]) as rpc, \
+                patch('runtime.time.sleep'), \
+                patch('runtime.process_start', return_value='new-start', create=True):
+            spawn.return_value.poll.return_value = None
+
+            server.start()
+
+            self.assertIs(server.client, client)
+            self.assertEqual(rpc.call_count, 2)
+            spawn.return_value.terminate.assert_not_called()
+
     def test_standalone_launcher_inherits_capacity_for_more_than_256_open_files(self):
         """CODEX_HOME을 지정한 --no-daemon도 exec 전에 파일 한도를 보완한다."""
         with tempfile.TemporaryDirectory() as directory:
@@ -131,11 +178,13 @@ finally:
         runtime = Runtime(profiles, home=Path("/auto"))
         with patch("runtime.prepare_home"), patch.object(Path, "exists", return_value=True), \
              patch("runtime.socket.socket"), patch("runtime.os.kill"), \
+             patch('runtime.peer_process', return_value=(4321, 'original')), \
+             patch('runtime.process_start', return_value='original'), \
              patch("runtime.Rpc") as rpc, patch("runtime.subprocess.Popen") as popen:
             rpc.return_value.request.return_value = {
                 "account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "company"}}
 
-            runtime.start(existing_pid=4321)
+            runtime.start()
             running = runtime.running()
             runtime.close()
 

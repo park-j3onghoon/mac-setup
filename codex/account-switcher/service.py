@@ -9,24 +9,11 @@ import tempfile
 import time
 
 from policy import UsageUnavailable
-from runtime import SOCKET, prepare_home
+from runtime import SOCKET, prepare_home, process_start
 from state import load
 
 
 LABEL = 'local.codex-account-switcher'
-
-
-def process_start(pid):
-    """PID 재사용을 구분하며 명령 인자나 환경의 인증정보는 읽지 않는다."""
-    if not isinstance(pid, int) or pid < 2:
-        return None
-    try:
-        result = subprocess.run(['/bin/ps', '-o', 'lstart=', '-p', str(pid)],
-                                capture_output=True, text=True, timeout=2, check=False,
-                                env={'LC_ALL': 'C', 'TZ': 'UTC'})
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def running(state):
