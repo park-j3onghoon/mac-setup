@@ -242,12 +242,14 @@ class SelfRestart:
         limited = self.limited()
         # 직접 요청한 재시작 중에는 registry와 프로세스가 잠시 사라질 수 있다.
         self.watch_exit = False
-        self.type('/restart')
+        if not self.type('/restart'):
+            return 'not_ready'
         if self.wait(lambda: self.ready(session.get('startedAt')), RESTART_TIMEOUT_SECONDS) is None:
             return 'restart_unconfirmed'
         if not limited:
             return 'restarted'
-        self.type(CONTINUE_PROMPT)
+        if not self.type(CONTINUE_PROMPT):
+            return 'restarted_continuation_deferred'
         return 'restarted_and_continued'
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
@@ -293,6 +295,13 @@ class SelfRestart:
         return result.stdout
 
     def type(self, text):
-        self.cmux('send', '--surface', self.surface, '--', text)
-        self.sleep(0.5)
-        self.cmux('send-key', '--surface', self.surface, 'enter')
+        if not input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12')):
+            return False
+        # cmux 0.64.22 dispatches paste and submit together on its main actor. It does not
+        # provide an atomic empty-input precondition, so the final screen check is still needed.
+        response = json.loads(self.cmux('rpc', 'terminal.paste', json.dumps({
+            'surface_id': self.surface, 'text': text, 'submit_key': 'enter',
+        })))
+        if response.get('submitted') is not True:
+            raise OSError('cmux accepted the paste without confirming submission')
+        return True

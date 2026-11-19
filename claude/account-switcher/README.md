@@ -154,6 +154,12 @@ python3 "$tool" init --primary personal@example.com --fallback work@example.com 
 
 ## 운용
 
+자동 재시작 입력은 마지막 빈 입력창 확인 뒤 cmux `terminal.paste` 한 요청으로 문자와
+Enter를 보낸다(cmux 0.64.22에서 지원). 전송 중간의 0.5초 대기는 제거했다. 제출 응답이
+불확실하면 같은 문자를 다시 붙여넣지 않는다. 빈 입력창 확인과 입력 전송 자체를 원자적으로
+묶는 기능은 해당 cmux 버전에 없으므로 확인 직후 사용자가 입력하는 짧은 경쟁은 남는다.
+
+
 대시보드의 ID 변경은 상태 디렉터리 `preference.json`에 `preferred`(등록된 이메일)와
 `requested_at`, `immediate: true`를 기록한다. 서비스는 대기 중에도 2초마다 요청 변경을 확인하고,
 수동 선택은 캐시 안정화 시간을 기다리지 않고 로그인을 교체한다. 한도 확인·잠금·복구는

@@ -110,6 +110,14 @@ class FakeRunner:
             raise subprocess.TimeoutExpired(argv, kwargs.get('timeout'))
         if argv[0] == '/bin/ps':
             return Mock(returncode=0, stdout=self.children if '-ax' in argv else f'{STARTED}\n')
+        if argv[1:3] == ['rpc', 'terminal.paste']:
+            params = json.loads(argv[3])
+            self.typed.extend([params['text'], 'enter'])
+            if params['text'] == '/restart' and self.restarts:
+                self.fixture.register('idle', self.fixture.clock() + 1)
+                if self.choices:
+                    self.screen_text = limit_choices()
+            return Mock(returncode=0, stdout=json.dumps({'submitted': True, 'surface_id': SURFACE}))
         if argv[1] in ('send', 'send-key'):
             self.typed.append(argv[-1])
             if argv[-1] == '/restart' and self.restarts:
@@ -122,6 +130,35 @@ class FakeRunner:
 
 
 class InputReadyTests(unittest.TestCase):
+    def test_paste_and_submit_use_one_rpc_without_a_timed_input_gap(self):
+        """문자 입력과 Enter 사이 대기 없이 한 번의 cmux 요청으로 제출한다."""
+        runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
+                                  Mock(returncode=0, stdout='{"submitted":true}')])
+        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner,
+                              cmux='/fixture/cmux', sleep=Mock())
+        self.assertTrue(restart.type('/restart'))
+        restart.sleep.assert_not_called()
+        mutation = runner.call_args_list[-1].args[0]
+        self.assertEqual(mutation[1:3], ['rpc', 'terminal.paste'])
+        self.assertEqual(json.loads(mutation[3]), {
+            'surface_id': SURFACE, 'text': '/restart', 'submit_key': 'enter'})
+
+    def test_last_screen_check_keeps_a_new_user_draft(self):
+        """준비 확인 뒤 생긴 사용자 초안은 마지막 확인에서 보존한다."""
+        runner = Mock(return_value=Mock(returncode=0, stdout=screen('❯ new draft')))
+        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner, cmux='/fixture')
+        self.assertFalse(restart.type('/restart'))
+        self.assertEqual(runner.call_count, 1)
+
+    def test_partial_paste_does_not_retry_or_send_a_separate_enter(self):
+        """붙여넣기만 수락됐으면 명령이나 Enter를 재전송하지 않는다."""
+        runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
+                                  Mock(returncode=0, stdout='{"submitted":false}')])
+        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner, cmux='/fixture')
+        with self.assertRaises(OSError):
+            restart.type('/restart')
+        self.assertEqual(runner.call_count, 2)
+
     def test_empty_input_box_is_ready(self):
         """입력창(❯)이 비어 있으면 명령을 넣어도 된다."""
         # when
