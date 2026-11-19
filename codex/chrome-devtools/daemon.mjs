@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import net from 'node:net';
+import {retireWhenIdle} from './retirement.mjs';
 import {prepareDirectory, acquireLock, directory, socketPath, statusPath, lockPath, loadUpstream, version} from './runtime.mjs';
 
 prepareDirectory();
@@ -86,6 +87,7 @@ try {
   server.listen(socketPath, () => {
     fs.chmodSync(socketPath, 0o600);
     saveStatus();
+    if (fs.existsSync(`${directory}/retire-when-idle`)) retireWhenIdle(server, shutdown);
     console.error(`Shared Chrome DevTools ${version} ready in ${directory}`);
   });
 } catch (error) {
