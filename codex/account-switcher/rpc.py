@@ -50,6 +50,10 @@ NOTIFICATIONS = (
 )
 
 
+class RpcRejected(UsageUnavailable):
+    """The server explicitly rejected the request; a transport failure is uncertain."""
+
+
 class Rpc:
     def __init__(self, binary, home, socket_path=None, handler=None):
         self.process = self.websocket = None
@@ -117,8 +121,10 @@ class Rpc:
                 message = response.get(timeout=max(0, deadline - time.monotonic()))
             except queue.Empty as error:
                 raise UsageUnavailable(f"Codex {method} timed out") from error
+            if message.get('_connection_closed'):
+                raise UsageUnavailable('Codex connection ended')
             if "error" in message:
-                raise UsageUnavailable(f"Codex {method} failed")
+                raise RpcRejected(f"Codex {method} failed")
             return message.get("result") or {}
         finally:
             with self.lock:
@@ -155,7 +161,7 @@ class Rpc:
                 self.closed = True
                 for target in self.pending.values():
                     try:
-                        target.put_nowait({"error": {"code": -1}})
+                        target.put_nowait({'_connection_closed': True})
                     except queue.Full:
                         pass
 

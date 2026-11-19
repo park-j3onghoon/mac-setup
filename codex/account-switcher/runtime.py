@@ -13,7 +13,7 @@ import time
 
 from policy import THRESHOLD, UsageUnavailable
 from profiles import BINARY, PROFILES
-from rpc import Rpc
+from rpc import Rpc, RpcRejected
 from state import RUNTIME
 
 
@@ -105,18 +105,22 @@ def preserve_server_package(binary, home):
     return current / "bin" / installed.name
 
 
-def loaded_threads(client):
-    """Yield (thread id, thread without turns) for every thread loaded in the runtime."""
+def loaded_thread_ids(client):
     cursor = None
     while True:
         response = client.request("thread/loaded/list", {"cursor": cursor})
-        for thread_id in response.get("data", []):
-            yield thread_id, client.request("thread/read", {
-                "threadId": thread_id, "includeTurns": False,
-            }).get("thread", {})
+        yield from response.get('data', [])
         cursor = response.get("nextCursor")
         if not cursor:
             return
+
+
+def loaded_threads(client):
+    """Yield (thread id, thread without turns) for every thread loaded in the runtime."""
+    for thread_id in loaded_thread_ids(client):
+        yield thread_id, client.request('thread/read', {
+            'threadId': thread_id, 'includeTurns': False,
+        }).get('thread', {})
 
 
 def quiet(thread):
@@ -300,19 +304,34 @@ class Runtime:
         A turn started from this connection still sends its approval requests to the terminal
         that opened the thread (measured on 0.168.0, 2026-11-13).
         """
-        for thread_id, thread in loaded_threads(self.client):
-            # A parent drives its sub-agents; the server answers turn/start on one with an error
-            # (0.169.0, 2026-11-18), which used to stop this loop every minute.
-            if thread.get("parentThreadId") or not quiet(thread):
-                continue
-            turn = newest_turn(self.client, thread_id)
-            if (not turn or turn["id"] in self.continued or turn["status"] != "failed"
-                    or (turn.get("error") or {}).get("codexErrorInfo") != "usageLimitExceeded"):
-                continue
-            self.client.request("turn/start", {
+        failed = False
+        for thread_id in loaded_thread_ids(self.client):
+            try:
+                self.continue_thread(thread_id)
+            except UsageUnavailable:
+                failed = True
+        if failed:
+            raise UsageUnavailable('Some limited threads could not be continued')
+
+    def continue_thread(self, thread_id):
+        thread = self.client.request('thread/read', {
+            'threadId': thread_id, 'includeTurns': False,
+        }).get('thread', {})
+        # A parent drives its sub-agents; direct turn/start on a child is rejected.
+        if thread.get('parentThreadId') or not quiet(thread):
+            return
+        turn = newest_turn(self.client, thread_id)
+        if (not turn or turn['id'] in self.continued or turn['status'] != 'failed'
+                or (turn.get('error') or {}).get('codexErrorInfo') != 'usageLimitExceeded'):
+            return
+        self.continued.add(turn['id'])
+        try:
+            self.client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
             })
-            self.continued.add(turn["id"])
+        except RpcRejected:
+            self.continued.discard(turn['id'])
+            raise
 
     def close(self):
         if self.client:

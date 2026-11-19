@@ -466,6 +466,41 @@ class ContinueTest(unittest.TestCase):
 
         self.assertEqual([params["threadId"] for params in self.started()], ["parent"])
 
+    def test_failed_thread_does_not_starve_later_continuations(self):
+        """앞 대화의 재개가 거절돼도 뒤 대화는 계속하며 거절된 요청만 재시도한다."""
+        from rpc import RpcRejected
+        self.answer({'bad': ('idle', LIMITED), 'good': ('idle', {
+            'data': [dict(LIMITED['data'][0], id='turn-good')]})})
+        answer = self.runtime.client.request.side_effect
+        failures = [RpcRejected('rejected')]
+
+        def request(method, params=None):
+            if method == 'turn/start' and params['threadId'] == 'bad' and failures:
+                raise failures.pop()
+            return answer(method, params)
+
+        self.runtime.client.request.side_effect = request
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.continue_limited()
+        self.runtime.continue_limited()
+        self.assertEqual([value['threadId'] for value in self.started()], ['bad', 'good', 'bad'])
+
+    def test_uncertain_turn_start_is_not_blindly_replayed(self):
+        """응답을 잃은 재개는 이미 실행됐을 수 있으므로 같은 한도 오류로 중복 전송하지 않는다."""
+        self.answer({'t1': ('idle', LIMITED)})
+        answer = self.runtime.client.request.side_effect
+
+        def request(method, params=None):
+            if method == 'turn/start':
+                raise UsageUnavailable('connection ended after send')
+            return answer(method, params)
+
+        self.runtime.client.request.side_effect = request
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.continue_limited()
+        self.runtime.continue_limited()
+        self.assertEqual(len(self.started()), 1)
+
 
 class SwitchingTest(unittest.TestCase):
     def setUp(self):
