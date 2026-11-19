@@ -365,7 +365,13 @@ class ProxyTest(unittest.TestCase):
         self.assertTrue(self.proxy.events.empty())
         self.proxy.idle.request = Mock(return_value={})
         self.send_client({'id': 99, 'method': 'turn/start', 'params': {'threadId': 'thread'}})
-        self.proxy.idle.request.assert_called_once_with('thread/resume', {'threadId': 'thread', 'excludeTurns': True})
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual((request['method'], request['params']), ('thread/resume', {
+            'threadId': 'thread', 'excludeTurns': True}))
+        self.proxy.pending[request['id']].put({'result': {}})
+        self.proxy.inspect_idle()
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 99)
 
     def test_slow_consumer_disconnects_at_byte_budget_without_blocking_reader(self):
         """소비자가 멈춰도 byte 상한에서 종료하며 내부 RPC reader를 막지 않는다."""
@@ -401,8 +407,26 @@ class ProxyTest(unittest.TestCase):
 
         self.send_client({"id": 3, "method": "turn/start", "params": {"threadId": "thread"}})
 
-        self.server.send.assert_not_called()
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(request['method'], 'thread/resume')
+        self.proxy.pending[request['id']].put({'error': {'message': 'unavailable'}})
+        self.proxy.inspect_idle()
+        self.assertEqual(self.server.send.call_count, 1)
         self.assertEqual(json.loads(self.client.send.call_args.args[0])["error"]["code"], -32600)
+
+    def test_two_sleeping_roots_resume_independently(self):
+        self.proxy.idle.track({'thread': {'id': 'second', 'ephemeral': False}}, {}, 0)
+        self.proxy.idle.sleeping.update(('thread', 'second'))
+        for key, owner in enumerate(('thread', 'second')):
+            self.send_client({'id': key, 'method': 'turn/start', 'params': {'threadId': owner}})
+        self.proxy.inspect_idle()
+        request_id, _ = self.proxy.wake_requests['second']
+        self.proxy.pending[request_id].put({'result': {}})
+        self.proxy.inspect_idle()
+        ids = [json.loads(call.args[0])['id'] for call in self.server.send.call_args_list]
+        self.assertIn(1, ids)
+        self.assertNotIn(0, ids)
 
     def test_settings_changed_by_another_connection_keep_current_runtime(self):
         """실제로 변경된 sticky 설정은 이전 start params로 덮어쓰지 않는다."""
@@ -479,14 +503,15 @@ class ProxyTest(unittest.TestCase):
             'threadId': 'child', 'status': {'type': 'active'}}})
         self.proxy.inspect_idle()
         self.send_client({'id': 42, 'method': 'turn/start', 'params': {'threadId': 'child'}})
-        self.proxy.check_deadline = 0
+        request_id, _ = self.proxy.wake_requests['child']
+        self.proxy.wake_requests['child'] = (request_id, 0)
 
         self.proxy.inspect_idle()
 
         response = json.loads(self.client.send.call_args.args[0])
         self.assertEqual(response['id'], 42)
         self.assertIn('error', response)
-        self.assertTrue(self.proxy.deferred.empty())
+        self.assertFalse(self.proxy.deferred)
         self.proxy.wakeups['child'] = 0
         self.proxy.inspect_idle()
         request = json.loads(self.server.send.call_args.args[0])
