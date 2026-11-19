@@ -116,7 +116,7 @@ try:
 except runtime.UsageUnavailable:
     pass
 finally:
-    server.close()
+    server.stop()
 """
 
                 subprocess.run([sys.executable, "-c", script, directory, str(soft), str(hard)],
@@ -170,6 +170,16 @@ finally:
 
 
 class PackagedRuntimeTest(unittest.TestCase):
+    def test_supervisor_disconnect_keeps_owned_server_available(self):
+        """감독의 상태 저장 오류나 종료가 공유 서버의 대화와 도구를 종료하지 않는다."""
+        self.install("0.170.0")
+        running = self.start_server()
+
+        running.close()
+
+        self.assertIsNone(running.process.poll())
+        self.assertEqual(self.call_tool(running), "0.170.0")
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory(dir="/tmp")
         self.addCleanup(directory.cleanup)
@@ -210,7 +220,7 @@ with socket.socket(socket.AF_UNIX) as server:
 
     def start_server(self):
         runtime = Runtime({}, home=self.home, binary=self.binary)
-        self.addCleanup(runtime.close)
+        self.addCleanup(runtime.stop)
         runtime.start()
         return runtime
 
@@ -229,7 +239,7 @@ with socket.socket(socket.AF_UNIX) as server:
         self.install("0.170.0")
         shutil.rmtree(previous)
         self.assertEqual(self.call_tool(running), "0.169.0")
-        running.close()
+        running.stop()
 
         restarted = self.start_server()
         self.assertEqual(self.call_tool(restarted), "0.170.0")
@@ -251,7 +261,7 @@ with socket.socket(socket.AF_UNIX) as server:
         previous = self.install("0.169.0")
         running = self.start_server()
         self.assertEqual(self.call_tool(running), "0.169.0")
-        running.close()
+        running.stop()
         self.install("0.170.0")
         rmtree = shutil.rmtree
 

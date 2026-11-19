@@ -149,14 +149,19 @@ class Runtime:
              "--listen", "unix://" + str(self.socket)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=dict(os.environ, CODEX_HOME=str(self.home)),
+            start_new_session=True,
         )
         self.pid = self.process.pid
-        deadline = time.monotonic() + 20
-        while not self.socket.exists():
-            if self.process.poll() is not None or time.monotonic() >= deadline:
-                raise UsageUnavailable("Automatic Codex runtime did not start")
-            time.sleep(0.1)
-        self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+        try:
+            deadline = time.monotonic() + 20
+            while not self.socket.exists():
+                if self.process.poll() is not None or time.monotonic() >= deadline:
+                    raise UsageUnavailable("Automatic Codex runtime did not start")
+                time.sleep(0.1)
+            self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+        except Exception:
+            self.stop()
+            raise
 
     def observe_account(self):
         """Read the server's current identity even when another client changed it.
@@ -282,7 +287,12 @@ class Runtime:
     def close(self):
         if self.client:
             self.client.close()
-        if self.process:
+            self.client = None
+
+    def stop(self):
+        """새 서버 시작 실패와 명시적인 종료에서만 소유 프로세스를 내린다."""
+        self.close()
+        if self.process and self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(timeout=5)
