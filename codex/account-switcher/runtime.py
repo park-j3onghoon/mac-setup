@@ -84,14 +84,18 @@ def preserve_server_package(binary, home):
     packages = home / "app-server-packages"
     packages.mkdir(mode=0o700, exist_ok=True)
     current = packages / release.name
+    executables = ('codex', 'codex-code-mode-host', 'codex-exec-server')
     with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
         staging = Path(temporary)
-        if not current.is_dir():
+        if not all((current / 'bin' / name).is_file() and os.access(current / 'bin' / name, os.X_OK)
+                   for name in executables):
             staged = staging / "package"
             shutil.copytree(release, staged)
-            for name in ("codex", "codex-code-mode-host", "codex-exec-server"):
-                if not os.access(staged / "bin" / name, os.X_OK):
+            for name in executables:
+                if not (staged / 'bin' / name).is_file() or not os.access(staged / "bin" / name, os.X_OK):
                     raise UsageUnavailable(f"Codex package {release.name} is missing executable {name}")
+            if current.exists() or current.is_symlink():
+                current.rename(staging / 'replaced')
             staged.rename(current)
 
         # 정리 중 종료돼도 다음 시작에서 반쯤 지운 릴리스를 재사용하지 않도록 먼저 이름을 옮긴다.

@@ -219,6 +219,19 @@ finally:
 
 
 class PackagedRuntimeTest(unittest.TestCase):
+    def test_existing_cache_missing_host_is_rebuilt_before_server_start(self):
+        """원본 설치가 정상일 때 손상된 보관본을 재사용하지 않고 도구 실행까지 복구한다."""
+        self.install('0.170.0')
+        first = self.start_server()
+        self.assertEqual(self.call_tool(first), '0.170.0')
+        first.stop()
+        cached = self.home / 'app-server-packages/0.170.0/bin/codex-code-mode-host'
+        cached.unlink()
+
+        repaired = self.start_server()
+
+        self.assertEqual(self.call_tool(repaired), '0.170.0')
+
     def test_supervisor_disconnect_keeps_owned_server_available(self):
         """감독의 상태 저장 오류나 종료가 공유 서버의 대화와 도구를 종료하지 않는다."""
         self.install("0.170.0")
