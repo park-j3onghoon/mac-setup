@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from io import BytesIO
 import tempfile
 import subprocess
 import sys
@@ -26,6 +27,17 @@ class ApiTests(unittest.TestCase):
         # then
         self.assertTrue(reading.available(NOW, 95, 90))
         self.assertEqual(len(reading.windows), 2)
+
+    def test_refresh_failure_only_retains_a_recognized_oauth_error(self):
+        api = Anthropic()
+        for code, expected in [('invalid_grant', 'invalid_grant'), ('unknown-private-value', None)]:
+            with self.subTest(code=code):
+                error = HTTPError('https://platform.claude.com/v1/oauth/token', 400, '', {},
+                                  BytesIO(('{"error":"' + code + '"}').encode()))
+                with patch.object(api.opener, 'open', side_effect=error), self.assertRaises(ApiError) as ctx:
+                    api.refresh({'refreshToken': 'fixture'}, NOW)
+                self.assertEqual(ctx.exception.oauth_error, expected)
+                self.assertNotIn(code, str(ctx.exception))
 
     def test_server_lock_blocks_an_account_with_low_usage(self):
         """사용률이 낮아도 서버가 사용을 막은 계정은 선택하지 않는다."""

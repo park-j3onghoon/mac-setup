@@ -222,7 +222,7 @@ class Switcher:
         preference = self.state.load('preference')
         immediate = (preference.get('immediate') is True
                      and preference.get('requested_at') != runtime.get('preference_at'))
-        readings, errors, reading_tokens, stages = {}, {}, {}, {}
+        readings, errors, reading_tokens, stages, oauth_errors = {}, {}, {}, {}, {}
         for candidate in self.accounts:
             bundle = active if candidate == email else self.vault.read(candidate)
             if bundle is None:
@@ -243,6 +243,8 @@ class Switcher:
                 reading_tokens[candidate] = fingerprint(bundle['oauth'])
             except ApiError as exc:
                 stages[candidate] = exc.operation
+                if exc.oauth_error:
+                    oauth_errors[candidate] = exc.oauth_error
                 errors[candidate] = f'http_{exc.status}' if exc.status else 'metadata_unavailable'
                 runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
             except SwitcherError:
@@ -256,13 +258,14 @@ class Switcher:
                                   self.config['threshold'], 90)
         report = {'observed_at': now, 'active': email, 'target': decision.target,
                   'reason': decision.reason, 'apply': apply, 'switched': False, 'error_stages': stages,
+                  'oauth_errors': oauth_errors,
                   'usage': {e: asdict(u) for e, u in readings.items()}, 'errors': errors}
         previous = runtime.get('usage', {})
         for candidate in self.accounts:
             if candidate not in report['usage'] and candidate in previous:
                 report['usage'][candidate] = dict(previous[candidate], stale=True)
         runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
-                       preferred=preferred, target=decision.target, error_stages=stages)
+                       preferred=preferred, target=decision.target, error_stages=stages, oauth_errors=oauth_errors)
         if apply and email == preferred and decision.target == email:
             runtime['preference_at'] = preference.get('requested_at')
         self.state.save('runtime', runtime)

@@ -145,6 +145,8 @@ def tick_once(app, apply, last_outcome):
     if outcome != last_outcome:
         print(json.dumps({k: report[k] for k in (
             'observed_at', 'active', 'target', 'reason', 'switched', 'errors')}), flush=True)
+    if report['reason'] == 'waiting_for_retry_after':
+        return report, max(2, app.state.load('runtime')['retry_after'] - time.time()), outcome
     return report, app.next_delay(time.time()), outcome
 
 

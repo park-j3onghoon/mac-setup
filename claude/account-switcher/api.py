@@ -15,9 +15,10 @@ from storage import SwitcherError
 
 
 class ApiError(SwitcherError):
-    def __init__(self, operation, status=None, retry_after=60):
+    def __init__(self, operation, status=None, retry_after=60, oauth_error=None):
         super().__init__(f'Anthropic {operation} failed: status={status or "unavailable"}')
         self.operation = operation
+        self.oauth_error = oauth_error
         self.status = status
         self.retry_after = retry_after
 
@@ -109,7 +110,21 @@ class Anthropic:
                 except (ValueError, TypeError, OverflowError, OSError):
                     retry = 60
             retry = max(30, min(3600, retry))
-            raise ApiError(operation, exc.code, retry) from None
+            oauth_error = None
+            if operation == 'token refresh' and exc.code == 400:
+                try:
+                    body = json.loads(exc.read(8192))
+                    code = body.get('error') if isinstance(body, dict) else None
+                    if isinstance(code, dict):
+                        code = code.get('type')
+                    if isinstance(code, str) and code in (
+                            'invalid_grant', 'invalid_client', 'invalid_request', 'invalid_scope',
+                            'unsupported_grant_type', 'unauthorized_client'):
+                        oauth_error = code
+                except (OSError, ValueError):
+                    pass
+            exc.close()
+            raise ApiError(operation, exc.code, retry, oauth_error) from None
         except (URLError, TimeoutError, OSError, ValueError):
             raise ApiError(operation) from None
 
