@@ -101,7 +101,7 @@ class Switcher:
             self.config['claude_executable'], self.config['config_home'], self.accounts,
             getattr(self, 'compatibility', None))
 
-    def recover(self):
+    def recover(self, *, allow_network=True):
         journal = self.vault.read('__transaction__')
         if journal is None:
             return
@@ -115,6 +115,8 @@ class Switcher:
         recovered = next((entry['account'] for entry in (after, before)
                           if fingerprint(oauth) == fingerprint(entry['oauth'])), None)
         if recovered is None:
+            if not allow_network:
+                return
             # A native refresh can replace the token between the credential and metadata writes.
             actual = self.api.profile(oauth)
             recovered = next((entry for entry in allowed if matches_identity(entry, actual)), None)
@@ -209,6 +211,10 @@ class Switcher:
         now = clock()
         runtime = self.state.load('runtime')
         if now < runtime.get('retry_after', 0):
+            if apply and self.vault.read('__transaction__') is not None:
+                self.check_version()
+                self.recover(allow_network=False)
+                runtime = self.state.load('runtime')
             return {'observed_at': now, 'active': runtime.get('active'), 'target': None,
                     'switched': False, 'apply': apply, 'errors': {}, 'usage': {},
                     'reason': 'waiting_for_retry_after'}

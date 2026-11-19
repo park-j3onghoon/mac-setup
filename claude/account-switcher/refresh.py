@@ -128,8 +128,8 @@ def completed(entry):
                 and (entry.get('message') or {}).get('stop_reason') in ('end_turn', 'stop_sequence'))
 
 
-def ended_with_limit_error(projects_dir, session_id):
-    entry = latest_message(projects_dir, session_id)
+def ended_with_limit_error(projects_dir, session_id, transcript=None):
+    entry = last_entry(transcript) if transcript is not None else latest_message(projects_dir, session_id)
     if not entry or entry['type'] != 'assistant' or not entry.get('isApiErrorMessage'):
         return False
     content = (entry.get('message') or {}).get('content') or []
@@ -138,37 +138,113 @@ def ended_with_limit_error(projects_dir, session_id):
 
 
 def transcript_lines(path):
-    """Walk backwards by blocks. Keep at most one pending record across reads."""
+    """Locate record boundaries backwards without retaining the preceding transcript."""
     with path.open('rb') as stream:
-        offset = stream.seek(0, os.SEEK_END)
-        parts = []
+        end = offset = stream.seek(0, os.SEEK_END)
         while offset:
-            size = min(offset, TAIL_BYTES)
+            size = min(offset, 32768)
             offset -= size
             stream.seek(offset)
-            block = stream.read(size).split(b'\n')
-            for piece in reversed(block[1:]):
-                parts.append(piece)
-                yield b''.join(reversed(parts))
-                parts.clear()
-            parts.append(block[0])
-        if parts:
-            yield b''.join(reversed(parts))
+            block = stream.read(size)
+            cursor = len(block)
+            while (boundary := block.rfind(b'\n', 0, cursor)) >= 0:
+                start = offset + boundary + 1
+                if end > start:
+                    yield compact_record(stream, start, end)
+                end = offset + boundary
+                cursor = boundary
+        if end:
+            yield compact_record(stream, 0, end)
 
 
-def live_session(config_home, session_id, runner=subprocess.run):
+def compact_record(stream, start, end):
+    """Keep JSON structure and the prefix used to recognize synthetic user messages.
+
+    Long string values contain tool output or message text. Stop retaining their
+    bytes once their prefix is known, while continuing to honor escaped quotes.
+    """
+    stream.seek(start)
+    if end - start <= 32768:
+        return stream.read(end - start)
+    result = bytearray()
+    inside = escaped = False
+    literal = bytearray()
+    truncated = False
+    delimiters = re.compile(br'["\\]')
+    while stream.tell() < end:
+        data = stream.read(min(32768, end - stream.tell()))
+        if not data:
+            break
+        pos = 0
+        while pos < len(data):
+            if not inside:
+                quote = data.find(b'"', pos)
+                if quote < 0:
+                    result.extend(data[pos:])
+                    break
+                result.extend(data[pos:quote + 1])
+                inside, truncated = True, False
+                literal.clear()
+                pos = quote + 1
+                continue
+            if escaped:
+                if len(literal) < 4096:
+                    literal.extend(data[pos:pos + 1])
+                else:
+                    truncated = True
+                pos += 1
+                escaped = False
+                continue
+            mark = delimiters.search(data, pos)
+            stop = mark.start() if mark else len(data)
+            room = 4096 - len(literal)
+            literal.extend(data[pos:min(stop, pos + room)])
+            truncated |= stop - pos > room
+            if not mark:
+                break
+            pos = stop + 1
+            if data[stop] == 92:
+                escaped = True
+                if len(literal) < 4096:
+                    literal.append(92)
+                else:
+                    truncated = True
+            else:
+                if truncated:
+                    # Only ASCII prefixes identify generated commands. Re-encode
+                    # the prefix so a cut through an escape/UTF-8 sequence is valid.
+                    prefix = bytes(literal).split(b'\\', 1)[0].decode('utf-8', 'ignore')
+                    result.extend(json.dumps(prefix)[1:-1].encode())
+                else:
+                    result.extend(literal)
+                result.append(34)
+                inside = False
+    if b'isApiErrorMessage' in result:
+        try:
+            entry = json.loads(result)
+        except ValueError:
+            return result
+        if isinstance(entry, dict) and entry.get('isApiErrorMessage'):
+            stream.seek(start)
+            return stream.read(end - start)
+    return result
+
+
+def live_session(config_home, session_id, runner=subprocess.run, prior=None):
     """This interactive session's registry entry while its pid still belongs to the same process.
 
     `ps -p` gets one pid: with all 15 registered pids it took 0.16 s of system time, with one
     under 0.01 s (2026-11-16)."""
     unreadable = False
-    for path in (Path(config_home) / 'sessions').glob('*.json'):
+    registry = Path(config_home) / 'sessions'
+    paths = (registry / f"{prior['pid']}.json",) if prior else registry.glob('*.json')
+    for path in paths:
         try:
             entry = json.loads(path.read_text())
         except FileNotFoundError:
             continue
         except (OSError, ValueError):
-            unreadable = True
+            unreadable |= prior is not None
             continue
         if (entry.get('sessionId') != session_id or entry.get('kind') != 'interactive'
                 or not isinstance(entry.get('pid'), int)):
@@ -232,9 +308,35 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
                         and path.suffix == '.output'):
                     return True
     pattern = f"*/{session['sessionId']}/subagents/*.jsonl"
-    return any(now - path.stat().st_mtime < SUBAGENT_QUIET_SECONDS
-               and (not check_completion or not completed(last_entry(path)))
-               for path in Path(projects_dir).glob(pattern))
+    unfinished = set()
+    transcripts = set()
+    for path in Path(projects_dir).glob(pattern):
+        if not check_completion:
+            if now - path.stat().st_mtime < SUBAGENT_QUIET_SECONDS:
+                return True
+        elif not completed(last_entry(path)):
+            unfinished.add(path.stem.removeprefix('agent-'))
+            transcripts.add(path.parent.parent.with_suffix('.jsonl'))
+    for path in transcripts:
+        if not path.is_file():
+            continue
+        for line in transcript_lines(path):
+            if b'<task-notification>' not in line:
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict) or entry.get('type') != 'user':
+                continue
+            content = (entry.get('message') or {}).get('content')
+            if isinstance(content, str) and content.lstrip().startswith('<task-notification>'):
+                task = re.search(r'<task-id>([\w-]+)</task-id>', content)
+                if task and re.search(r'<status>(completed|failed|killed|stopped)</status>', content):
+                    unfinished.discard(task[1].removeprefix('agent-'))
+                    if not unfinished:
+                        return False
+    return bool(unfinished)
 
 
 class SessionUnavailable(OSError):
@@ -249,17 +351,19 @@ class SelfRestart:
     """Restart one session through its own cmux surface after an account switch."""
 
     def __init__(self, state, config_home, session_id, surface, runner=subprocess.run,
-                 sleep=time.sleep, clock=time.time, cmux=None):
+                 sleep=time.sleep, clock=time.time, cmux=None, monotonic=None):
         self.state, self.config_home = state, Path(config_home)
         self.session_id, self.surface = session_id, surface
         self.runner, self.sleep, self.clock = runner, sleep, clock
         self.cmux_path = cmux or find_cmux()
         self.projects = self.config_home / 'projects'
+        self.monotonic = monotonic or (time.monotonic if clock is time.time else clock)
+        self.transcript = None
         self.last_session = None
         self.watch_exit = True
 
     def session(self):
-        session = live_session(self.config_home, self.session_id, self.runner)
+        session = live_session(self.config_home, self.session_id, self.runner, self.last_session)
         if session:
             self.last_session = session
         elif self.watch_exit:
@@ -279,7 +383,9 @@ class SelfRestart:
         return session
 
     def limited(self):
-        return ended_with_limit_error(self.projects, self.session_id)
+        if self.transcript is not None and not self.transcript.is_file():
+            self.transcript = None
+        return ended_with_limit_error(self.projects, self.session_id, self.transcript)
 
     def needed(self):
         """True when the latest switch happened after this session's process started."""
@@ -310,9 +416,18 @@ class SelfRestart:
 
         if not self.wait(awaiting_switch, REFRESH_WINDOW_SECONDS if was_limited else SWITCH_TIMEOUT_SECONDS):
             return 'no_switch'
-        session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
+        since = switch_pending(self.state, self.clock())
+        if since is None:
+            return 'no_switch'
+        def ready_before_expiry():
+            if switch_pending(self.state, self.clock()) is None:
+                raise SessionEnded
+            return self.ready(None)
+        expires = since + REFRESH_WINDOW_SECONDS
+        session = self.wait(ready_before_expiry, min(READY_TIMEOUT_SECONDS,
+                                                     max(0, expires - self.clock())))
         if session is None and self.limited():
-            session = self.wait(lambda: self.ready(None), REFRESH_WINDOW_SECONDS,
+            session = self.wait(ready_before_expiry, max(0, expires - self.clock()),
                                 LIMIT_WAIT_STEP_SECONDS)
         if session is None:
             return 'not_ready'
@@ -340,7 +455,7 @@ class SelfRestart:
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
         """Check immediately, then back off to 30 seconds; every check reads fresh state."""
-        deadline = self.clock() + timeout
+        deadline = self.monotonic() + timeout
         while True:
             try:
                 result = check()
@@ -350,9 +465,9 @@ class SelfRestart:
                 # 2026-11-16 11:08: many sessions stopped at a limit at once and five helpers gave
                 # up on one slow ps; a slow check only means "not ready yet".
                 pass
-            if self.clock() >= deadline:
+            if self.monotonic() >= deadline:
                 return None
-            self.sleep(min(step, max(0, deadline - self.clock())))
+            self.sleep(min(step, max(0, deadline - self.monotonic())))
             step = min(step * 2, LIMIT_WAIT_STEP_SECONDS)
 
     def ready(self, old_started):

@@ -185,11 +185,7 @@ class Keychain:
             self.release(query, owned)
 
     def replace_existing(self, service, account, value):
-        """Preserve the legacy item's access policy used by Apple's security CLI.
-
-        Use the same API family as the native CLI and verify from a separate
-        process; a same-process read-back alone cannot prove interoperability.
-        """
+        """Read, update and verify the existing login through the owning Apple CLI."""
         native = NativeKeychain(self, account, service=service)
         native.read()
         native.write_item(value)

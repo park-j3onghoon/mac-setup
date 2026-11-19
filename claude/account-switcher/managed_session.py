@@ -72,18 +72,24 @@ def resume_options(args):
     return keep
 
 
-def claim_continuation(state, sid, since):
+def claim_continuation(state, sid, since, launch=None):
     # Two terminals may have opened the same transcript. Share a single submission
     # per conversation, retaining only the most recent account switch.
     with state.lock('resume-prompts', blocking=True):
         previous = state.load('resume_prompts')
         if previous.get('since', 0) > since:
-            return False
+            return launch(False) if launch else False
         sent = previous.get('sessions', []) if previous.get('since') == since else []
         if sid in sent:
-            return False
-        state.save('resume_prompts', {'since': since, 'sessions': [*sent, sid]})
-        return True
+            return launch(False) if launch else False
+        child = launch(True) if launch else True
+        try:
+            state.save('resume_prompts', {'since': since, 'sessions': [*sent, sid]})
+        except (SwitcherError, OSError, ValueError):
+            if not launch:
+                raise
+            print('[claude] 복구 지시 전달 기록을 저장하지 못했습니다.', file=sys.stderr)
+        return child
 
 
 def switch_target(pid, launched, since, config_home):
@@ -128,14 +134,28 @@ def run_session(binary, args, options, state, config_home, interval=2):
         (signal.SIGINT, terminal_interrupt), (signal.SIGQUIT, terminal_interrupt))}
     env = os.environ.copy()
     cwd = None
+    continuation = None
     try:
         while stopping is None:
             launched = time.time()
             # exec preserves the PID in the session registry. Descendant Claude sessions
             # can distinguish their own Stop hook from this managed foreground session.
-            child = subprocess.Popen(['/bin/sh', '-c',
-                                      'export MAC_SETUP_MANAGED_CLAUDE_PID=$$; exec "$@"',
-                                      'managed-claude', binary, *args], cwd=cwd, env=env)
+            def launch(continue_turn):
+                command = [binary, *args]
+                if continue_turn:
+                    command.extend(['--', CONTINUE_PROMPT])
+                if cwd is not None:
+                    return subprocess.Popen(command, cwd=cwd,
+                        env=dict(env, MAC_SETUP_MANAGED_CLAUDE_SESSION_ID=sid))
+                return subprocess.Popen(['/bin/sh', '-c',
+                    'export MAC_SETUP_MANAGED_CLAUDE_PID=$$; exec "$@"',
+                    'managed-claude', *command], cwd=cwd, env=env)
+
+            if continuation:
+                child = claim_continuation(state, *continuation, launch=launch)
+                continuation = None
+            else:
+                child = launch(False)
             if stopping is not None:
                 child.send_signal(stopping)
             finished = threading.Event()
@@ -177,12 +197,7 @@ def run_session(binary, args, options, state, config_home, interval=2):
                 except (OSError, ValueError):
                     pass
             args = [*options, '--resume', sid]
-            if unfinished:
-                try:
-                    if claim_continuation(state, sid, since):
-                        args.extend(['--', CONTINUE_PROMPT])
-                except (OSError, ValueError, SwitcherError):
-                    print('[claude] 복구 지시의 중복 여부를 확인할 수 없어 대화만 다시 엽니다.', file=sys.stderr)
+            continuation = (sid, since) if unfinished else None
             # Supply exactly one continuation. Claude also has an optional native auto-resume.
             env['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'] = '0'
             if os.isatty(0) and os.tcgetpgrp(0) == os.getpgrp():

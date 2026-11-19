@@ -100,7 +100,8 @@ class TokenTail:
                             end = stream.read(64)
                             checkpoint = (identity, info.st_size, bool(end and not end.endswith(b'\n')),
                                           hashlib.sha256(end).digest())
-                    self.cold[path] = (now if old else now + 120, checkpoint)
+                    newly_discovered = not baseline and cold is None
+                    self.cold[path] = (now if old or newly_discovered else now + 120, checkpoint)
                     continue
                 if (not cold and path not in self.retry_files
                         and info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2)):
@@ -142,7 +143,13 @@ class TokenTail:
                             stamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00')).timestamp()
                             if stamp < cutoff:
                                 continue
-                            if stamp > now + (time.monotonic() - scan_started) + 5:
+                            if cold and self.last_scan is not None and stamp < self.last_scan - 2:
+                                errors += 1
+                            horizon = now + (time.monotonic() - scan_started) + 5
+                            if stamp > horizon + 120:
+                                errors += 1
+                                continue
+                            if stamp > horizon:
                                 offset -= len(line)
                                 self.retry_files.add(path)
                                 break
@@ -213,12 +220,12 @@ def observe(app):
                         raise SwitcherError('Login changed during measurement; retry later')
                     bundle = app.refresh_inactive(candidate, bundle, time.time())
                 app.verify_identity(bundle)
-                if candidate == email and active and app.vault.read(email) != active:
-                    with app.live.locked():
-                        current = app.vault.read_active_for_measurement()
-                        if (current and current.get('claudeAiOauth') == active['oauth']
-                                and read_json(app.live.config).get('oauthAccount') == account):
-                            app.vault.write(email, active)
+                if (candidate == email and active and app.vault.read(email) != active
+                        and not app.state.load('halt')):
+                    current = app.vault.read_active_for_measurement()
+                    if (current and current.get('claudeAiOauth') == active['oauth']
+                            and read_json(app.live.config).get('oauthAccount') == account):
+                        app.vault.write(email, active)
                 reading = app.api.usage(bundle['oauth'], time.time())
                 readings[candidate] = asdict(reading)
             except ApiError as exc:
@@ -278,6 +285,7 @@ class Measurement:
         self.tokens = TokenTail(projects)
         self.previous = latest_sample(state)
         self.pending = None
+        self.appended = None
         self.pruned_day = None
 
     def enabled(self, now=None):
@@ -295,6 +303,20 @@ class Measurement:
         self.prune(now)
         if not self.enabled(now):
             return None
+        if self.appended is not None:
+            path, start, raw, saved = self.appended
+            with path.open('r+b') as stream:
+                stream.seek(start)
+                tail = stream.read(len(raw) + 1)
+                if tail == raw:
+                    os.fsync(stream.fileno())
+                    self.pending = None
+                    self.previous = saved
+                elif raw.startswith(tail):
+                    stream.truncate(start)
+                else:
+                    raise SwitcherError('Measurement append changed during recovery')
+            self.appended = None
         # Whitelist data rather than serializing an arbitrary caller's payload.
         usage = {}
         for email, reading in report.get('usage', {}).items():
@@ -338,9 +360,11 @@ class Measurement:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'ab') as stream:
             os.fchmod(stream.fileno(), 0o600)
+            self.appended = (path, os.fstat(fd).st_size, raw, row)
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
+        self.appended = None
         self.pending = None
         self.previous = row
         self.state.save('measurement_latest', row)

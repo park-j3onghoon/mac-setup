@@ -17,8 +17,8 @@ from macos import Keychain
                      os.environ.get('CLAUDE_SWITCHER_TEST_KEYCHAIN') == '1',
                      'Opt-in macOS Keychain interoperability test')
 class NativeKeychainTests(unittest.TestCase):
-    def test_native_cli_reads_after_framework_updates(self):
-        """프레임워크 갱신 뒤 다른 프로세스의 Apple CLI도 같은 값을 읽는다."""
+    def test_native_cli_reads_after_switcher_updates_existing_item(self):
+        """전환기가 기존 항목을 갱신한 뒤 별도 Apple CLI 프로세스도 같은 값을 읽는다."""
         # given
         service = 'local.mac-setup.claude-account-switcher.test.' + uuid.uuid4().hex
         account = getpass.getuser()

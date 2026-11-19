@@ -213,6 +213,7 @@ def run(app, apply):
     last_outcome = None
     measurement = Measurement(app.state, Path(app.config['config_home']) / 'projects')
     with app.state.lock('daemon'):
+        app.state.prune_restart_locks()
         app.state.save('service_settings', {
             'loaded_at': time.time(), 'threshold': app.config['threshold'],
             'poll_seconds': app.config['poll_seconds'],

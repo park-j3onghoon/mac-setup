@@ -35,6 +35,8 @@ def hook():
         session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
         if not session_id or not surface:
             return 0
+        if session_id == os.environ.get('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID'):
+            return 0
         managed_pid = os.environ.get('MAC_SETUP_MANAGED_CLAUDE_PID', '')
         if managed_pid.isdecimal():
             try:
@@ -44,6 +46,11 @@ def hook():
             if managed.get('sessionId') == session_id:
                 return 0
         restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
+        transcript = payload.get('transcript_path')
+        if isinstance(transcript, str):
+            path = Path(transcript).resolve()
+            if path.name == f'{session_id}.jsonl' and path.is_relative_to(Path.home() / '.claude/projects'):
+                restart.transcript = path
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).
         if restart.limited() or restart.needed():

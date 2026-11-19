@@ -401,12 +401,11 @@ class SelfRestartTests(unittest.TestCase):
         fixture = self.fixture(status='waiting')
         fixture.transcript(user_text('작업해 줘'), limit_error())
         runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
-        started = fixture.clock()
         # when
         outcome = fixture.restart(runner).run()
         # then
         self.assertEqual((outcome, runner.typed), ('not_ready', []))
-        self.assertGreaterEqual(fixture.clock() - started, REFRESH_WINDOW_SECONDS)
+        self.assertEqual(fixture.clock(), SWITCHED_AT + REFRESH_WINDOW_SECONDS)
 
     def test_failed_process_snapshot_never_types_restart(self):
         """ps가 실패한 동안에는 작업 유무를 확정하지 않고 재시작을 보내지 않는다."""

@@ -79,6 +79,21 @@ class State:
     def save(self, name, data):
         write_json(self.root / f'{name}.json', data)
 
+    def prune_restart_locks(self):
+        for path in self.root.glob('restart-*.lock'):
+            try:
+                fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+            except FileNotFoundError:
+                continue
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if os.path.samestat(os.fstat(fd), path.lstat()):
+                    path.unlink()
+            except (BlockingIOError, FileNotFoundError):
+                pass
+            finally:
+                os.close(fd)
+
     @contextmanager
     def lock(self, name='operation', *, blocking=False):
         path = self.root / f'{name}.lock'
