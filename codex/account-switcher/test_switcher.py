@@ -1,5 +1,6 @@
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from io import StringIO
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -91,6 +92,9 @@ class LauncherTest(unittest.TestCase):
         proxy_patch = patch.object(launcher, "start_proxy", return_value=SOCKET)
         self.proxy = proxy_patch.start()
         self.addCleanup(proxy_patch.stop)
+        binary_patch = patch.object(launcher, "BINARY", Path(sys.executable))
+        binary_patch.start()
+        self.addCleanup(binary_patch.stop)
 
     def test_automatic_terminal_gets_idle_proxy_and_can_opt_out(self):
         """새 자동 터미널은 15분 회수 proxy를 사용하고 0으로 기존 직접 연결을 선택한다."""
@@ -199,6 +203,68 @@ class LauncherTest(unittest.TestCase):
     def test_management_after_global_options_is_recognized(self):
         self.assertFalse(launcher.interactive(["-c", "model=chosen", "login", "status"]))
         self.assertFalse(launcher.interactive(["--cd=/project", "exec", "do work"]))
+
+
+class TerminalVersionTest(unittest.TestCase):
+    def setUp(self):
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        root = Path(stack.enter_context(tempfile.TemporaryDirectory())).resolve()
+        cask = root / "Caskroom" / "codex"
+        self.installed = cask / "0.170.0" / "bin" / "codex"
+        self.previous = cask / "0.169.0" / "bin" / "codex"
+        for cli in (self.installed, self.previous):
+            cli.parent.mkdir(parents=True)
+            cli.touch(mode=0o700)
+        link = root / "codex"
+        link.symlink_to(self.installed)
+        stack.enter_context(patch.object(launcher, "BINARY", link))
+        stack.enter_context(patch.object(launcher, "RUNTIME", root / "auto"))
+        self.connection = stack.enter_context(patch.object(launcher, "UnixWebSocket")).return_value
+        stack.enter_context(patch("service.ensure", return_value={"active": "company"}))
+        stack.enter_context(patch.dict(launcher.os.environ, {"CODEX_IDLE_SECONDS": "0"}, clear=True))
+        self.run = stack.enter_context(patch.object(launcher.os, "execve", side_effect=SystemExit))
+
+    def launched(self, version, arguments):
+        self.connection.messages.return_value = [
+            json.dumps({"id": 1, "result": {"userAgent": f"codex/{version} (macOS)"}}).encode()
+        ]
+        with self.assertRaises(SystemExit):
+            launcher.launch_automatic(arguments)
+        executable, argv, _ = self.run.call_args.args
+        self.assertEqual(argv[0], executable)
+        return Path(executable)
+
+    def test_terminal_tracks_the_live_server_across_a_homebrew_upgrade_and_restart(self):
+        """새 대화와 resume은 구형 서버에 맞추고 서버가 교체되면 새 CLI를 쓴다."""
+        self.assertEqual(self.launched("0.169.0", []), self.previous)
+        self.assertEqual(self.run.call_args.args[1][1:3], ["-c", "check_for_update_on_startup=false"])
+        saved = launcher.RUNTIME / "app-server-packages" / "0.169.0" / "bin" / "codex"
+        saved.parent.mkdir(parents=True)
+        self.previous.rename(saved)
+        self.assertEqual(self.launched("0.169.0", ["resume", "--last"]), saved)
+        self.assertEqual(self.run.call_args.args[1][1:3], ["-c", "check_for_update_on_startup=false"])
+        self.assertEqual(self.launched("0.170.0", []), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
+
+    def test_current_server_uses_homebrew_for_future_updates(self):
+        """같은 버전 보관본이 있어도 Homebrew 설치를 인식하는 CLI로 새 업데이트를 확인한다."""
+        cached = launcher.RUNTIME / "app-server-packages" / "0.170.0" / "bin" / "codex"
+        cached.parent.mkdir(parents=True)
+        cached.touch(mode=0o700)
+
+        self.assertEqual(self.launched("0.170.0", []), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
+
+    def test_unavailable_version_or_package_keeps_the_installed_cli_usable(self):
+        """소켓 조회 실패나 이전 패키지 부재에도 기존 CLI로 resume을 열 수 있다."""
+        self.assertEqual(self.launched("0.168.0", ["resume"]), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
+        for failure in (TimeoutError(), EOFError()):
+            with self.subTest(failure=failure):
+                self.connection.messages.side_effect = failure
+                self.assertEqual(self.launched("0.169.0", ["resume"]), self.installed)
+                self.connection.close.assert_called()
 
 
 class ProtocolTest(unittest.TestCase):

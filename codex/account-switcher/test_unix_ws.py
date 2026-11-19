@@ -49,6 +49,15 @@ class WebSocketTest(unittest.TestCase):
         self.assertEqual(next(client.messages()), b'{"a":1}')
         self.assertEqual(client.socket.sent[0], 0x8A)
 
+    def test_version_probe_read_expires_after_replying_to_ping(self):
+        """ping에 응답한 뒤에도 첫 연결에서 정한 조회 종료 시각을 지킨다."""
+        client = connection(b'\x89\x00')
+        client.deadline = 2
+        client.socket.settimeout = lambda remaining: None
+        with patch('unix_ws.time.monotonic', side_effect=lambda: 3 if client.socket.sent else 1):
+            with self.assertRaises(TimeoutError):
+                next(client.messages())
+
     def test_short_medium_and_long_client_frames_are_masked(self):
         for size in (5, 300, 70000):
             with self.subTest(size=size):
