@@ -360,10 +360,12 @@ class SelfRestart:
         self.monotonic = monotonic or (time.monotonic if clock is time.time else clock)
         self.transcript = None
         self.last_session = None
+        self.registry_hint = None
         self.watch_exit = True
 
     def session(self):
-        session = live_session(self.config_home, self.session_id, self.runner, self.last_session)
+        session = live_session(self.config_home, self.session_id, self.runner,
+                               self.last_session or self.registry_hint)
         if session:
             self.last_session = session
         elif self.watch_exit:

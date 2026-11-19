@@ -1,6 +1,7 @@
 import subprocess
 import tempfile
 import unittest
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -9,7 +10,7 @@ from compatibility import IncompatibleLayout
 from helpers import NOW, make_app
 from macos import system_awake
 from measurement import Measurement, observe, summarize
-from switcher import halts_keychain_work, install_service, measure_and_review
+from switcher import halts_keychain_work, install_service, measure_and_review, run
 
 
 class ServiceRecoveryTests(unittest.TestCase):
@@ -91,3 +92,20 @@ class ServiceRecoveryTests(unittest.TestCase):
     def test_unknown_power_state_and_incompatible_layout_halt(self):
         self.assertTrue(system_awake(Mock(return_value=Mock(returncode=1, stdout=''))))
         self.assertTrue(halts_keychain_work(IncompatibleLayout('changed'), awake=lambda: False))
+
+    def test_daemon_reclaims_crashed_helper_lock_after_startup(self):
+        event = threading.Event()
+        at = [0]
+        orphan = self.state.root / 'restart-finished.lock'
+        def tick(*_):
+            if at[0] == 0:
+                orphan.touch()
+                at[0] = 3601
+            else:
+                self.assertFalse(orphan.exists())
+                event.set()
+            return None, 0, None
+        with patch('switcher.threading.Event', return_value=event), patch('switcher.signal.signal'), \
+                patch('switcher.time.monotonic', side_effect=lambda: at[0]), \
+                patch('switcher.tick_once', side_effect=tick), patch('switcher.measure_and_review', return_value=0):
+            run(self.app, False)

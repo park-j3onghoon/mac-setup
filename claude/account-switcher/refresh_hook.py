@@ -54,9 +54,12 @@ def hook():
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).
         if restart.limited() or restart.needed():
+            environment = os.environ.copy()
+            if isinstance(restart.last_session, dict):
+                environment['CLAUDE_SWITCHER_REGISTRY_PID'] = str(restart.last_session['pid'])
             subprocess.Popen([sys.executable, __file__, '--helper', session_id, surface],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True)
+                             stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
     except (SessionEnded, SwitcherError, OSError, ValueError, subprocess.SubprocessError):
         pass
     return 0
@@ -67,7 +70,11 @@ def helper(session_id, surface):
     lock = f'restart-{session_id}'
     try:
         with state.lock(lock):
-            outcome = SelfRestart(state, Path.home() / '.claude', session_id, surface).run()
+            restart = SelfRestart(state, Path.home() / '.claude', session_id, surface)
+            pid = os.environ.get('CLAUDE_SWITCHER_REGISTRY_PID', '')
+            if pid.isdecimal():
+                restart.registry_hint = {'pid': int(pid)}
+            outcome = restart.run()
     except SwitcherError:
         return 0  # Another helper already handles this session.
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
