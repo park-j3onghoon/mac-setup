@@ -55,6 +55,21 @@ class EnrollmentTests(unittest.TestCase):
         # then
         self.assertIsNone(switch_pending(self.app.state, NOW + 60))
 
+    def test_capture_does_not_save_a_refresh_token_replaced_during_verification(self):
+        """소유자 확인 중 갱신 토큰만 바뀌어도 이전 인증을 등록하지 않는다."""
+        original = self.app.api.profile
+
+        def rotate(oauth):
+            self.app.vault.active['claudeAiOauth']['refreshToken'] = 'latest-refresh'
+            return original(oauth)
+
+        self.app.api.profile = rotate
+        with self.assertRaisesRegex(SwitcherError, 'retry capture'):
+            self.app.capture('personal@example.com')
+        self.app.capture('personal@example.com')
+        saved = self.app.vault.read('personal@example.com')
+        self.assertEqual(saved['oauth']['refreshToken'], 'latest-refresh')
+
 
 if __name__ == '__main__':
     unittest.main()

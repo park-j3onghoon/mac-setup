@@ -64,7 +64,7 @@ class Switcher:
             self.verify_identity(bundle)
             with self.live.locked():
                 current, current_account = self.live.read()
-                if (fingerprint(current['claudeAiOauth']) != fingerprint(bundle['oauth'])
+                if (current['claudeAiOauth'] != bundle['oauth']
                         or current_account != account):
                     raise SwitcherError('Claude login changed during enrollment; retry capture')
                 self.vault.write(expected_email, bundle)
