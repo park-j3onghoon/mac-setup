@@ -1,6 +1,7 @@
 """Own an isolated app-server; account changes stay in that server's memory."""
 
 import os
+import hashlib
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import closing
@@ -19,7 +20,7 @@ import time
 from policy import THRESHOLD, UsageUnavailable
 from profiles import BINARY, PROFILES
 from rpc import Rpc, RpcNotSent, RpcRejected
-from state import RUNTIME
+from state import RUNTIME, load, save
 
 
 SOCKET = RUNTIME / "auto.sock"
@@ -27,6 +28,7 @@ CONTINUE_PROMPT = "이어서 해줘"
 # A thread in systemError runs nothing; leaving it out of the wait keeps one failed thread
 # from blocking every later switch.
 QUIET = ("idle", "notLoaded", "systemError")
+SCAN_COMPLETE = object()
 
 
 def process_start(pid):
@@ -76,6 +78,8 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
             os.replace(replacement, target)
     else:
         link_missing(target, config)
+    for profile_config in Path(config).parent.glob('*.config.toml'):
+        link_missing(home / profile_config.name, profile_config)
     for name in ("AGENTS.md", "skills", "agents", "rules",
                  "plugins", "packages", "hooks.json", ".hook-trust"):
         target = home / name
@@ -117,24 +121,41 @@ def preserve_server_package(binary, home):
             result.append(path.stat().st_size)
         return result
 
+    def digests(package):
+        result = []
+        for name in executables:
+            digest = hashlib.sha256()
+            with (package / 'bin' / name).open('rb') as stream:
+                for block in iter(lambda: stream.read(1 << 20), b''):
+                    digest.update(block)
+            result.append(digest.hexdigest())
+        return result
+
     cached, original = sizes(current), sizes(release)
-    if cached is None or original is not None and cached != original:
+    manifest = '.switcher-checksums.json'
+    recorded = load(current / manifest).get('sha256')
+    expected = digests(release) if original is not None else recorded
+    matches = cached is not None and expected and digests(current) == expected
+    if not matches:
         if original is None:
             raise UsageUnavailable(f"Codex package {release.name} has incomplete executables")
         with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
             staging = Path(temporary)
             staged = staging / "package"
             shutil.copytree(release, staged)
-            if sizes(staged) != original:
+            if sizes(staged) != original or digests(staged) != expected:
                 raise UsageUnavailable(f"Codex package {release.name} changed during staging")
+            save({'sha256': expected}, staged / manifest)
             if current.exists() or current.is_symlink():
                 current.rename(staging / 'replaced')
             staged.rename(current)
+    elif recorded != expected:
+        save({'sha256': expected}, current / manifest)
 
     return current / "bin" / installed.name
 
 
-def prune_server_packages(server_binary, home):
+def prune_server_packages(server_binary, home, keep=()):
     current = Path(server_binary).parent.parent
     packages = home / "app-server-packages"
     if current.parent != packages:
@@ -143,7 +164,7 @@ def prune_server_packages(server_binary, home):
         staging = Path(temporary)
         # 정리 중 종료돼도 다음 시작에서 반쯤 지운 릴리스를 재사용하지 않도록 먼저 이름을 옮긴다.
         for previous in packages.iterdir():
-            if previous not in (current, staging) and previous.is_dir() and not previous.is_symlink():
+            if previous not in (current, staging) and previous.name not in keep and previous.is_dir() and not previous.is_symlink():
                 previous.rename(staging / previous.name)
 
 
@@ -234,9 +255,17 @@ class Runtime:
         self.continuing_thread = None
         self.continuation_changed = False
         self.prepared_upgrade = None
+        self.upgrade_inspection = None
+        self.continuation_path = None
+        self.next_subscription_scan = 0
+        self.new_subscriptions = set()
+        self.settled_threads = {}
 
     def start(self, *, restore_account=None):
         prepare_home(self.home)
+        self.continuation_path = self.home / 'continuation-receipts.json'
+        self.uncertain_continuations = load(self.continuation_path)
+        self.continued.update(self.uncertain_continuations)
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
             try:
@@ -309,7 +338,10 @@ class Runtime:
 
     def running(self):
         if self.process is not None:
-            return self.process.poll() is None
+            alive = self.process.poll() is None
+            if alive and not self.pid_start:
+                self.pid_start = process_start(self.process.pid)
+            return alive
         if not self.pid_start:
             return False
         if self.exit_watch:
@@ -360,6 +392,9 @@ class Runtime:
                     if client.version != installed.parent.parent.name:
                         raise UsageUnavailable("The staged Codex server reported a different version")
             self.prepared_upgrade = installed
+            self.upgrade_inspection = None
+            if isinstance(self.client.version, str):
+                prune_server_packages(candidate, self.home, keep=(self.client.version,))
         if self.client.closed:
             self.observe_account()
         if self.idle_pending or (self.continuation_future and not self.continuation_future.done()):
@@ -367,17 +402,47 @@ class Runtime:
         with self.activity_lock:
             serial = self.activity_serial
         deadline = time.monotonic() + 4
-        for thread_id, thread in loaded_threads(self.client, deadline):
+        job = self.upgrade_inspection
+        if not job or (job['serial'], job['client']) != (serial, self.client):
+            if job and job['future'] and not job['future'].done():
+                return False
+            job = self.upgrade_inspection = {'serial': serial, 'client': self.client,
+                'checks': self.upgrade_checks(self.client), 'future': None}
+        try:
+            while time.monotonic() < deadline:
+                if job['future'] is None:
+                    job['future'] = self.worker_pool().submit(next, job['checks'], SCAN_COMPLETE)
+                try:
+                    safe = job['future'].result(timeout=min(.05, max(0, deadline - time.monotonic())))
+                except FutureTimeout:
+                    if job['future'].done():
+                        job['future'].result()
+                    return False
+                job['future'] = None
+                if safe is SCAN_COMPLETE:
+                    break
+                if not safe:
+                    self.upgrade_inspection = None
+                    return False
+            else:
+                return False
+        except Exception:
+            self.upgrade_inspection = None
+            raise
+        self.upgrade_inspection = None
+        return self.finish_upgrade(serial)
+
+    def upgrade_checks(self, client):
+        for thread_id, thread in loaded_threads(client):
             if not quiet(thread) or thread.get("ephemeral"):
-                return False
+                yield False
             params = {"threadId": thread_id}
-            if scan_request(self.client, "thread/backgroundTerminals/list", params, deadline)["data"]:
-                return False
-            if scan_request(self.client, "thread/queue/list", params, deadline)["data"]:
-                return False
-            goal = scan_request(self.client, "thread/goal/get", params, deadline)["goal"]
-            if goal and goal["status"] == "active":
-                return False
+            yield not client.request("thread/backgroundTerminals/list", params)["data"]
+            yield not client.request("thread/queue/list", params)["data"]
+            goal = client.request("thread/goal/get", params)["goal"]
+            yield not goal or goal["status"] == "complete"
+
+    def finish_upgrade(self, serial):
         self.observe_account()
         if self.active is None:
             raise UsageUnavailable("Cannot restore an unknown account after the update")
@@ -404,24 +469,21 @@ class Runtime:
         if self.active != name:
             raise UsageUnavailable("Updated runtime account did not match the previous account")
 
-    def refresh(self, method, params):
+    def refresh(self, method, params, *, cancel=None):
         if method != "account/chatgptAuthTokens/refresh":
             raise UsageUnavailable("Unexpected runtime request")
         previous = params.get("previousAccountId")
         for profile in self.profiles.values():
             if previous and profile.account_id == previous:
-                return profile.tokens(force=True)
+                return profile.tokens(force=True, cancel=cancel) if cancel is not None else profile.tokens(force=True)
         raise UsageUnavailable("Unknown account requested a token refresh")
 
     def release_subscriptions(self):
         """한 대화씩 최대 2초 안에 정리하여 감독 루프에 제어를 돌려준다."""
         if self.continuation_future is not None and not self.continuation_future.done():
             return False
-        if self.idle_job is not None:
-            if self.idle_job['future'].done() and time.monotonic() >= self.idle_job['deadline']:
-                self.idle_job = None
-            else:
-                return False
+        if self.idle_pending:
+            return False
         if self.client.closed:
             self.release_ids.clear()
             self.release_cursor = None
@@ -435,26 +497,42 @@ class Runtime:
             return self.client.request(method, params, timeout=remaining)
 
         if not self.release_ids:
-            page = request('thread/loaded/list', {'cursor': self.release_cursor})
-            self.release_ids.extend(page.get('data', []))
-            self.release_cursor = page.get('nextCursor')
+            with self.activity_lock:
+                self.release_ids.extend(self.new_subscriptions)
+                self.new_subscriptions.clear()
+            if not self.release_ids and (self.release_cursor or time.monotonic() >= self.next_subscription_scan):
+                page = request('thread/loaded/list', {'cursor': self.release_cursor})
+                self.release_ids.extend(page.get('data', []))
+                self.release_cursor = page.get('nextCursor')
+                if not self.release_cursor:
+                    self.next_subscription_scan = time.monotonic() + 600
         if self.release_ids:
             thread_id = self.release_ids[0]
             params = {'threadId': thread_id}
             try:
                 thread = request('thread/read', {**params, 'includeTurns': False}).get('thread', {})
                 if quiet(thread) and not request('thread/backgroundTerminals/list', params)['data']:
-                    request('thread/unsubscribe', params)
+                    goal = request('thread/goal/get', params)['goal']
+                    if (not goal or goal.get('status') == 'complete') and not request('thread/queue/list', params)['data']:
+                        request('thread/unsubscribe', params)
             finally:
                 self.release_ids.popleft()
         return not self.release_ids and not self.release_cursor
 
     def activity(self, method, params):
-        if (method in ('thread/started', 'turn/started') or method == 'thread/status/changed'
+        owner = params.get('threadId') or (params.get('thread') or {}).get('id')
+        with self.activity_lock:
+            if owner:
+                self.settled_threads.pop(owner, None)
+            else:
+                self.settled_threads.clear()
+        if (method in ('thread/started', 'turn/started', 'turn/completed', 'thread/queue/changed',
+                       'thread/goal/updated', 'thread/goal/cleared') or method == 'thread/status/changed'
                 and params.get('status', {}).get('type') not in QUIET):
             with self.activity_lock:
                 self.activity_serial += 1
-                owner = params.get("threadId") or (params.get("thread") or {}).get("id")
+                if owner and method == 'thread/started':
+                    self.new_subscriptions.add(owner)
                 if self.continuing_thread and owner in (None, self.continuing_thread):
                     self.continuation_changed = True
 
@@ -512,6 +590,7 @@ class Runtime:
             return False
         if profile.usage()['used_percent'] >= THRESHOLD:
             raise UsageUnavailable('Target account no longer has available quota')
+        tokens = profile.tokens()
         if not force and serial != self.activity_serial:
             return False
         old = self.active
@@ -566,10 +645,12 @@ class Runtime:
                     failed = self.continuation_failed
                     if self.continuation_missing is None:
                         self.continuation_missing = deque()
-                        if not failed:
-                            for gone in self.continued.keys() - self.continuation_seen - self.uncertain_continuations.keys():
-                                self.continued.pop(gone)
-                            self.continuation_missing.extend(self.uncertain_continuations.keys() - self.continuation_seen)
+                        for gone in self.continued.keys() - self.continuation_seen - self.uncertain_continuations.keys():
+                            self.continued.pop(gone)
+                        self.continuation_missing.extend(self.uncertain_continuations.keys() - self.continuation_seen)
+                        with self.activity_lock:
+                            for gone in self.settled_threads.keys() - self.continuation_seen:
+                                self.settled_threads.pop(gone)
                     if self.continuation_missing:
                         gone = self.continuation_missing.popleft()
                         # An unloaded conversation may return. Confirm deletion before permitting replay.
@@ -579,6 +660,7 @@ class Runtime:
                             if error.thread_missing:
                                 self.uncertain_continuations.pop(gone, None)
                                 self.continued.pop(gone, None)
+                                self.store_continuations()
                         except UsageUnavailable:
                             pass
                         continue
@@ -608,6 +690,9 @@ class Runtime:
 
     def continue_thread(self, thread_id, client):
         with self.activity_lock:
+            cached = self.settled_threads.get(thread_id)
+            if cached and cached[0] is client and time.monotonic() < cached[1]:
+                return
             self.continuing_thread, self.continuation_changed = thread_id, False
         try:
             self._continue_thread(thread_id, client)
@@ -622,19 +707,34 @@ class Runtime:
         # A parent drives its sub-agents; direct turn/start on a child is rejected.
         if thread.get('parentThreadId') or not quiet(thread):
             if thread.get('status', {}).get('type') == 'active':
-                self.uncertain_continuations.pop(thread_id, None)
+                if self.uncertain_continuations.pop(thread_id, None):
+                    self.store_continuations()
             return
         turn = newest_turn(client, thread_id)
         uncertain = self.uncertain_continuations.get(thread_id)
         if uncertain and turn and turn['id'] != uncertain:
             self.uncertain_continuations.pop(thread_id, None)
+            self.store_continuations()
         if (not turn or self.continued.get(thread_id) == turn['id'] or turn['status'] != 'failed'
                 or (turn.get('error') or {}).get('codexErrorInfo') != 'usageLimitExceeded'):
+            if turn and turn['status'] == 'completed' and not self.continuation_changed:
+                with self.activity_lock:
+                    if not self.continuation_changed:
+                        self.settled_threads[thread_id] = (client, time.monotonic() + 300)
             return
         if self.continuation_changed:
             return
+        if client.request('thread/queue/list', {'threadId': thread_id})['data']:
+            return
         latest = newest_turn(client, thread_id)
         if self.continuation_changed or latest != turn:
+            return
+        self.uncertain_continuations[thread_id] = turn['id']
+        self.store_continuations()
+        if (self.continuation_changed or client.request('thread/queue/list', {'threadId': thread_id})['data']
+                or self.continuation_changed):
+            self.uncertain_continuations.pop(thread_id, None)
+            self.store_continuations()
             return
         self.continued[thread_id] = turn['id']
         try:
@@ -643,10 +743,19 @@ class Runtime:
             })
         except (RpcRejected, RpcNotSent):
             self.continued.pop(thread_id, None)
+            self.uncertain_continuations.pop(thread_id, None)
+            self.store_continuations()
             raise
         except UsageUnavailable:
             self.uncertain_continuations[thread_id] = turn['id']
             raise
+        else:
+            self.uncertain_continuations.pop(thread_id, None)
+            self.store_continuations()
+
+    def store_continuations(self):
+        if self.continuation_path:
+            save(self.uncertain_continuations, self.continuation_path)
 
     def close(self):
         if self.exit_watch is not None:
@@ -655,6 +764,7 @@ class Runtime:
         if self.client:
             self.client.close()
             self.client = None
+        self.settled_threads.clear()
         if self.idle_pool:
             self.idle_pool.shutdown(wait=False, cancel_futures=True)
             self.idle_pool = None

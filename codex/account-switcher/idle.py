@@ -3,10 +3,12 @@
 from collections import Counter, defaultdict, deque
 import base64
 import hashlib
+import heapq
 import json
 import os
 from pathlib import Path
 import queue
+import re
 import select
 import socket
 import struct
@@ -30,6 +32,39 @@ READ_METHODS = {"thread/read", "thread/turns/list", "thread/items/list", "thread
 SOURCE_REVISION = hashlib.sha256(b''.join(
     Path(__file__).with_name(name).read_bytes() for name in ('idle.py', 'unix_ws.py')
 )).hexdigest()
+DIFF_HEADER = re.compile(br'^\s*\{\s*"method"\s*:\s*"turn/diff/updated"\s*,\s*"params"\s*:\s*\{'
+                         br'\s*"threadId"\s*:\s*"([\w.-]{1,128})"\s*,'
+                         br'(?:\s*"turnId"\s*:\s*"[\w.-]{1,128}"\s*,)?\s*"diff"\s*:\s*"')
+DIFF_END = re.compile(br'\s*\}\s*\}\s*\Z')
+DIFF_VALUE = re.compile(br'"diff"\s*:\s*"')
+
+
+def diff_route(payload):
+    header = DIFF_HEADER.match(payload)
+    field = header or DIFF_VALUE.search(payload, 0, 4096)
+    if not field:
+        return None
+    cursor = field.end()
+    while (quote := payload.find(b'"', cursor)) >= 0:
+        escape = quote
+        while escape > cursor and payload[escape - 1] == 92:
+            escape -= 1
+        if (quote - escape) % 2 == 0:
+            if header and DIFF_END.fullmatch(payload, quote + 1):
+                return {'method': 'turn/diff/updated', 'params': {'threadId': header[1].decode()}}
+            if field.end() + len(payload) - quote <= 8192:
+                try:
+                    envelope = json.loads(payload[:field.end()] + payload[quote:])
+                except ValueError:
+                    return None
+                if (isinstance(envelope, dict) and 'id' not in envelope
+                        and envelope.get('method') == 'turn/diff/updated'
+                        and isinstance(envelope.get('params'), dict)
+                        and envelope['params'].get('diff') == ''):
+                    return routing(envelope, 'server')
+            break
+        cursor = quote + 1
+    return None
 
 
 def routing(message, side):
@@ -41,7 +76,7 @@ def routing(message, side):
         fields |= RESUME_FIELDS
     route['params'] = {key: params[key] for key in fields if key in params}
     for key in ('dynamicTools', 'selectedCapabilityRoots', 'environments', 'history'):
-        if params.get(key):
+        if params.get(key) or key == 'environments' and params.get(key) is not None:
             route['params'][key] = True
     thread = params.get('thread')
     if thread:
@@ -65,10 +100,14 @@ class IdleThreads:
         self.sleeping = set()
         self.inspecting = None
         self.child_counts = Counter()
+        self.due = []
+        self.scheduled = {}
+        self.serial = 0
 
     def forget(self, thread_id):
         saved = self.threads.pop(thread_id, None)
         self.sleeping.discard(thread_id)
+        self.scheduled.pop(thread_id, None)
         if saved and saved["parent"]:
             parent = saved["parent"]
             self.child_counts[parent] -= 1
@@ -77,7 +116,7 @@ class IdleThreads:
 
     def track(self, result, params, now):
         thread = result["thread"]
-        blocked = (thread["ephemeral"] or any(params.get(key) for key in
+        blocked = (thread["ephemeral"] or params.get('environments') is not None or any(params.get(key) for key in
                    ("dynamicTools", "selectedCapabilityRoots", "environments", "history")))
         self.forget(thread["id"])
         self.threads[thread["id"]] = {
@@ -92,6 +131,31 @@ class IdleThreads:
             self.preserve(parent)
         if self.child_counts[thread["id"]]:
             self.preserve(thread["id"])
+        self.schedule(thread['id'], now + self.delay)
+
+    def schedule(self, owner, due, *, earlier=False):
+        entry = self.scheduled.get(owner)
+        if entry is None or earlier and due < entry[0]:
+            self.serial += 1
+            self.scheduled[owner] = (due, self.serial)
+            heapq.heappush(self.due, (due, self.serial, owner))
+        if len(self.due) > 2 * len(self.scheduled) + 32:
+            self.due = [(*entry, key) for key, entry in self.scheduled.items()]
+            heapq.heapify(self.due)
+
+    def candidates(self, now):
+        while self.due and self.due[0][0] <= now:
+            due, serial, owner = heapq.heappop(self.due)
+            if self.scheduled.get(owner) != (due, serial):
+                continue
+            del self.scheduled[owner]
+            saved = self.threads.get(owner)
+            if not saved or saved['blocked'] or owner in self.sleeping and not saved['parent']:
+                continue
+            next_due = saved['last_activity'] + self.delay
+            self.schedule(owner, max(now + max(.001, self.delay), next_due))
+            if next_due <= now:
+                yield owner, saved
 
     def preserve(self, thread_id):
         if thread_id in self.threads:
@@ -100,6 +164,7 @@ class IdleThreads:
     def touch(self, thread_id, now):
         if thread_id in self.threads:
             self.threads[thread_id]["last_activity"] = now
+            self.schedule(thread_id, now + self.delay)
 
     def park(self, now):
         checks = self.inspect(now)
@@ -117,14 +182,39 @@ class IdleThreads:
             checks.close()
 
     def inspect(self, now):
+        cache = {}
+        work = deque((owner, self.inspect_candidates(now, ((owner, saved),), cache), None)
+                     for owner, saved in self.candidates(now))
         try:
-            yield from self.inspect_candidates(now)
+            while work:
+                owner, checks, reply = work.popleft()
+                self.inspecting = owner
+                until = time.monotonic() + 2
+                try:
+                    while True:
+                        step = checks.send(reply)
+                        try:
+                            reply = yield step
+                        except Exception as error:
+                            checks.throw(error)
+                            raise
+                        if work and time.monotonic() >= until:
+                            work.append((owner, checks, reply))
+                            break
+                except StopIteration:
+                    continue
+                finally:
+                    if not work or work[-1][1] is not checks:
+                        checks.close()
         finally:
+            for owner, checks, _ in work:
+                checks.close()
+                self.schedule(owner, now, earlier=True)
             self.inspecting = None
 
-    def inspect_candidates(self, now):
-        ancestors = None
-        for thread_id, saved in list(self.threads.items()):
+    def inspect_candidates(self, now, candidates, cache):
+        started = time.monotonic()
+        for thread_id, saved in candidates:
             activity = saved['last_activity']
             was_sleeping = thread_id in self.sleeping
             if (saved["blocked"] or (was_sleeping and not saved["parent"])
@@ -132,6 +222,7 @@ class IdleThreads:
                 continue
             self.inspecting = thread_id
             if not self.can_park():
+                self.schedule(thread_id, now + 1, earlier=True)
                 continue
             # root runtime은 내려간 자식의 mailbox·environment도 소유한다 (0.169.0).
             children = yield "thread/list", {"parentThreadId": thread_id, "limit": 1}
@@ -139,6 +230,7 @@ class IdleThreads:
                 saved["blocked"] = True
                 continue
             # 영속 목록에 없는 ephemeral 자식도 보존한다.
+            ancestors = cache.get('ancestors')
             if ancestors is None:
                 ancestors, parents = set(), {}
                 cursor = catalog_cursor = None
@@ -164,33 +256,39 @@ class IdleThreads:
                                 other = (yield 'thread/read', {'threadId': other_id})['thread']
                                 parents[other_id] = other.get('parentThreadId')
                             other_id = parents[other_id]
-                            if not other_id or other_id in seen:
+                            if not other_id or other_id in seen or other_id in ancestors:
                                 break
                             ancestors.add(other_id)
                             seen.add(other_id)
                     cursor = loaded.get('nextCursor')
                     if not cursor:
                         break
+                cache['ancestors'] = ancestors
             if thread_id in ancestors:
                 saved["blocked"] = True
                 continue
             params = {"threadId": thread_id}
             thread = (yield "thread/read", params)["thread"]
             if thread["status"]["type"] != "idle" or thread["ephemeral"]:
-                saved["last_activity"] = now
+                self.touch(thread_id, now + (time.monotonic() - started))
                 continue
             terminals = yield "thread/backgroundTerminals/list", params
             if terminals["data"]:
-                saved["last_activity"] = now
+                self.touch(thread_id, now + (time.monotonic() - started))
                 continue
             goal = (yield "thread/goal/get", params)["goal"]
+            if goal and goal["status"] != "complete":
+                self.touch(thread_id, now + (time.monotonic() - started))
+                continue
             queued = yield "thread/queue/list", params
+            if queued["data"]:
+                self.touch(thread_id, now + (time.monotonic() - started))
+                continue
             turns = yield "thread/turns/list", {
                 **params, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
             }
-            if (queued["data"] or not turns["data"]
-                    or (goal and goal["status"] != "complete")):
-                saved["last_activity"] = now
+            if not turns["data"]:
+                self.touch(thread_id, now + (time.monotonic() - started))
                 continue
             if not self.can_park():
                 continue
@@ -202,7 +300,7 @@ class IdleThreads:
             try:
                 yield "thread/unsubscribe", params
                 if saved['last_activity'] == activity:
-                    saved["last_activity"] = now
+                    self.touch(thread_id, now + (time.monotonic() - started))
             except Exception:
                 if not was_sleeping:
                     self.sleeping.discard(thread_id)
@@ -314,6 +412,26 @@ class ForwardQueue(queue.Queue):
         return event
 
 
+class WakeSchedule(dict):
+    def __init__(self, changed):
+        super().__init__()
+        self.changed = changed
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.changed()
+
+
+class MaintenanceReply(queue.Queue):
+    def __init__(self, owner):
+        super().__init__(maxsize=1)
+        self.owner = owner
+
+    def _put(self, response):
+        super()._put(response)
+        self.owner.wake_dirty = True
+
+
 class Proxy:
     request_limit = 4096
     request_byte_limit = 256 << 20
@@ -328,11 +446,22 @@ class Proxy:
         self.request_sizes = {}
         self.request_bytes = 0
         self.discoveries = {}
-        self.wakeups = {}
-        self.wake_requests = {}
+        self.wake_dirty = True
+        self.wakeups = WakeSchedule(self.wake_changed)
+        self.next_wake_check = 0
+        self.wake_requests = WakeSchedule(self.wake_changed)
         self.deferred = defaultdict(deque)
         self.deferred_count = self.deferred_bytes = 0
         self.resuming = set()
+        self.explicit_resumes = {}
+        self.expired_resumes = {}
+        self.external_roots = {}
+        self.request_owners = {}
+        self.owner_counts = Counter()
+        self.early_closes = {}
+        self.check_params = {}
+        self.writers = {}
+        self.stopped = threading.Event()
         self.idle = IdleThreads(self.request, delay, self.can_park)
         self.initialized = False
         self.prefix = "idle-" + uuid.uuid4().hex + "-"
@@ -345,9 +474,7 @@ class Proxy:
         owner = self.idle.inspecting
         return (owner not in self.wakeups and owner not in self.wake_requests and owner not in self.resuming
                 and not self.events.blocks(owner) and not self.discoveries
-                and all(params.get("threadId") not in (None, owner)
-                        for _, params in self.client_requests.values())
-                and all(thread not in (None, owner) for thread in self.server_requests.values()))
+                and not self.owner_counts[owner] and not self.owner_counts[None])
 
     def request(self, method, params):
         self.serial += 1
@@ -355,7 +482,7 @@ class Proxy:
         response = queue.Queue(maxsize=1)
         self.pending[request_id] = response
         try:
-            self.upstream.send(json.dumps({"id": request_id, "method": method, "params": params}).encode())
+            self.send('server', json.dumps({"id": request_id, "method": method, "params": params}).encode())
             deadline = time.monotonic() + 30
             while True:
                 try:
@@ -368,7 +495,7 @@ class Proxy:
                 if method != "thread/resume" or not closing or time.monotonic() >= deadline:
                     raise UsageUnavailable("Idle resource request failed: " + method)
                 time.sleep(.1)
-                self.upstream.send(json.dumps({"id": request_id, "method": method, "params": params}).encode())
+                self.send('server', json.dumps({"id": request_id, "method": method, "params": params}).encode())
             return message["result"]
         finally:
             self.pending.pop(request_id, None)
@@ -387,6 +514,11 @@ class Proxy:
             self.events.put((side, None))
 
     def receive(self, side, payload):
+        if side == 'server' and len(payload) >= 65536:
+            route = diff_route(payload)
+            if route:
+                self.events.put((side, payload, route))
+                return
         message = json.loads(payload)
         request_id = message.get('id')
         target = self.pending.get(request_id)
@@ -394,6 +526,7 @@ class Proxy:
                 target is not None or isinstance(request_id, str) and request_id.startswith(self.prefix)):
             if target is not None:
                 target.put_nowait(message)
+                self.next_wake_check = 0
                 self.events.put(('maintenance', None))
             return
         params = message.get("params") or {}
@@ -404,10 +537,20 @@ class Proxy:
         if (side == "server" and thread_id in self.idle.sleeping
                 and not child_woke
                 and message.get("method") in ("thread/closed", "thread/started", "thread/status/changed")):
+            if (message['method'] == 'thread/closed' and getattr(self, 'check_method', None) == 'thread/unsubscribe'
+                    and self.check_params.get('threadId') == thread_id):
+                self.early_closes[thread_id] = (side, payload, routing(message, side))
             return
         self.events.put((side, payload, routing(message, side)))
 
     def run(self):
+        writers = []
+        for side, transport in (('client', self.client), ('server', self.upstream)):
+            outgoing = ForwardQueue(self.request_byte_limit // 2)
+            self.writers[side] = outgoing
+            writer = threading.Thread(target=self.write_messages, args=(outgoing, transport), daemon=True)
+            writer.start()
+            writers.append(writer)
         readers = [threading.Thread(target=self.read, args=(side, transport), daemon=True)
                    for side, transport in (("client", self.client), ("server", self.upstream))]
         for reader in readers:
@@ -426,6 +569,12 @@ class Proxy:
                     self.inspect_idle()
                     continue
                 if payload is None:
+                    if not self.stopped.is_set():
+                        deadline = time.monotonic() + 2
+                        for outgoing in self.writers.values():
+                            with outgoing.all_tasks_done:
+                                outgoing.all_tasks_done.wait_for(lambda: not outgoing.unfinished_tasks,
+                                    timeout=max(0, deadline - time.monotonic()))
                     break
                 message = event[2]
                 if side == "client":
@@ -443,9 +592,48 @@ class Proxy:
                 self.close()
             for reader in readers:
                 reader.join(timeout=2)
+            for outgoing in self.writers.values():
+                outgoing.put((None, None))
+            for writer in writers:
+                writer.join(timeout=2)
+
+    def send(self, side, payload):
+        if side in self.writers:
+            try:
+                self.writers[side].put_nowait((side, payload))
+            except queue.Full as error:
+                raise OSError('Proxy output buffer is full') from error
+        else:
+            (self.upstream if side == 'server' else self.client).send(payload)
+
+    def write_messages(self, outgoing, transport):
+        try:
+            while True:
+                _, payload = outgoing.get()
+                try:
+                    if payload is None:
+                        return
+                    transport.send(payload)
+                finally:
+                    outgoing.task_done()
+                del payload
+        except (OSError, EOFError, ValueError):
+            self.close()
 
     def inspect_idle(self):
         now = time.monotonic()
+        for owner, (request_id, deadline) in list(self.explicit_resumes.items()):
+            if now >= deadline:
+                self.explicit_resumes.pop(owner)
+                self.resuming.discard(owner)
+                self.release_request('client', request_id)
+                self.client_requests.pop(request_id, None)
+                if len(self.expired_resumes) >= self.request_limit:
+                    self.expired_resumes.pop(next(iter(self.expired_resumes)))
+                self.expired_resumes[request_id] = True
+                self.send('client', json.dumps({'id': request_id, 'error': {
+                    'code': -32000, 'message': 'Thread resume timed out'}}).encode())
+                self.flush_deferred(owner, failed=True)
         if self.wakeups or self.wake_requests:
             self.advance_wakes(now)
         if self.checks is None:
@@ -464,23 +652,28 @@ class Proxy:
             self.pending.pop(self.check_id)
             self.check_id = None
             if 'error' in response:
+                if self.check_params.get('threadId') in self.early_closes:
+                    self.events.put(self.early_closes.pop(self.check_params['threadId']))
                 self.cancel_inspection(UsageUnavailable('Idle resource request failed'))
                 return
             result = response['result']
+            self.early_closes.pop(self.check_params.get('threadId'), None)
+            self.check_method = None
         try:
             method, params = self.checks.send(result)
         except StopIteration:
             self.checks = None
             return
         self.check_params = params
+        self.check_method = method
         self.check_deadline = now + 30
         self.check_id = self.begin_request(method, params)
 
     def begin_request(self, method, params):
         self.serial += 1
         request_id = self.prefix + str(self.serial)
-        self.pending[request_id] = queue.Queue(maxsize=1)
-        self.upstream.send(json.dumps({'id': request_id, 'method': method, 'params': params}).encode())
+        self.pending[request_id] = MaintenanceReply(self) if method == 'thread/resume' else queue.Queue(maxsize=1)
+        self.send('server', json.dumps({'id': request_id, 'method': method, 'params': params}).encode())
         return request_id
 
     def wake_target(self, owner):
@@ -493,7 +686,13 @@ class Proxy:
             thread = self.idle.threads[thread]['parent']
         return target
 
+    def wake_changed(self):
+        self.wake_dirty = True
+
     def advance_wakes(self, now):
+        if now < self.next_wake_check and not self.wake_dirty:
+            return
+        self.wake_dirty = False
         for target, (request_id, deadline) in list(self.wake_requests.items()):
             try:
                 response = self.pending[request_id].get_nowait()
@@ -531,6 +730,9 @@ class Proxy:
             elif target not in self.wake_requests and target not in self.resuming:
                 params = {**self.idle.threads[target]['params'], 'threadId': target, 'excludeTurns': True}
                 self.wake_requests[target] = self.begin_request('thread/resume', params), now + 30
+        future = [due for due in self.wakeups.values() if due > now]
+        future.extend(end for _, end in self.wake_requests.values())
+        self.next_wake_check = min(future, default=0)
 
     def inspect_threads(self, now):
         for thread_id in list(self.discoveries):
@@ -540,6 +742,10 @@ class Proxy:
                 self.discoveries.pop(thread_id, None)
             if thread.get('parentThreadId') and thread_id not in self.idle.threads:
                 self.idle.track({'thread': thread}, {}, time.monotonic())
+            elif not thread.get('parentThreadId'):
+                if len(self.external_roots) >= self.request_limit:
+                    self.external_roots.pop(next(iter(self.external_roots)))
+                self.external_roots[thread_id] = time.monotonic() + 300
         yield from self.idle.inspect(now)
 
     def cancel_inspection(self, error=None):
@@ -552,6 +758,8 @@ class Proxy:
                     pass
             self.checks.close()
             self.checks = None
+        self.early_closes.clear()
+        self.check_method = None
         if self.check_id is not None:
             self.pending.pop(self.check_id, None)
             self.check_id = None
@@ -561,13 +769,14 @@ class Proxy:
             self.deferred_count -= 1
             self.deferred_bytes -= len(payload)
             if failed:
-                self.client.send(json.dumps({'id': message['id'], 'error': {
+                self.send('client', json.dumps({'id': message['id'], 'error': {
                     'code': -32600, 'message': 'Could not resume the idle thread. Retry submission.',
                 }}).encode())
             else:
                 self.forward_client(message, payload)
 
     def close(self):
+        self.stopped.set()
         self.client.close()
         self.upstream.close()
         for response in list(self.pending.values()):
@@ -582,8 +791,9 @@ class Proxy:
         if method == "initialized":
             self.initialized = True
         if method and thread_id:
-            if method not in READ_METHODS:
-                self.idle.touch(thread_id, time.monotonic())
+            if method not in READ_METHODS or thread_id in self.deferred or thread_id in self.resuming:
+                if method not in READ_METHODS:
+                    self.idle.touch(thread_id, time.monotonic())
                 needs_wake = (thread_id in self.idle.sleeping
                               and method not in ('thread/resume', 'thread/unsubscribe'))
                 if needs_wake or thread_id in self.wakeups or thread_id in self.resuming:
@@ -595,26 +805,31 @@ class Proxy:
                     self.deferred_bytes += len(payload)
                     if needs_wake and thread_id not in self.resuming:
                         self.wakeups.setdefault(thread_id, 0)
+                        self.next_wake_check = 0
                     return
                 if method == 'thread/resume' and thread_id in self.idle.sleeping:
                     self.resuming.add(thread_id)
-            # realtime 상태는 추측해서 재구성하지 않는다.
-            if method.startswith("thread/realtime/"):
-                self.idle.preserve(thread_id)
+                    self.explicit_resumes[thread_id] = (message['id'], time.monotonic() + 30)
         if "id" in message:
             if method:
-                self.retain_request('client', message['id'], len(payload))
+                self.expired_resumes.pop(message['id'], None)
+                self.retain_request('client', message['id'], len(payload), thread_id)
                 self.client_requests[message["id"]] = (method, params)
             else:
                 self.release_request('server', message['id'])
                 self.server_requests.pop(message["id"], None)
-        self.upstream.send(payload)
+        self.send('server', payload)
 
     def forward_server(self, message, payload):
         method, params = message.get("method"), message.get("params") or {}
         thread_id = params.get("threadId")
-        if method == 'thread/deleted' or (method == 'thread/closed'
-                                            and self.idle.threads.get(thread_id, {}).get('ephemeral')):
+        if method == 'thread/deleted' or (method == 'thread/closed' and thread_id not in self.idle.sleeping):
+            self.external_roots.pop(thread_id, None)
+            self.explicit_resumes.pop(thread_id, None)
+            for request_id, (operation, saved) in list(self.client_requests.items()):
+                if operation == 'thread/resume' and saved.get('threadId') == thread_id:
+                    self.client_requests.pop(request_id)
+                    self.release_request('client', request_id)
             if (thread_id == self.idle.inspecting
                     or self.check_id and thread_id == self.check_params.get('threadId')):
                 self.cancel_inspection()
@@ -635,13 +850,18 @@ class Proxy:
                 and self.idle.threads[thread_id]["parent"]):
             # unload 유예 중 owner가 다시 시작한 자식은 자동 재구독되지 않는다.
             self.wakeups.setdefault(thread_id, 0)
+            self.next_wake_check = 0
         if "id" in message:
             if method:
-                self.retain_request('server', message['id'], len(payload))
+                self.retain_request('server', message['id'], len(payload), thread_id)
                 self.server_requests[message["id"]] = thread_id
             else:
+                if self.expired_resumes.pop(message['id'], False):
+                    return
                 self.release_request('client', message['id'])
                 request = self.client_requests.pop(message["id"], None)
+                if request and request[0].startswith('thread/realtime/') and 'result' in message:
+                    self.idle.preserve(request[1].get('threadId'))
                 if request and "result" in message and request[0] in ("thread/start", "thread/resume", "thread/fork"):
                     self.idle.track(message["result"], request[1], time.monotonic())
                     if request[0] != "thread/start" and not message["result"]["thread"].get("parentThreadId"):
@@ -652,6 +872,7 @@ class Proxy:
                 if request and request[0] == "thread/resume":
                     owner = request[1].get("threadId")
                     self.resuming.discard(owner)
+                    self.explicit_resumes.pop(owner, None)
                     self.flush_deferred(owner, failed="result" not in message)
         if thread_id and method and (method == "thread/status/changed" or method.startswith(("thread/goal/", "thread/queue/"))):
             self.idle.touch(thread_id, time.monotonic())
@@ -662,6 +883,8 @@ class Proxy:
         # 이 알림은 실제 sticky 설정이 달라질 때만 온다. 오래된 설정으로 resume하지 않는다.
         if method == "thread/settings/updated":
             self.idle.preserve(thread_id)
+            if thread_id in self.idle.sleeping:
+                self.idle.threads[thread_id]['params'] = {}
         if method == "serverRequest/resolved":
             self.release_request('server', params['requestId'])
             self.server_requests.pop(params["requestId"], None)
@@ -670,67 +893,95 @@ class Proxy:
             parent = params["thread"].get("parentThreadId")
             if parent and params["thread"]["id"] not in self.idle.threads:
                 self.idle.track(params, {}, time.monotonic())
-        elif method == "thread/status/changed" and thread_id not in self.idle.threads:
+        elif (method == "thread/status/changed" and thread_id not in self.idle.threads
+                and self.external_roots.get(thread_id, 0) <= time.monotonic()):
             if len(self.discoveries) >= self.request_limit:
                 raise OSError('Too many undiscovered threads')
             self.discoveries[thread_id] = None
-        self.client.send(payload)
+        self.send('client', payload)
 
-    def retain_request(self, side, request_id, size):
+    def retain_request(self, side, request_id, size, owner=None):
         key = (side, request_id)
         if (key in self.request_sizes or len(self.request_sizes) >= self.request_limit
                 or self.request_bytes + size > self.request_byte_limit):
             raise OSError('Too many pending proxy requests')
         self.request_sizes[key] = size
+        self.request_owners[key] = owner
+        self.owner_counts[owner] += 1
         self.request_bytes += size
 
     def release_request(self, side, request_id):
+        key = (side, request_id)
+        if key in self.request_owners:
+            owner = self.request_owners.pop(key)
+            self.owner_counts[owner] -= 1
+            if not self.owner_counts[owner]:
+                del self.owner_counts[owner]
         self.request_bytes -= self.request_sizes.pop((side, request_id), 0)
 
 
 def start_proxy(upstream, delay):
     directory = Path(tempfile.mkdtemp(prefix="codex-idle-"))
     endpoint = directory / "tui.sock"
+    read_fd, write_fd = os.pipe()
+    process = None
     try:
         process = subprocess.Popen(
             [sys.executable, str(Path(__file__).resolve()), str(upstream), str(endpoint), str(delay),
-             str(os.getpid())],
+             str(os.getpid()), str(write_fd)], pass_fds=(write_fd,),
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except OSError:
-        directory.rmdir()
-        raise
-    deadline = time.monotonic() + 10
-    while not endpoint.exists():
-        if process.poll() is not None or time.monotonic() >= deadline:
-            if process.poll() is None:
+        os.close(write_fd)
+        write_fd = None
+        if select.select([read_fd], [], [], 10)[0] and os.read(read_fd, 1) == b'1' and process.poll() is None:
+            return endpoint
+        raise UsageUnavailable("Idle resource proxy did not start")
+    except BaseException:
+        try:
+            if process is not None and process.poll() is None:
                 process.terminate()
-            process.wait(timeout=5)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+        finally:
             if directory.exists():
                 endpoint.unlink(missing_ok=True)
                 endpoint.with_suffix('.json').unlink(missing_ok=True)
                 directory.rmdir()
-            raise UsageUnavailable("Idle resource proxy did not start")
-        time.sleep(.05)
-    return endpoint
+        raise
+    finally:
+        os.close(read_fd)
+        if write_fd is not None:
+            os.close(write_fd)
 
 
-def serve(upstream, endpoint, delay, owner_pid):
+def serve(upstream, endpoint, delay, owner_pid, ready_fd=None):
     endpoint = Path(endpoint)
     listener = socket.socket(socket.AF_UNIX)
     owner = select.kqueue()
     status = {'pid': os.getpid(), 'owner_pid': owner_pid, 'started_at': time.time(),
               'source_revision': SOURCE_REVISION, 'connected': False, 'connections': 0}
+    def record_status():
+        try:
+            save(status, endpoint.with_suffix('.json'))
+        except OSError as error:
+            print(f'Proxy status unavailable: {type(error).__name__}', file=sys.stderr)
     try:
         # Kernel registration follows this process incarnation, even after reparenting/PID reuse.
         owner.control([select.kevent(owner_pid, filter=select.KQ_FILTER_PROC,
                                      flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
                                      fflags=select.KQ_NOTE_EXIT)], 0, 0)
-        save(status, endpoint.with_suffix('.json'))
+        record_status()
         listener.bind(str(endpoint))
         os.chmod(endpoint, 0o600)
         listener.listen(1)
+        if ready_fd is not None:
+            os.write(ready_fd, b'1')
+            os.close(ready_fd)
+            ready_fd = None
         listener.settimeout(1)
         while not owner.control([], 1, 0):
             try:
@@ -743,7 +994,7 @@ def serve(upstream, endpoint, delay, owner_pid):
                 server = UnixWebSocket(upstream)
                 status.update(connected=True, connections=status['connections'] + 1,
                               connected_at=time.time())
-                save(status, endpoint.with_suffix('.json'))
+                record_status()
                 # TUI가 새 initialize/resume로 복구한다. 이전 요청은 재전송하지 않는다.
                 Proxy(client, server, delay).run()
             except (OSError, EOFError):
@@ -754,8 +1005,10 @@ def serve(upstream, endpoint, delay, owner_pid):
                 if server:
                     server.close()
                 status['connected'] = False
-                save(status, endpoint.with_suffix('.json'))
+                record_status()
     finally:
+        if ready_fd is not None:
+            os.close(ready_fd)
         owner.close()
         listener.close()
         endpoint.unlink(missing_ok=True)
@@ -764,4 +1017,5 @@ def serve(upstream, endpoint, delay, owner_pid):
 
 
 if __name__ == "__main__":
-    serve(sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]))
+    serve(sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]),
+          int(sys.argv[5]) if len(sys.argv) > 5 else None)

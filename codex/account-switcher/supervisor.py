@@ -3,7 +3,6 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
-import json
 import os
 import signal
 import threading
@@ -13,7 +12,7 @@ from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
-from state import RUNTIME, load, poll_delay, preference, record, save
+from state import RUNTIME, STATE_FILE, changed_file, load, poll_delay, preference, record, save
 
 
 def collect(profiles):
@@ -69,13 +68,31 @@ def monitor(runtime, profiles, stop, state):
                 state.pop("upgrade_error", None)
             except (OSError, KeyError, ValueError) as error:
                 state["upgrade_error"] = type(error).__name__
+                state['upgrade_checked_at'] = now
             next_upgrade = time.time() + 15
         if state.get("upgrade_status") == "draining":
-            state.update(updated_at=time.time(), active=None, restore_account=runtime.active)
-            save(state)
+            if state.get('active') or state.get('restore_account') != runtime.active or now - saved_at >= 30:
+                state.update(updated_at=now, active=None, restore_account=runtime.active)
+                save(state)
+                saved_at = now
             stop.wait(2)
             continue
         requested = preference()
+        manual = changed_file(RUNTIME / 'usage-request.json').get('requested_at', 0)
+        if manual > state.get('usage_request_at', 0):
+            next_poll = 0
+        binding = changed_file(RUNTIME / 'profile-registration.json')
+        if (binding and binding.get('requested_at', 0) > state.get('registration_at', 0)
+                and binding.get('profile') in profiles):
+            try:
+                profiles[binding['profile']].register(binding.get('account_id'))
+                state['accounts'] = {key: value for key, value in state.get('accounts', {}).items()
+                                     if key != binding['profile']}
+                state.pop('registration_error', None)
+            except UsageUnavailable as error:
+                state['registration_error'] = str(error)
+            state['registration_at'] = binding['requested_at']
+            next_poll = 0
         if requested and requested.get("requested_at") != state.get("preference_at"):
             state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"),
                          preference_immediate=requested.get('immediate') is True)
@@ -95,10 +112,13 @@ def monitor(runtime, profiles, stop, state):
             fresh, errors = collect(profiles)
             state["errors"] = errors
             state["last_attempt_at"] = time.time()
-            for name, value in fresh.items():
-                state.setdefault("accounts", {})[name] = record(
-                    state.get("accounts", {}).get(name), value,
-                )
+            existing = state.get('accounts', {})
+            state['accounts'] = {**existing, **{name: record(existing.get(name), value)
+                                                for name, value in fresh.items()}}
+            if manual > state.get('usage_request_at', 0):
+                state['usage_request_at'] = manual
+                state['updated_at'] = time.time()
+                save(state)
             try:
                 desired = choose({name: value["used_percent"] for name, value in fresh.items()},
                                  preferred=state["preferred"])
@@ -120,7 +140,7 @@ def monitor(runtime, profiles, stop, state):
                 desired = runtime.active
             if desired != previous_desired:
                 retry_switch_at, idle_retry_delay = 0, 2
-            next_poll = time.time() + poll_delay(fresh, runtime.active)
+            next_poll = time.time() + poll_delay(fresh, runtime.active, history=state.get('accounts', {}))
             state["next_check_at"] = next_poll
             check_limited = True
         state["desired"] = desired
@@ -133,6 +153,8 @@ def monitor(runtime, profiles, stop, state):
                 if changed and runtime.active == state['preferred']:
                     state.pop('preference_immediate', None)
                 if changed and old != runtime.active:
+                    next_poll = time.time() + poll_delay(state['accounts'], runtime.active)
+                    state['next_check_at'] = next_poll
                     state["last_switch_at"] = time.time()
                     state["switch_count"] = state.get("switch_count", 0) + 1
                 if (changed and check_limited
@@ -158,8 +180,7 @@ def monitor(runtime, profiles, stop, state):
             state['uncertain_continuation_count'] = len(uncertain)
         else:
             state.pop('uncertain_continuation_count', None)
-        content = json.dumps({key: value for key, value in state.items() if key != 'updated_at'},
-                             sort_keys=True)
+        content = {key: value for key, value in state.items() if key != 'updated_at'}
         if content != saved_content or time.time() - saved_at >= 30:
             state['updated_at'] = time.time()
             save(state)
@@ -194,11 +215,41 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
+        for prefix in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-', '.usage-request.json-',
+                       '.profile-registration.json-', '.usage-'):
+            for orphan in STATE_FILE.parent.glob(prefix + '*'):
+                try:
+                    if not orphan.is_file() or orphan.is_symlink():
+                        continue
+                    pid, _, _ = orphan.name[len(prefix):].partition('-')
+                    if pid.isdecimal():
+                        try:
+                            os.kill(int(pid), 0)
+                            continue
+                        except ProcessLookupError:
+                            pass
+                        except PermissionError:
+                            continue
+                    elif prefix not in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-') and time.time() - orphan.stat().st_mtime < 86400:
+                        continue
+                    orphan.unlink(missing_ok=True)
+                except FileNotFoundError:
+                    pass
         state = load()
         state.update(status="starting", active=None, pid=os.getpid(),
                      pid_start=process_start(os.getpid()), updated_at=time.time())
         save(state)
         stop = threading.Event()
+        heartbeat_path = RUNTIME / 'supervisor-heartbeat'
+        heartbeat_path.touch(mode=0o600)
+        def heartbeat():
+            while not stop.wait(25):
+                try:
+                    heartbeat_path.touch(mode=0o600)
+                except OSError:
+                    pass
+        pulse = threading.Thread(target=heartbeat, daemon=True)
+        pulse.start()
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
         signal.signal(signal.SIGINT, lambda *_: stop.set())
         profiles = {}
@@ -209,6 +260,8 @@ def main():
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())
             save(state)
         finally:
+            stop.set()
+            pulse.join()
             for profile in profiles.values():
                 profile.close()
             if state.get("status") != "failed":

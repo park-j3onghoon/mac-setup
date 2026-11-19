@@ -16,7 +16,7 @@ from policy import UsageUnavailable, choose
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
 from usage import read_usage, read_snapshot
-from state import RUNTIME, load, record
+from state import RUNTIME, load, record, save
 from unix_ws import UnixWebSocket
 
 
@@ -28,7 +28,7 @@ PROFILES = {
 MANAGEMENT = {
     "login", "logout", "mcp", "plugin", "app-server", "remote-control",
     "app", "completion", "update", "doctor", "sandbox", "debug", "features",
-    "apply", "exec-server", "migrate-rollouts", "migrate-nfs-db", "help",
+    "apply", "a", "exec-server", "migrate-rollouts", "migrate-nfs-db", "help",
     "queue", "archive", "delete", "unarchive",
 }
 
@@ -84,6 +84,10 @@ def show_status():
         print(f"waiting for active work to finish: {state['desired']}")
     if state.get("errors") or state.get("runtime_error") or state.get("account_error"):
         print("Some checks failed; recorded usage may be stale.")
+    if state.get('uncertain_continuation_count'):
+        print(f"Continuations awaiting confirmation: {state['uncertain_continuation_count']}")
+    if state.get('release_error'):
+        print(f"Subscription cleanup failed: {state['release_error']}")
     return 0
 
 
@@ -177,13 +181,15 @@ def cmux_tab_overrides():
             for part in ("-c", f'shell_environment_policy.set.{name}="{value}"')]
 
 
-def report_runtime_update():
+def report_runtime_update(started_at=0):
     from service import running
     installed = BINARY.resolve().parent.parent.name
     deadline = time.monotonic() + 35
     while True:
         state = load()
-        if state.get("status") == "failed" or state.get("upgrade_error"):
+        if (state.get("status") == "failed" and state.get("updated_at", 0) >= started_at
+                or state.get("upgrade_error") and state.get("upgrade_checked_at", 0) >= started_at
+                and running(state)):
             print("[codex] Shared server update failed. Check codex --account-status.", file=sys.stderr)
             return False
         if not running(state):
@@ -203,6 +209,7 @@ def report_runtime_update():
 
 
 def update_clis():
+    started_at = time.time()
     failed = False
     for binary in (BINARY, Path.home() / ".local/bin/claude"):
         try:
@@ -214,7 +221,7 @@ def update_clis():
             if result.returncode:
                 print(f"[update] {binary.name} update exited {result.returncode}", file=sys.stderr)
                 failed = True
-    confirmed = report_runtime_update()
+    confirmed = report_runtime_update(started_at)
     return int(failed or not confirmed)
 
 
@@ -231,31 +238,61 @@ def main(arguments):
             return update_clis()
     if arguments == ["--account-status"]:
         return show_status()
+    if len(arguments) == 2 and arguments[0] == '--account-register':
+        from profiles import credentials
+        name = arguments[1]
+        if name not in PROFILES:
+            raise UsageUnavailable('Choose company or personal for registration')
+        save({'profile': name, 'requested_at': time.time(),
+              'account_id': credentials(PROFILES[name])['chatgptAccountId']},
+             RUNTIME / 'profile-registration.json')
+        return 0
     # Explicit CODEX_HOME always wins, including invocations from existing sessions.
     if os.environ.get("CODEX_HOME"):
         os.execv(str(BINARY), [str(BINARY), *arguments])
+    options = arguments[:arguments.index("--")] if "--" in arguments else arguments
     if any(arg in ("--help", "-h", "--version", "-V", "--remote")
-           or arg.startswith("--remote=") for arg in arguments):
+           or arg.startswith("--remote=") for arg in options):
         os.execv(str(BINARY), [str(BINARY), *arguments])
     explicit = os.environ.get("CODEX_ACCOUNT", "auto")
     if explicit not in ("auto", "company", "personal"):
         raise UsageUnavailable("CODEX_ACCOUNT must be auto, company, or personal")
     if command_name(arguments) in MANAGEMENT and explicit == "auto":
         explicit = "company"
-    if explicit == "auto" and interactive(arguments) and "--no-daemon" not in arguments:
+    if explicit == "auto" and interactive(arguments) and "--no-daemon" not in options:
         return launch_automatic(arguments)
     if explicit != "auto":
         selected = explicit
     else:
         usages = {}
-        for name in ("company", "personal"):
-            usages[name] = read_usage(BINARY, PROFILES[name])
-            if usages[name] < 90:
-                break
+        from service import running
+        state = load()
+        if running(state):
+            requested = time.time()
+            save({'requested_at': requested}, RUNTIME / 'usage-request.json')
+            deadline = time.monotonic() + 30
+            while state.get('usage_request_at', 0) < requested:
+                if time.monotonic() >= deadline:
+                    if running(state):
+                        raise UsageUnavailable('Timed out waiting for fresh profile usage')
+                    break
+                time.sleep(.2)
+                state = load()
+            if state.get('usage_request_at', 0) >= requested:
+                for name, info in state.get('accounts', {}).items():
+                    if name not in state.get('errors', {}):
+                        usages[name] = info['used_percent']
+                if not usages:
+                    raise UsageUnavailable('Fresh profile usage is unavailable')
+        if not usages:
+            for name in ("company", "personal"):
+                usages[name] = read_usage(BINARY, PROFILES[name])
+                if usages[name] < 90:
+                    break
         summary = ", ".join(f"{name} {used:g}% used" for name, used in usages.items())
         selected = choose(usages)
         print(f"[codex] {summary}; selected {selected}", file=sys.stderr)
-    if command_name(arguments) != 'login' and not (PROFILES[selected] / "auth.json").is_file():
+    if command_name(arguments) not in ('login', 'help', 'completion') and not (PROFILES[selected] / "auth.json").is_file():
         raise UsageUnavailable(f"Saved {selected} login is missing")
     environment = dict(os.environ, CODEX_HOME=str(PROFILES[selected]))
     os.execve(str(BINARY), [str(BINARY), *arguments], environment)

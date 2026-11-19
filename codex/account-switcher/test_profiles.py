@@ -94,8 +94,12 @@ class ProfileTest(unittest.TestCase):
         broken = Mock(closed=False)
         broken.request.side_effect = UsageUnavailable('synthetic failure')
         healthy = Mock(closed=False)
-        healthy.request.side_effect = [{}, {'accountId': 'company',
-            'rateLimits': {'primary': {'usedPercent': 10}}}]
+        def refreshed(method, *args, **kwargs):
+            if method == 'account/read':
+                credential['expires'] = 9_999_999_999
+                return {}
+            return {'accountId': 'company', 'rateLimits': {'primary': {'usedPercent': 10}}}
+        healthy.request.side_effect = refreshed
         with patch('profiles.credentials', side_effect=lambda _: dict(credential)), \
                 patch('profiles.Rpc', return_value=healthy):
             profile = Profile('company', Path('/unused'))

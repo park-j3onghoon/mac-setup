@@ -8,6 +8,7 @@ import subprocess
 import time
 
 from policy import UsageUnavailable
+from profiles import credentials
 from state import snapshot
 
 
@@ -28,13 +29,17 @@ def read_usage(binary, profile, timeout=20):
 def read_snapshot(binary, profile, timeout=20):
     if not (Path(profile) / "auth.json").is_file():
         raise UsageUnavailable("Saved login is missing")
+    expected = credentials(profile)['chatgptAccountId']
     environment = dict(os.environ, CODEX_HOME=str(profile))
     process = subprocess.Popen(
         [str(binary), "app-server"], env=environment,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
     try:
-        return receive_usage(process, timeout)
+        result = receive_usage(process, timeout)
+        if result.get('accountId') != expected or credentials(profile)['chatgptAccountId'] != expected:
+            raise UsageUnavailable("Usage does not belong to the saved workspace")
+        return snapshot(result)
     finally:
         process.terminate()
         try:
@@ -64,7 +69,7 @@ def receive_usage(process, timeout):
                     line, buffer = buffer.split(b"\n", 1)
                     result = handle_message(process, line)
                     if result is not None:
-                        return snapshot(result)
+                        return result
     raise UsageUnavailable("Usage lookup timed out; no account was selected")
 
 

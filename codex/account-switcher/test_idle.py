@@ -153,7 +153,7 @@ class IdleTest(unittest.TestCase):
         self.idle.track({"thread": {"id": "child", "ephemeral": False, "parentThreadId": "thread"}}, {}, now=0)
         self.idle.park(now=10)
 
-        self.idle.park(now=20)
+        self.idle.park(now=21)
 
         releases = [params["threadId"] for method, params in self.server.calls if method == "thread/unsubscribe"]
         self.assertEqual(releases, ["child", "child"])

@@ -14,25 +14,32 @@ XOR_TABLES = tuple(bytes(value ^ key for value in range(256)) for key in range(2
 WRITE_TIMEOUT = 30
 
 
-def write_all(connection, parts, deadline):
-    if not isinstance(connection, int) and connection.getblocking():
-        connection.setblocking(False)
-    for data in parts:
-        remaining = memoryview(data)
-        while remaining:
-            timeout = deadline - time.monotonic()
-            if timeout <= 0 or not select.select([], [connection], [], timeout)[1]:
-                raise TimeoutError('Codex transport write timed out')
-            try:
-                if isinstance(connection, int):
-                    count = os.write(connection, remaining)
-                else:
-                    count = connection.send(remaining)
-            except BlockingIOError:
-                continue
-            if not count:
-                raise OSError('Codex transport closed while writing')
-            remaining = remaining[count:]
+def write_all(connection, parts, deadline, cancel=None):
+    written = 0
+    try:
+        if not isinstance(connection, int) and connection.getblocking():
+            connection.setblocking(False)
+        for data in parts:
+            remaining = memoryview(data)
+            while remaining:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0 or cancel is not None and cancel.is_set():
+                    raise TimeoutError('Codex transport write timed out')
+                if not select.select([], [connection], [], min(.05, timeout) if cancel is not None else timeout)[1]:
+                    if cancel is not None:
+                        continue
+                    raise TimeoutError('Codex transport write timed out')
+                try:
+                    count = os.write(connection, remaining) if isinstance(connection, int) else connection.send(remaining)
+                except BlockingIOError:
+                    continue
+                if not count:
+                    raise OSError('Codex transport closed while writing')
+                written += count
+                remaining = remaining[count:]
+    except (OSError, ValueError) as error:
+        error.bytes_written = written
+        raise
 
 
 def mask_payload(data, mask):
@@ -90,6 +97,10 @@ class UnixWebSocket:
             self.socket.settimeout(remaining)
 
     def send_frame(self, opcode, data, deadline=None):
+        if deadline is not None and time.monotonic() >= deadline:
+            error = TimeoutError('Codex transport write deadline expired')
+            error.bytes_written = 0
+            raise error
         length = len(data)
         if length < 126:
             header = bytes([0x80 | opcode, 0x80 | length])
@@ -106,7 +117,9 @@ class UnixWebSocket:
         if self.deadline is not None:
             deadline = min(deadline, self.deadline)
         if not self.lock.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise TimeoutError('Codex transport write lock timed out')
+            error = TimeoutError('Codex transport write lock timed out')
+            error.bytes_written = 0
+            raise error
         try:
             write_all(self.socket, parts, deadline)
         finally:
@@ -116,7 +129,11 @@ class UnixWebSocket:
         self.send_frame(1, data, deadline)
 
     def _read(self, count):
-        buffered, self.buffer = self.buffer[:count], self.buffer[count:]
+        offset = getattr(self, 'buffer_offset', 0)
+        buffered = self.buffer[offset:offset + count]
+        self.buffer_offset = offset + len(buffered)
+        if self.buffer_offset >= len(self.buffer):
+            self.buffer, self.buffer_offset = b'', 0
         chunks = [buffered]
         remaining = count - len(buffered)
         while remaining:

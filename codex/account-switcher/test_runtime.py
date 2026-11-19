@@ -366,11 +366,13 @@ class IdleTest(unittest.TestCase):
                 return {'data': [str(number) for number in range(100)]}
             if method == 'thread/read':
                 return {'thread': {'status': {'type': 'idle'}}}
+            if method == 'thread/goal/get':
+                return {'goal': None}
             return {'data': []}
         runtime.client.request.side_effect = answer
 
         self.assertFalse(runtime.release_subscriptions())
-        self.assertLessEqual(runtime.client.request.call_count, 4)
+        self.assertLessEqual(runtime.client.request.call_count, 6)
         for _ in range(99):
             complete = runtime.release_subscriptions()
         self.assertTrue(complete)
@@ -390,6 +392,10 @@ class IdleTest(unittest.TestCase):
                 return {"data": ["running"] if params["threadId"] == "background" else []}
             if method == "thread/unsubscribe":
                 return {"status": "unsubscribed"}
+            if method == 'thread/queue/list':
+                return {'data': []}
+            if method == 'thread/goal/get':
+                return {'goal': None}
             raise AssertionError(method)
         runtime.client.request.side_effect = answer
 
@@ -480,6 +486,8 @@ class ContinueTest(unittest.TestCase):
             if method == "thread/loaded/list":
                 return {"data": list(threads)}
             status, turns = threads.get(params.get("threadId"), (None, None))
+            if method == 'thread/queue/list':
+                return {'data': []}
             if method == "thread/read":
                 return {"thread": {"status": {"type": status},
                                    "parentThreadId": (parents or {}).get(params["threadId"])}}
@@ -1028,6 +1036,7 @@ class MonitorTest(unittest.TestCase):
         runtime.select.side_effect = select
         state = {"preferred": preferred}
         with patch("supervisor.time.time", side_effect=lambda: clock[0]), \
+             patch('supervisor.poll_delay', return_value=60), \
              patch("supervisor.collect", side_effect=batches), patch("supervisor.save"), \
              patch("supervisor.preference", return_value=requested or {}):
             monitor(runtime, {}, stop, state)

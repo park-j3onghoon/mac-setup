@@ -31,6 +31,8 @@ def utilization(result):
     limits = limits or result.get("rateLimits") or {}
     if not isinstance(limits, dict):
         raise UsageUnavailable("The usage response has invalid limits")
+    if limits.get('limitId') not in (None, 'codex'):
+        raise UsageUnavailable("No Codex plan limits were reported")
     if limits.get("spendControlReached") or limits.get("rateLimitReachedType"):
         return 100.0
     values = []

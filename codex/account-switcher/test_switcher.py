@@ -280,10 +280,11 @@ for line in sys.stdin:
         print('{"id":1,"result":{}}', flush=True)
     elif message["method"] == "account/rateLimits/read":
         print('{"method":"account/updated","params":{}}', flush=True)
-        print('{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":42}}}}', flush=True)
+        print('{"id":2,"result":{"accountId":"fixture","rateLimits":{"primary":{"usedPercent":42}}}}', flush=True)
 ''')
             fake.chmod(0o700)
-            self.assertEqual(read_usage(fake, root, timeout=2), 42)
+            with patch('usage.credentials', return_value={'chatgptAccountId': 'fixture'}):
+                self.assertEqual(read_usage(fake, root, timeout=2), 42)
 
 
 if __name__ == "__main__":
