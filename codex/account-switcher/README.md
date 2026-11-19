@@ -80,6 +80,13 @@ CODEX_ACCOUNT=personal codex     # 개인 고정, 자동 전환 없음
 `/opt/homebrew/bin/codex`다. 최초 실행 시 백그라운드 감독 프로세스를 시작하고,
 같은 사용자 전용 Unix 소켓으로 공식 Codex 터미널을 연결한다. 추가 패키지는 없다.
 
+감독이 새 공유 서버를 띄울 때는 Homebrew가 설치한 Codex 패키지 전체를
+`~/.codex-auto/app-server-packages/<버전>/`에 보관하고 그 안의 실행 파일로 서버를 시작한다.
+Homebrew가 업그레이드로 이전 버전을 지워도 이미 열린 대화와 `codex resume`은
+같은 서버에서 원래 버전의 `codex-code-mode-host`와 리소스를 사용한다.
+다음에 새 공유 서버가 시작되면 설치된 버전의 복사를 마친 뒤 이전 보관본을 정리한다.
+이 변경을 적용하기 전에 Caskroom 경로에서 시작한 서버에는 다음 서버 시작부터 적용된다.
+
 실행기와 새 공유 서버 시작 경로에서 열린 파일 soft limit을 4096까지 높인다.
 `--no-daemon`과 명시적인 `CODEX_HOME`도 실행기를 통과하면 적용된다.
 기존 hard limit은 유지하고, 이미 더 높은 soft limit도 낮추지 않는다. macOS 기본값 256에서는

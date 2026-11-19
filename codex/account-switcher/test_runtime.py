@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 import resource
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -158,13 +160,114 @@ finally:
             self.assertEqual((home / "config.toml").read_text(), "model = 'company'\n")
 
     def test_company_workspace_lock_is_lifted_only_on_the_shared_server(self):
-        runtime = Runtime({}, home=Path("/auto"))
+        runtime = Runtime({}, home=Path("/auto"), binary=Path(sys.executable))
         with patch("runtime.prepare_home"), patch("runtime.subprocess.Popen") as popen, \
              patch.object(Path, "exists", return_value=False):
             popen.return_value.poll.return_value = 1
             with self.assertRaises(UsageUnavailable):
                 runtime.start()
         self.assertEqual(popen.call_args.args[0][1:4], ["app-server", "-c", 'forced_chatgpt_workspace_id=""'])
+
+
+class PackagedRuntimeTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.home = self.root / "auto"
+        self.home.mkdir()
+        self.binary = self.root / "codex"
+        rpc = patch("runtime.Rpc")
+        rpc.start()
+        self.addCleanup(rpc.stop)
+
+    def install(self, version):
+        release = self.root / "Caskroom" / "codex" / version
+        (release / "bin").mkdir(parents=True)
+        (release / "codex-package.json").write_text(json.dumps({"version": version}))
+        (release / "codex-resources").mkdir()
+        (release / "codex-resources" / "version").write_text(version)
+        cli = release / "bin" / "codex"
+        cli.write_text(f"#!{sys.executable}\n" + """
+import socket, subprocess, sys
+from pathlib import Path
+host = Path(__file__).resolve().with_name("codex-code-mode-host")
+with socket.socket(socket.AF_UNIX) as server:
+    server.bind(sys.argv[-1].removeprefix("unix://"))
+    server.listen()
+    with server.accept()[0] as client:
+        client.sendall(subprocess.check_output([host]))
+""")
+        cli.chmod(0o700)
+        host = cli.with_name("codex-code-mode-host")
+        host.write_text(f"#!{sys.executable}\nfrom pathlib import Path\n"
+                        "print((Path(__file__).parents[1] / 'codex-resources/version').read_text())\n")
+        host.chmod(0o700)
+        shutil.copy2(host, host.with_name("codex-exec-server"))
+        self.binary.unlink(missing_ok=True)
+        self.binary.symlink_to(cli)
+        return release
+
+    def start_server(self):
+        runtime = Runtime({}, home=self.home, binary=self.binary)
+        self.addCleanup(runtime.close)
+        runtime.start()
+        return runtime
+
+    def call_tool(self, runtime):
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(5)
+            client.connect(str(runtime.socket))
+            with client.makefile() as response:
+                return response.readline().strip()
+
+    def test_resumed_client_can_call_the_original_tool_after_cask_cleanup(self):
+        """공유 서버는 원본 Cask가 지워진 뒤에도 같은 릴리스의 host와 리소스를 사용한다."""
+        previous = self.install("0.169.0")
+        running = self.start_server()
+
+        self.install("0.170.0")
+        shutil.rmtree(previous)
+        self.assertEqual(self.call_tool(running), "0.169.0")
+        running.close()
+
+        restarted = self.start_server()
+        self.assertEqual(self.call_tool(restarted), "0.170.0")
+        self.assertEqual([p.name for p in (self.home / "app-server-packages").iterdir()], ["0.170.0"])
+
+    def test_missing_host_can_be_repaired_before_retrying_start(self):
+        """일부만 남은 Cask를 실행하거나 보관하면 같은 버전을 복구해도 도구가 계속 실패한다."""
+        release = self.install("0.170.0")
+        host = release / "bin" / "codex-code-mode-host"
+        host.rename(release / "saved-host")
+        with self.assertRaises(UsageUnavailable):
+            self.start_server()
+
+        (release / "saved-host").rename(host)
+        self.assertEqual(self.call_tool(self.start_server()), "0.170.0")
+
+    def test_rollback_after_cleanup_interruption_uses_the_complete_package(self):
+        """이전 버전 정리가 일부만 끝난 상태에서 다운그레이드해도 리소스를 다시 보존한다."""
+        previous = self.install("0.169.0")
+        running = self.start_server()
+        self.assertEqual(self.call_tool(running), "0.169.0")
+        running.close()
+        self.install("0.170.0")
+        rmtree = shutil.rmtree
+
+        def interrupt_cleanup(path, *args, **kwargs):
+            for resource_file in Path(path).rglob("codex-resources/version"):
+                if resource_file.read_text() == "0.169.0":
+                    resource_file.unlink()
+                    raise InterruptedError("interrupted cleanup")
+            return rmtree(path, *args, **kwargs)
+
+        with patch("shutil.rmtree", side_effect=interrupt_cleanup), self.assertRaises(InterruptedError):
+            self.start_server()
+        self.binary.unlink()
+        self.binary.symlink_to(previous / "bin" / "codex")
+
+        self.assertEqual(self.call_tool(self.start_server()), "0.169.0")
 
 
 class IdleTest(unittest.TestCase):

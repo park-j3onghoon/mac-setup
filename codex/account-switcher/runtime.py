@@ -4,8 +4,10 @@ import os
 from collections import deque
 from pathlib import Path
 import resource
+import shutil
 import socket
 import subprocess
+import tempfile
 import time
 
 from policy import THRESHOLD, UsageUnavailable
@@ -46,6 +48,32 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
         target = home / name
         if not target.exists() and not target.is_symlink() and (shared / name).exists():
             target.symlink_to(shared / name, target_is_directory=(shared / name).is_dir())
+
+
+def preserve_server_package(binary, home):
+    installed = Path(binary).resolve(strict=True)
+    release = installed.parent.parent
+    if installed.parent.name != "bin" or release.parent.parts[-2:] != ("Caskroom", "codex"):
+        return installed
+
+    packages = home / "app-server-packages"
+    packages.mkdir(mode=0o700, exist_ok=True)
+    current = packages / release.name
+    with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
+        staging = Path(temporary)
+        if not current.is_dir():
+            staged = staging / "package"
+            shutil.copytree(release, staged)
+            for name in ("codex", "codex-code-mode-host", "codex-exec-server"):
+                if not os.access(staged / "bin" / name, os.X_OK):
+                    raise UsageUnavailable(f"Codex package {release.name} is missing executable {name}")
+            staged.rename(current)
+
+        # 정리 중 종료돼도 다음 시작에서 반쯤 지운 릴리스를 재사용하지 않도록 먼저 이름을 옮긴다.
+        for previous in packages.iterdir():
+            if previous not in (current, staging) and previous.is_dir() and not previous.is_symlink():
+                previous.rename(staging / previous.name)
+    return current / "bin" / installed.name
 
 
 def loaded_threads(client):
@@ -112,11 +140,12 @@ class Runtime:
         # Every loaded conversation can retain MCP pipes and sockets in this one process.
         # macOS's inherited soft limit of 256 is insufficient for the shared server.
         raise_file_limit()
+        server_binary = preserve_server_package(self.binary, self.home)
         # The company config locks logins to the company workspace; the shared server must also
         # accept the personal workspace. A terminal attached to it does not enforce the lock
         # (both measured on 0.168.0, 2026-11-13).
         self.process = subprocess.Popen(
-            [str(self.binary), "app-server", "-c", 'forced_chatgpt_workspace_id=""',
+            [str(server_binary), "app-server", "-c", 'forced_chatgpt_workspace_id=""',
              "--listen", "unix://" + str(self.socket)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=dict(os.environ, CODEX_HOME=str(self.home)),
