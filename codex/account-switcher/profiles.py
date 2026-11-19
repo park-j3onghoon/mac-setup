@@ -31,7 +31,10 @@ def credentials(home):
 class Profile:
     def __init__(self, name, home, binary=BINARY):
         self.name, self.home, self.binary = name, home, binary
-        self.account_id = credentials(home)["chatgptAccountId"]
+        try:
+            self.account_id = credentials(home)["chatgptAccountId"]
+        except UsageUnavailable:
+            self.account_id = None
         self.client = None
         self.lock = threading.Lock()
         self.refresh_generation = 0
@@ -47,6 +50,8 @@ class Profile:
         generation = self.refresh_generation
         with self.lock:
             value = credentials(self.home)
+            if self.account_id is None:
+                self.account_id = value['chatgptAccountId']
             refresh = (force and generation == self.refresh_generation) or value['expires'] < time.time() + 300
             if refresh:
                 try:

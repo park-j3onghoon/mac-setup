@@ -25,6 +25,9 @@ def collect(profiles):
                 snapshots[name] = future.result()
             except Exception as error:
                 errors[name] = type(error).__name__
+    identities = [profile.account_id for profile in profiles.values() if profile.account_id is not None]
+    if len(identities) != len(set(identities)):
+        return {}, {name: 'DuplicateWorkspace' for name in profiles}
     return snapshots, errors
 
 
@@ -141,8 +144,6 @@ def main():
         profiles, runtime = {}, None
         try:
             profiles = {name: Profile(name, home) for name, home in PROFILES.items()}
-            if profiles["company"].account_id == profiles["personal"].account_id:
-                raise UsageUnavailable("Two distinct workspaces are required")
             runtime = Runtime(profiles)
             runtime.start()
             state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start)

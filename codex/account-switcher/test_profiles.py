@@ -6,9 +6,40 @@ from unittest.mock import Mock, patch
 
 from policy import UsageUnavailable
 from profiles import Profile
+from runtime import Runtime
 
 
 class ProfileTest(unittest.TestCase):
+    def test_missing_fallback_preserves_current_account_and_can_recover(self):
+        """보조 로그인 파일 오류는 정상 서버 관찰을 막지 않고 파일 복구 후 다시 조회한다."""
+        restored = [False]
+
+        def credentials(home):
+            if home.name == 'personal' and not restored[0]:
+                raise UsageUnavailable('fixture login missing')
+            return {'accessToken': 'fixture', 'chatgptAccountId': home.name,
+                    'chatgptPlanType': 'fixture', 'expires': 9_999_999_999}
+
+        with patch('profiles.credentials', side_effect=credentials):
+            profiles = {name: Profile(name, Path('/fixture') / name) for name in ('company', 'personal')}
+            server = Runtime(profiles)
+            server.client = Mock(closed=False)
+            server.client.request.return_value = {'account': {'type': 'chatgpt'},
+                'workspaceRouting': {'chatgptAccountId': 'company'}}
+            server.observe_account()
+            self.assertEqual(server.active, 'company')
+            with self.assertRaises(UsageUnavailable):
+                profiles['personal'].usage()
+
+            restored[0] = True
+            profiles['personal'].client = Mock(closed=False)
+            profiles['personal'].client.request.return_value = {
+                'accountId': 'personal', 'rateLimits': {'primary': {'usedPercent': 10}}}
+            result = profiles['personal'].usage()
+
+        self.assertEqual(result['used_percent'], 10)
+        self.assertEqual(profiles['personal'].account_id, 'personal')
+
     def test_concurrent_forced_refreshes_share_one_successful_refresh(self):
         """같은 토큰을 갱신하려고 동시에 대기한 요청은 한 번의 성공 결과를 공유한다."""
         barrier, mutex = threading.Barrier(8), threading.Lock()
