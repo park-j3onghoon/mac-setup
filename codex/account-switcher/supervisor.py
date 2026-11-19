@@ -46,10 +46,9 @@ def monitor(runtime, profiles, stop, state):
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
         requested = preference()
-        immediate = False
         if requested and requested.get("requested_at") != state.get("preference_at"):
-            state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"))
-            immediate = requested.get("immediate") is True
+            state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"),
+                         preference_immediate=requested.get('immediate') is True)
             next_poll = retry_switch_at = 0
             idle_retry_delay = 2
         if now >= next_release:
@@ -96,7 +95,10 @@ def monitor(runtime, profiles, stop, state):
                 and "account_error" not in state):
             try:
                 old = runtime.active
-                changed = runtime.select(desired, force=immediate and desired == state["preferred"])
+                changed = runtime.select(desired, force=state.get('preference_immediate', False)
+                                         and desired == state["preferred"])
+                if changed and runtime.active == state['preferred']:
+                    state.pop('preference_immediate', None)
                 if changed and old != runtime.active:
                     state["last_switch_at"] = time.time()
                     state["switch_count"] = state.get("switch_count", 0) + 1

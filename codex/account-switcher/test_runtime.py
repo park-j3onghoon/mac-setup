@@ -572,6 +572,33 @@ class SwitchingTest(unittest.TestCase):
 
 
 class MonitorTest(unittest.TestCase):
+    def test_immediate_request_survives_failure_and_is_consumed_on_success(self):
+        """즉시 전환은 일시 오류 뒤 재시도까지 유지하고 성공 뒤에는 자동 규칙으로 돌아온다."""
+        clock, forces = [1000], []
+        runtime = Mock(active='company')
+        stop = Mock()
+        stop.is_set.side_effect = lambda: clock[0] >= 1183
+        stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 61)
+
+        def select(name, *, force=False):
+            forces.append(force)
+            if len(forces) == 1:
+                raise UsageUnavailable('transient fixture failure')
+            runtime.active = name
+            return True
+
+        runtime.select.side_effect = select
+        fresh = {name: usage(10, 9999, 1000) for name in ('company', 'personal')}
+        state = {}
+        with patch('supervisor.time.time', side_effect=lambda: clock[0]), \
+                patch('supervisor.collect', return_value=(fresh, {})), patch('supervisor.save'), \
+                patch('supervisor.preference', return_value={
+                    'preferred': 'personal', 'immediate': True, 'requested_at': 999}):
+            monitor(runtime, {}, stop, state)
+
+        self.assertEqual(forces, [True, True, False])
+        self.assertEqual(state['active'], 'personal')
+
     def test_busy_switch_checks_back_off_and_manual_request_runs_immediately(self):
         """유휴 확인 실패는 간격을 늘리고 새 수동 요청은 대기 간격을 초기화한다."""
         for manual in (False, True):
