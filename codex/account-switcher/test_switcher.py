@@ -57,6 +57,25 @@ class PolicyTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_status_lookup_does_not_overwrite_a_concurrently_started_supervisor(self):
+        """조회 도중 감독이 시작돼도 조회 명령은 최신 PID와 실제 계정을 덮어쓰지 않는다."""
+        stored = {'status': 'stopped', 'pid': 1, 'runtime_pid': 2}
+
+        def query(*args):
+            stored.update(status='ready', pid=101, runtime_pid=202, active='company')
+            return {'used_percent': 10, 'observed_at': 1000, 'windows': {}}
+
+        with patch('service.running', return_value=False), \
+                patch.object(launcher, 'load', side_effect=lambda: copy.deepcopy(stored)), \
+                patch.object(launcher, 'read_snapshot', side_effect=query), \
+                patch.object(launcher, 'save', side_effect=stored.update, create=True), \
+                redirect_stdout(StringIO()):
+            launcher.show_status()
+
+        self.assertEqual(stored['pid'], 101)
+        self.assertEqual(stored['runtime_pid'], 202)
+        self.assertEqual(stored['active'], 'company')
+
     def test_unverified_running_account_is_not_displayed_as_the_preferred_account(self):
         """현재 계정을 확인할 수 없을 때 우선 계정을 실제 로그인처럼 표시하지 않는다."""
         output = StringIO()
@@ -99,7 +118,7 @@ class LauncherTest(unittest.TestCase):
         with patch("service.running", return_value=False), \
              patch.object(launcher, "load", return_value={"preferred": "personal"}), \
              patch.object(launcher, "read_snapshot", side_effect=snapshots), \
-             patch.object(launcher, "save"), redirect_stdout(output):
+             redirect_stdout(output):
             launcher.show_status()
 
         self.assertIn("selected: personal", output.getvalue())
@@ -203,3 +222,4 @@ for line in sys.stdin:
 
 if __name__ == "__main__":
     unittest.main()
+import copy

@@ -11,7 +11,7 @@ from idle import start_proxy
 from policy import UsageUnavailable, choose
 from runtime import raise_file_limit
 from usage import read_usage, read_snapshot
-from state import RUNTIME, load, record, save
+from state import RUNTIME, load, record
 
 
 BINARY = Path("/opt/homebrew/bin/codex")
@@ -41,7 +41,6 @@ def show_status():
                 state.get("accounts", {}).get(name), current,
             )
         state["updated_at"] = time.time()
-        save(state)
     for name, value in state.get("accounts", {}).items():
         reset_labels = []
         for window in value.get("windows", {}).values():
