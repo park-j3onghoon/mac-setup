@@ -1,6 +1,8 @@
 """Private non-secret state and Claude Code's existing directory-lock protocol."""
 
 from contextlib import contextmanager, ExitStack
+import ctypes
+import errno
 import fcntl
 import hashlib
 import json
@@ -42,8 +44,8 @@ def write_text(path, raw):
         raise SwitcherError(f'Refusing to replace a symlink: {path.name}')
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
     try:
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            os.fchmod(stream.fileno(), 0o600)
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
@@ -79,16 +81,30 @@ class State:
 
     @contextmanager
     def lock(self, name='operation'):
-        fd = os.open(self.root / f'{name}.lock',
-                     os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        try:
+        path = self.root / f'{name}.lock'
+        transient = name.startswith('restart-')
+        while True:
+            fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise SwitcherError(f'Another switcher process holds {name}') from None
-            yield
-        finally:
-            os.close(fd)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise SwitcherError(f'Another switcher process holds {name}') from None
+                if transient:
+                    # A contender can open the old inode just before its owner unlinks it.
+                    try:
+                        if not os.path.samestat(os.fstat(fd), path.stat()):
+                            continue
+                    except FileNotFoundError:
+                        continue
+                try:
+                    yield
+                finally:
+                    if transient:
+                        path.unlink()
+                return
+            finally:
+                os.close(fd)
 
 
 @contextmanager
@@ -127,15 +143,31 @@ def directory_identity(path):
 @contextmanager
 def owned_directory_lock(path, timeout, owner_fd):
     deadline = time.monotonic() + timeout
-    while True:
-        try:
-            path.mkdir(mode=0o700)
-            break
-        except FileExistsError:
+    # Record the inode before publishing it. A crash before publication leaves only staging.
+    staged = path.with_name(path.name + '.switcher-staging')
+    if staged.exists():
+        staged.rmdir()
+    staged.mkdir(mode=0o700)
+    try:
+        identity = directory_identity(staged)
+        os.lseek(owner_fd, 0, os.SEEK_SET)
+        os.ftruncate(owner_fd, 0)
+        record = json.dumps(identity).encode()
+        if os.write(owner_fd, record) != len(record):
+            raise OSError('Incomplete Claude lock ownership record')
+        os.fsync(owner_fd)
+        # macOS renamex_np(RENAME_EXCL) never replaces another owner's empty lock.
+        rename = ctypes.CDLL(None, use_errno=True).renamex_np
+        while rename(os.fsencode(staged), os.fsencode(path), 4) != 0:
+            error = ctypes.get_errno()
+            if error != errno.EEXIST:
+                raise OSError(error, os.strerror(error))
             if time.monotonic() >= deadline:
-                raise SwitcherError(f'Claude is busy: lock={path.name}') from None
+                raise SwitcherError(f'Claude is busy: lock={path.name}')
             time.sleep(0.1)
-    identity = directory_identity(path)
+    finally:
+        if staged.exists():
+            staged.rmdir()
     stop = threading.Event()
 
     def heartbeat():
@@ -150,12 +182,6 @@ def owned_directory_lock(path, timeout, owner_fd):
     thread = threading.Thread(target=heartbeat, daemon=True)
     started = False
     try:
-        os.lseek(owner_fd, 0, os.SEEK_SET)
-        os.ftruncate(owner_fd, 0)
-        record = json.dumps(identity).encode()
-        if os.write(owner_fd, record) != len(record):
-            raise OSError('Incomplete Claude lock ownership record')
-        os.fsync(owner_fd)
         thread.start()
         started = True
         yield

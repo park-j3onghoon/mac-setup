@@ -179,91 +179,106 @@ class Switcher:
 
     def tick(self, apply=False, now=None):
         clock = time.time if now is None else (lambda: now)
-        now = clock()
         with self.state.lock():
-            if apply:
-                self.check_version()
-                self.recover()
-            elif self.vault.read('__transaction__') is not None:
-                raise SwitcherError('A pending swap needs recovery; run once --apply')
-            with self.live.locked():
-                blob, account = self.live.read()
-            email = account['emailAddress']
-            if email not in self.accounts:
-                raise SwitcherError('Current Claude login is outside the configured account roster')
-            roster = self.state.load('roster')
-            if apply and any(not roster.get(e, {}).get('registered') for e in self.accounts):
-                raise SwitcherError('Enroll both accounts before enabling automatic switching')
-            active = {'oauth': blob['claudeAiOauth'], 'account': account}
-            self.verify_identity(active)
-            if apply:
-                # Capture Claude's latest token generation, never a startup-time copy.
-                with self.live.locked():
-                    latest, identity = self.live.read()
-                    if identity != account or latest['claudeAiOauth'] != active['oauth']:
-                        raise SwitcherError('Claude renewed its login; retry on the next poll')
-                    if self.vault.read(email) != active:
-                        self.vault.write(email, active)
-            runtime = self.state.load('runtime')
-            settle_until = runtime.get('settle_until', 0)
-            preference = self.state.load('preference')
-            immediate = (preference.get('immediate') is True
-                         and preference.get('requested_at') != runtime.get('preference_at'))
-            readings, errors, reading_tokens = {}, {}, {}
-            for candidate in self.accounts:
-                bundle = active if candidate == email else self.vault.read(candidate)
-                if bundle is None:
-                    errors[candidate] = 'not_enrolled'
-                    continue
-                try:
-                    expiry = bundle['oauth'].get('expiresAt')
-                    if (candidate != email and isinstance(expiry, (int, float))
-                            and expiry <= (now + 120) * 1000):
-                        if not apply or (now < settle_until and not immediate):
-                            errors[candidate] = 'inactive_token_needs_refresh'
-                            continue
-                        bundle['oauth'] = self.api.refresh(bundle['oauth'], now)
-                        # Persist the successor before any further network request.
-                        self.vault.write(candidate, bundle)
-                        self.verify_identity(bundle)
-                    readings[candidate] = self.api.usage(bundle['oauth'], now)
-                    reading_tokens[candidate] = fingerprint(bundle['oauth'])
-                except ApiError as exc:
-                    errors[candidate] = f'http_{exc.status}' if exc.status else 'metadata_unavailable'
-                    runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
-                except SwitcherError:
-                    errors[candidate] = 'authentication_needs_attention'
-            preferred = preference.get('preferred', self.config['primary'])
-            if preferred not in self.accounts:
-                raise SwitcherError('Preferred account is not configured')
-            fallback = next(candidate for candidate in self.accounts if candidate != preferred)
-            now = clock()
-            decision = choose_account(email, preferred, fallback, readings, now,
-                                      self.config['threshold'], 90)
-            report = {'observed_at': now, 'active': email, 'target': decision.target,
-                      'reason': decision.reason, 'apply': apply, 'switched': False,
-                      'usage': {e: asdict(u) for e, u in readings.items()}, 'errors': errors}
-            previous = runtime.get('usage', {})
-            for candidate in self.accounts:
-                if candidate not in report['usage'] and candidate in previous:
-                    report['usage'][candidate] = dict(previous[candidate], stale=True)
-            runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
-                           preferred=preferred, target=decision.target)
-            self.state.save('runtime', runtime)
-            if apply and decision.target and decision.target != email:
-                if now < settle_until and not immediate:
-                    report['reason'] = 'waiting_for_credential_cache'
-                else:
-                    self.switch_to(active, decision.target, now, readings[decision.target],
-                                   reading_tokens[decision.target], clock=clock)
-                    report['switched'] = True
-            self.state.save('last_report', report)
-            if apply:
+            try:
+                return self._tick_locked(apply, clock)
+            except ApiError as error:
                 runtime = self.state.load('runtime')
-                if runtime.get('active') == preferred:
-                    runtime['preference_at'] = preference.get('requested_at')
+                runtime['retry_after'] = max(runtime.get('retry_after', 0), clock() + error.retry_after)
                 self.state.save('runtime', runtime)
-            return report
+                raise
+
+    def _tick_locked(self, apply, clock):
+        now = clock()
+        if apply:
+            self.check_version()
+            self.recover()
+        elif self.vault.read('__transaction__') is not None:
+            raise SwitcherError('A pending swap needs recovery; run once --apply')
+        runtime = self.state.load('runtime')
+        if now < runtime.get('retry_after', 0):
+            return {'observed_at': now, 'active': runtime.get('active'), 'target': None,
+                    'switched': False, 'apply': apply, 'errors': {}, 'usage': {},
+                    'reason': 'waiting_for_retry_after'}
+        with self.live.locked():
+            blob, account = self.live.read()
+        email = account['emailAddress']
+        if email not in self.accounts:
+            raise SwitcherError('Current Claude login is outside the configured account roster')
+        roster = self.state.load('roster')
+        if apply and any(not roster.get(e, {}).get('registered') for e in self.accounts):
+            raise SwitcherError('Enroll both accounts before enabling automatic switching')
+        active = {'oauth': blob['claudeAiOauth'], 'account': account}
+        self.verify_identity(active)
+        if apply:
+            # Capture Claude's latest token generation, never a startup-time copy.
+            with self.live.locked():
+                latest, identity = self.live.read()
+                if identity != account or latest['claudeAiOauth'] != active['oauth']:
+                    raise SwitcherError('Claude renewed its login; retry on the next poll')
+                if self.vault.read(email) != active:
+                    self.vault.write(email, active)
+        settle_until = runtime.get('settle_until', 0)
+        preference = self.state.load('preference')
+        immediate = (preference.get('immediate') is True
+                     and preference.get('requested_at') != runtime.get('preference_at'))
+        readings, errors, reading_tokens, stages = {}, {}, {}, {}
+        for candidate in self.accounts:
+            bundle = active if candidate == email else self.vault.read(candidate)
+            if bundle is None:
+                errors[candidate] = 'not_enrolled'
+                continue
+            try:
+                expiry = bundle['oauth'].get('expiresAt')
+                if (candidate != email and isinstance(expiry, (int, float))
+                        and expiry <= (now + 120) * 1000):
+                    if not apply or (now < settle_until and not immediate):
+                        errors[candidate] = 'inactive_token_needs_refresh'
+                        continue
+                    bundle['oauth'] = self.api.refresh(bundle['oauth'], now)
+                    # Persist the successor before any further network request.
+                    self.vault.write(candidate, bundle)
+                    self.verify_identity(bundle)
+                readings[candidate] = self.api.usage(bundle['oauth'], now)
+                reading_tokens[candidate] = fingerprint(bundle['oauth'])
+            except ApiError as exc:
+                stages[candidate] = exc.operation
+                errors[candidate] = f'http_{exc.status}' if exc.status else 'metadata_unavailable'
+                runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
+            except SwitcherError:
+                errors[candidate] = 'authentication_needs_attention'
+        preferred = preference.get('preferred', self.config['primary'])
+        if preferred not in self.accounts:
+            raise SwitcherError('Preferred account is not configured')
+        fallback = next(candidate for candidate in self.accounts if candidate != preferred)
+        now = clock()
+        decision = choose_account(email, preferred, fallback, readings, now,
+                                  self.config['threshold'], 90)
+        report = {'observed_at': now, 'active': email, 'target': decision.target,
+                  'reason': decision.reason, 'apply': apply, 'switched': False, 'error_stages': stages,
+                  'usage': {e: asdict(u) for e, u in readings.items()}, 'errors': errors}
+        previous = runtime.get('usage', {})
+        for candidate in self.accounts:
+            if candidate not in report['usage'] and candidate in previous:
+                report['usage'][candidate] = dict(previous[candidate], stale=True)
+        runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
+                       preferred=preferred, target=decision.target, error_stages=stages)
+        if apply and email == preferred and decision.target == email:
+            runtime['preference_at'] = preference.get('requested_at')
+        self.state.save('runtime', runtime)
+        if apply and decision.target and decision.target != email:
+            if now < settle_until and not immediate:
+                report['reason'] = 'waiting_for_credential_cache'
+            else:
+                self.switch_to(active, decision.target, now, readings[decision.target],
+                               reading_tokens[decision.target], clock=clock)
+                report['switched'] = True
+        self.state.save('last_report', report)
+        if apply and report['switched'] and decision.target == preferred:
+            runtime = self.state.load('runtime')
+            runtime['preference_at'] = preference.get('requested_at')
+            self.state.save('runtime', runtime)
+        return report
 
     def next_delay(self, now):
         runtime = self.state.load('runtime')

@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 
-from api import Anthropic
+from api import Anthropic, ApiError
 from compatibility import FAILURE as COMPATIBILITY_FAILURE
 from macos import Keychain, KeychainError, Vault, system_awake
 from measurement import Measurement, observe, summarize
@@ -129,15 +129,16 @@ def tick_once(app, apply, last_outcome):
         app.state.save('switcher_health', {
             'observed_at': time.time(), 'state': 'blocked',
             'error_type': type(exc).__name__, 'reason': str(exc),
-            'threshold': app.config['threshold']})
+            'operation': getattr(exc, 'operation', None), 'threshold': app.config['threshold']})
         if halts_keychain_work(exc):
             app.state.save('halt', {'observed_at': time.time(),
                                     'error_type': type(exc).__name__, 'reason': str(exc)})
             print(json.dumps({'halted': str(exc)}), flush=True)
-        return None, 60, outcome
+        return None, max(60, getattr(exc, 'retry_after', 0)), outcome
     app.state.save('switcher_health', {
         'observed_at': time.time(), 'state': 'running',
         'reason': report['reason'], 'threshold': app.config['threshold'],
+        'error_stages': report.get('error_stages', {}),
         'compatibility': getattr(app, 'compatibility', {})})
     outcome = (report['active'], report['target'], report['reason'],
                report['switched'], tuple(sorted(report['errors'].items())))
@@ -149,12 +150,14 @@ def tick_once(app, apply, last_outcome):
 
 def measure_and_review(app, measurement, report, delay):
     """Return the next delay. Measurement uses no-UI reads and encrypted saved bundles."""
-    if report is None and measurement.enabled():
+    remaining = app.state.load('runtime').get('retry_after', 0) - time.time()
+    if report and report.get('reason') == 'waiting_for_retry_after':
+        report = None
+    if report is None and remaining <= 0 and measurement.enabled():
         try:
             report = observe(app)
             delay = max(delay, report.get('retry_after_seconds', 0))
         except (SwitcherError, KeychainError, OSError, ValueError) as exc:
-            from api import ApiError
             if isinstance(exc, ApiError):
                 delay = max(delay, exc.retry_after)
             app.state.save('measurement_error', {
@@ -163,13 +166,14 @@ def measure_and_review(app, measurement, report, delay):
                 'retry_after_seconds': getattr(exc, 'retry_after', None)})
     if report is not None:
         try:
-            measurement.record(report)
-            app.state.save('measurement_error', {})
+            if measurement.record(report) is not None:
+                app.state.save('measurement_error', {})
         except (SwitcherError, OSError, ValueError) as exc:
             # Measurement failures must not interrupt an account swap.
             print(json.dumps({'measurement_error': type(exc).__name__}), flush=True)
     try:
         review_if_due(app.state)
+        measurement.prune(time.time())
     except (SwitcherError, OSError, ValueError) as exc:
         print(json.dumps({'monitoring_error': type(exc).__name__}), flush=True)
     return delay

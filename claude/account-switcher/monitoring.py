@@ -19,6 +19,9 @@ def start(state, days=14, now=None):
     if isinstance(days, bool) or not isinstance(days, int) or not 1 <= days <= 30:
         raise SwitcherError('Monitoring days must be between 1 and 30')
     now = time.time() if now is None else now
+    existing = state.load('monitoring')
+    if existing.get('status') == 'active' and now >= existing['ends_at']:
+        review_if_due(state, now)
     with state.lock('monitoring'):
         existing = state.load('monitoring')
         if existing.get('status') == 'active' and existing['ends_at'] > now:

@@ -170,6 +170,17 @@ class ServiceTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.app = make_app(self.directory.name)
 
+    def test_profile_backoff_survives_the_next_tick(self):
+        from api import ApiError
+        self.app.api.profile = Mock(side_effect=ApiError('profile', 429, 1800))
+        with self.assertRaises(ApiError):
+            self.app.tick(apply=True, now=NOW)
+        report = self.app.tick(apply=True, now=NOW + 60)
+        self.assertEqual(report['reason'], 'waiting_for_retry_after')
+        self.assertEqual(self.app.state.load('runtime')['retry_after'], NOW + 1800)
+        self.assertEqual(self.app.api.profile.call_count, 1)
+        self.assertEqual(self.app.vault.active_writes, 0)
+
     def test_dry_run_does_not_write_live_credentials(self):
         """사전 확인은 전환을 제안해도 현재 인증을 변경하지 않는다."""
         # given

@@ -104,11 +104,7 @@ def ended_with_limit_error(projects_dir, session_id):
                    key=lambda path: path.stat().st_mtime)
     if not paths:
         return False
-    with paths[-1].open('rb') as stream:
-        stream.seek(0, 2)
-        stream.seek(max(0, stream.tell() - TAIL_BYTES))
-        tail = stream.read().decode('utf-8', 'replace')
-    for line in reversed(tail.splitlines()):
+    for line in transcript_lines(paths[-1]):
         try:
             entry = json.loads(line)
         except ValueError:
@@ -122,15 +118,38 @@ def ended_with_limit_error(projects_dir, session_id):
     return False
 
 
+def transcript_lines(path):
+    """Walk backwards by blocks. Keep at most one pending record across reads."""
+    with path.open('rb') as stream:
+        offset = stream.seek(0, os.SEEK_END)
+        parts = []
+        while offset:
+            size = min(offset, TAIL_BYTES)
+            offset -= size
+            stream.seek(offset)
+            block = stream.read(size).split(b'\n')
+            for piece in reversed(block[1:]):
+                parts.append(piece)
+                yield b''.join(reversed(parts))
+                parts.clear()
+            parts.append(block[0])
+        if parts:
+            yield b''.join(reversed(parts))
+
+
 def live_session(config_home, session_id, runner=subprocess.run):
     """This interactive session's registry entry while its pid still belongs to the same process.
 
     `ps -p` gets one pid: with all 15 registered pids it took 0.16 s of system time, with one
     under 0.01 s (2026-11-16)."""
+    unreadable = False
     for path in (Path(config_home) / 'sessions').glob('*.json'):
         try:
             entry = json.loads(path.read_text())
+        except FileNotFoundError:
+            continue
         except (OSError, ValueError):
+            unreadable = True
             continue
         if (entry.get('sessionId') != session_id or entry.get('kind') != 'interactive'
                 or not isinstance(entry.get('pid'), int)):
@@ -147,6 +166,8 @@ def live_session(config_home, session_id, runner=subprocess.run):
             raise subprocess.CalledProcessError(result.returncode, '/bin/ps')
         if result.stdout.strip() == entry.get('procStart'):
             return entry
+    if unreadable:
+        raise SessionUnavailable("Session registry temporarily unreadable")
     return None
 
 
@@ -163,18 +184,41 @@ def process_children(runner):
     return children
 
 
-def background_work(session, children, projects_dir, now):
+def background_work(session, children, projects_dir, now, runner=subprocess.run):
     """True while a shell or a subagent of this session is still working."""
-    names, stack = set(), [session['pid']]
+    candidates, stack = [], [session['pid']]
     while stack:
         for child, name in children.get(stack.pop(), []):
-            names.add(name.strip())
+            if name in WORKING_CHILDREN:
+                return True
+            if name != 'caffeinate':
+                candidates.append(str(child))
             stack.append(child)
-    if WORKING_CHILDREN & names:
-        return True
+    if candidates:
+        # A shell can exec the foreground task. A long-lived MCP process normally has pipes.
+        descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(candidates),
+                              '-d', '1,2', '-Fftn'], capture_output=True, text=True,
+                             timeout=5, check=False)
+        if descriptors.returncode not in (0, 1) or (descriptors.returncode and descriptors.stderr):
+            raise SessionUnavailable('Could not check session task output')
+        regular = False
+        for field in descriptors.stdout.splitlines():
+            if field.startswith(('f', 'p')):
+                regular = False
+            elif field.startswith('t'):
+                regular = field == 'tREG'
+            elif regular and field.startswith('n'):
+                path = Path(field[1:])
+                if (path.parent.name == 'tasks' and path.parent.parent.name == session['sessionId']
+                        and path.suffix == '.output'):
+                    return True
     pattern = f"*/{session['sessionId']}/subagents/*.jsonl"
     return any(now - path.stat().st_mtime < SUBAGENT_QUIET_SECONDS
                for path in Path(projects_dir).glob(pattern))
+
+
+class SessionUnavailable(OSError):
+    pass
 
 
 class SessionEnded(Exception):
@@ -220,8 +264,10 @@ class SelfRestart:
     def needed(self):
         """True when the latest switch happened after this session's process started."""
         since = switch_pending(self.state, self.clock())
+        if not since:
+            return False
         session = self.session()
-        return bool(since and session and session.get('startedAt', 0) / 1000 < since)
+        return bool(session and session.get('startedAt', 0) / 1000 < since)
 
     def run(self):
         """Wait for the switch and a quiet moment, restart, and continue after a limit stop."""
@@ -231,7 +277,18 @@ class SelfRestart:
             return 'session_ended'
 
     def _run(self):
-        if not self.wait(self.needed, SWITCH_TIMEOUT_SECONDS):
+        was_limited = self.limited()
+
+        def awaiting_switch():
+            if self.needed():
+                return True
+            if was_limited:
+                self.session()
+                if not self.limited():
+                    raise SessionEnded
+            return False
+
+        if not self.wait(awaiting_switch, REFRESH_WINDOW_SECONDS if was_limited else SWITCH_TIMEOUT_SECONDS):
             return 'no_switch'
         session = self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
         if session is None and self.limited():
@@ -239,16 +296,25 @@ class SelfRestart:
                                 LIMIT_WAIT_STEP_SECONDS)
         if session is None:
             return 'not_ready'
+        since = switch_pending(self.state, self.clock())
+        if not since or session['startedAt'] / 1000 >= since:
+            return 'already_restarted'
         limited = self.limited()
         # 직접 요청한 재시작 중에는 registry와 프로세스가 잠시 사라질 수 있다.
-        self.watch_exit = False
-        if not self.type('/restart'):
+        def still_needs_restart():
+            current = self.quiet_session(None)
+            since = switch_pending(self.state, self.clock())
+            return (current and since and current['startedAt'] == session['startedAt']
+                    and current['startedAt'] / 1000 < since)
+
+        if not self.type('/restart', only_if=still_needs_restart):
             return 'not_ready'
+        self.watch_exit = False
         if self.wait(lambda: self.ready(session.get('startedAt')), RESTART_TIMEOUT_SECONDS) is None:
             return 'restart_unconfirmed'
-        if not limited:
+        if not limited or not self.limited():
             return 'restarted'
-        if not self.type(CONTINUE_PROMPT):
+        if not self.type(CONTINUE_PROMPT, only_if=self.limited):
             return 'restarted_continuation_deferred'
         return 'restarted_and_continued'
 
@@ -260,7 +326,7 @@ class SelfRestart:
                 result = check()
                 if result:
                     return result
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, SessionUnavailable):
                 # 2026-11-16 11:08: many sessions stopped at a limit at once and five helpers gave
                 # up on one slow ps; a slow check only means "not ready yet".
                 pass
@@ -273,29 +339,43 @@ class SelfRestart:
         """This session once it is quiet with an empty input box, else None; usage-limit choices
         covering the box are closed for the next check. While the registry still shows
         old_started (its startedAt before `/restart`), the session has not come back yet."""
+        session = self.quiet_session(old_started)
+        if not session:
+            return None
+        screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
+        if input_ready(screen):
+            return session
+        if LIMIT_CHOICES_TITLE in screen and 'Stop and wait for limit to reset' in screen:
+            self.cmux('send-key', '--surface', self.surface, 'escape')
+        return None
+
+    def quiet_session(self, old_started):
         session = self.session()
         if not session or session.get('startedAt') == old_started:
             return None
         if session.get('status') != 'idle' and not self.limited():
             return None
-        if background_work(session, process_children(self.runner), self.projects, self.clock()):
+        if background_work(session, process_children(self.runner), self.projects, self.clock(), self.runner):
             return None
-        screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
-        if input_ready(screen):
-            return session
-        if LIMIT_CHOICES_TITLE in screen:
-            self.cmux('send-key', '--surface', self.surface, 'escape')
-        return None
+        return session
 
     def cmux(self, *args):
         result = self.runner([self.cmux_path, *args], capture_output=True, text=True,
                              timeout=10, check=False)
         if result.returncode:
+            if args[0] == 'read-screen':
+                raise SessionUnavailable('Could not read the terminal screen')
             raise OSError(f'cmux {args[0]} failed: status={result.returncode}')
         return result.stdout
 
-    def type(self, text):
-        if not input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12')):
+    def type(self, text, only_if=None):
+        def inspect_input():
+            if only_if and not only_if():
+                return 'occupied'
+            screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
+            return 'empty' if input_ready(screen) else 'occupied'
+
+        if self.wait(inspect_input, 10) != 'empty':
             return False
         # cmux 0.64.22 dispatches paste and submit together on its main actor. It does not
         # provide an atomic empty-input precondition, so the final screen check is still needed.

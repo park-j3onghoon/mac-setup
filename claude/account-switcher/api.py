@@ -1,6 +1,7 @@
 """Metadata-only requests to Anthropic. No model calls, redirects, or proxies."""
 
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 import json
 import math
 import ssl
@@ -16,6 +17,7 @@ from storage import SwitcherError
 class ApiError(SwitcherError):
     def __init__(self, operation, status=None, retry_after=60):
         super().__init__(f'Anthropic {operation} failed: status={status or "unavailable"}')
+        self.operation = operation
         self.status = status
         self.retry_after = retry_after
 
@@ -98,11 +100,15 @@ class Anthropic:
                     raise ApiError(operation + ' response schema')
                 return data
         except HTTPError as exc:
-            retry = 60
+            value = exc.headers.get('Retry-After', '60')
             try:
-                retry = max(30, min(3600, int(exc.headers.get('Retry-After', '60'))))
+                retry = int(value)
             except (ValueError, TypeError):
-                pass
+                try:
+                    retry = math.ceil(parsedate_to_datetime(value).timestamp() - time.time())
+                except (ValueError, TypeError, OverflowError, OSError):
+                    retry = 60
+            retry = max(30, min(3600, retry))
             raise ApiError(operation, exc.code, retry) from None
         except (URLError, TimeoutError, OSError, ValueError):
             raise ApiError(operation) from None

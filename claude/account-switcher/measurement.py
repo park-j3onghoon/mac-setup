@@ -30,6 +30,7 @@ class TokenTail:
         self.seen = {}
         self.directories = {}
         self.next_discovery = 0
+        self.retry_files = set()
 
     def discover(self, now):
         """Reuse unchanged directory listings, still stat files to detect resumed old sessions."""
@@ -71,13 +72,14 @@ class TokenTail:
         if not errors:
             present = set(paths)
             self.files = {path: value for path, value in self.files.items() if path in present}
+            self.retry_files.intersection_update(present)
         for path in paths:
             try:
                 info = path.stat()
                 if info.st_mtime < cutoff:
                     self.files.pop(path, None)
                     continue
-                if info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
+                if path not in self.retry_files and info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
                     continue
                 identity = (info.st_dev, info.st_ino)
                 old_identity, offset, discarding = self.files.get(path, (None, 0, False))
@@ -127,7 +129,9 @@ class TokenTail:
                             counts[model][field] += b - a
                         counts[model]['requests'] += int(prior is None)
                 self.files[path] = (identity, offset, discarding)
+                self.retry_files.discard(path)
             except OSError:
+                self.retry_files.add(path)
                 errors += 1
         self.seen = {k: v for k, v in self.seen.items() if v[0] >= cutoff}
         self.last_scan = now
@@ -227,6 +231,7 @@ class Measurement:
         self.state = state
         self.tokens = TokenTail(projects)
         self.previous = state.load('measurement_latest')
+        self.pruned_day = None
 
     def enabled(self, now=None):
         now = time.time() if now is None else now
@@ -235,6 +240,7 @@ class Measurement:
 
     def record(self, report, now=None):
         now = time.time() if now is None else now
+        self.prune(now)
         if not self.enabled(now):
             return None
         # Whitelist data rather than serializing an arbitrary caller's payload.
@@ -269,13 +275,26 @@ class Measurement:
         path = directory / f'{day}.jsonl'
         raw = (json.dumps(row, allow_nan=False, separators=(',', ':')) + '\n').encode()
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, 'ab') as stream:
+            os.fchmod(stream.fileno(), 0o600)
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
         self.state.save('measurement_latest', row)
         self.previous = row
+        return row
+
+    def prune(self, now):
+        day = int(now // 86400)
+        if day == self.pruned_day:
+            return
+        directory = self.state.root / 'measurements'
+        if directory.is_symlink():
+            raise SwitcherError('Measurement directory must not be a symlink')
+        plan = self.state.load('monitoring')
+        cutoff = now - 30 * 86400
+        if plan.get('status') == 'active':
+            cutoff = min(cutoff, plan['starts_at'])
         for old in directory.glob('*.jsonl'):
             if old.is_symlink():
                 continue
@@ -283,9 +302,9 @@ class Measurement:
                 written_day = datetime.strptime(old.stem, '%Y-%m-%d').replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
-            if written_day.timestamp() < now - 30 * 86400:
-                old.unlink()
-        return row
+            if written_day.timestamp() + 86400 <= cutoff:
+                old.unlink(missing_ok=True)
+        self.pruned_day = day
 
 
 def summarize(state, since=None, until=None):
@@ -293,7 +312,15 @@ def summarize(state, since=None, until=None):
     groups = {}
     count, paired, first, last = 0, 0, None, None
     failed, empty, token_read_errors, long_gaps = 0, 0, 0, 0
+    first_day = datetime.fromtimestamp(since, timezone.utc).date().isoformat() if since is not None else None
+    last_day = datetime.fromtimestamp(until, timezone.utc).date().isoformat() if until is not None else None
     for path in sorted((state.root / 'measurements').glob('*.jsonl')):
+        try:
+            file_day = datetime.strptime(path.stem, '%Y-%m-%d').date().isoformat()
+        except ValueError:
+            file_day = None
+        if file_day and ((first_day and file_day < first_day) or (last_day and file_day > last_day)):
+            continue
         if path.is_symlink():
             continue
         with path.open() as stream:
