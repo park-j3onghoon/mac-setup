@@ -9,7 +9,7 @@ import threading
 import time
 
 from policy import THRESHOLD, UsageUnavailable, choose
-from profiles import PROFILES, Profile
+from profiles import PROFILES, Profile, RegistrationMismatch
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
 from state import RUNTIME, STATE_FILE, changed_file, load, poll_delay, preference, record, save
@@ -52,6 +52,8 @@ def monitor(runtime, profiles, stop, state):
     saved_content = None
     saved_at = 0
     previous_wall = 0
+    retry_registration = {}
+    next_limit_check = 0
     while not stop.is_set():
         if not runtime.running():
             if state.get("upgrade_status") == "draining":
@@ -59,7 +61,8 @@ def monitor(runtime, profiles, stop, state):
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
         if now < previous_wall:
-            next_poll = next_release = next_upgrade = retry_switch_at = saved_at = 0
+            next_poll = next_release = next_upgrade = retry_switch_at = saved_at = next_limit_check = 0
+            retry_registration.clear()
             saved_content = None
         previous_wall = now
         if state.get("runtime_version") and state.get("upgrade_status") != "draining" and now >= next_upgrade:
@@ -81,17 +84,41 @@ def monitor(runtime, profiles, stop, state):
         manual = changed_file(RUNTIME / 'usage-request.json').get('requested_at', 0)
         if manual > state.get('usage_request_at', 0):
             next_poll = 0
-        binding = changed_file(RUNTIME / 'profile-registration.json')
-        if (binding and binding.get('requested_at', 0) > state.get('registration_at', 0)
-                and binding.get('profile') in profiles):
+        legacy = changed_file(RUNTIME / 'profile-registration.json')
+        for name, profile in profiles.items():
+            binding = changed_file(RUNTIME / f'profile-registration-{name}.json')
+            if (legacy.get('profile') == name and
+                    (not binding or legacy.get('requested_at', 0) > binding.get('requested_at', 0))):
+                binding = legacy
+                if binding.get('requested_at', 0) <= state.get('registration_at', 0):
+                    continue
+            if not binding or binding.get('profile') != name:
+                continue
+            request = binding.get('requested_at')
+            if state.get('registration_requests', {}).get(name) == request:
+                continue
+            last, retry_at = retry_registration.get(name, (None, 0))
+            if last == request and now < retry_at:
+                continue
+            errors = state.setdefault('registration_errors', {})
             try:
-                profiles[binding['profile']].register(binding.get('account_id'))
-                state['accounts'] = {key: value for key, value in state.get('accounts', {}).items()
-                                     if key != binding['profile']}
-                state.pop('registration_error', None)
+                profile.register(binding.get('account_id'))
+            except RegistrationMismatch as error:
+                errors[name] = str(error)
             except UsageUnavailable as error:
-                state['registration_error'] = str(error)
-            state['registration_at'] = binding['requested_at']
+                errors[name] = str(error)
+                retry_registration[name] = (request, now + 5)
+                state['registration_error'] = '; '.join(f'{key}: {value}' for key, value in errors.items())
+                continue
+            else:
+                errors.pop(name, None)
+                state['accounts'] = {key: value for key, value in state.get('accounts', {}).items() if key != name}
+            if errors:
+                state['registration_error'] = '; '.join(f'{key}: {value}' for key, value in errors.items())
+            else:
+                state.pop('registration_error', None)
+            state.setdefault('registration_requests', {})[name] = request
+            state['registration_at'] = max(state.get('registration_at', 0), request)
             next_poll = 0
         if requested and requested.get("requested_at") != state.get("preference_at"):
             state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"),
@@ -107,6 +134,9 @@ def monitor(runtime, profiles, stop, state):
                 state["release_error"] = type(error).__name__
                 complete = not (runtime.release_ids or runtime.release_cursor)
             next_release = time.time() + (2 if complete is False else 60)
+        if now >= next_limit_check and runtime.take_limit_failure() is True:
+            next_poll = 0
+            next_limit_check = now + 15
         if now >= next_poll:
             previous_desired = desired
             fresh, errors = collect(profiles)
@@ -125,8 +155,9 @@ def monitor(runtime, profiles, stop, state):
             except UsageUnavailable:
                 desired = None
             try:
-                previous = state.get("active", runtime.active)
+                previous = state.setdefault('last_observed_active', state.get('active', runtime.active))
                 runtime.observe_account()
+                state['last_observed_active'] = runtime.active
                 state["account_observed_at"] = time.time()
                 state.pop("account_error", None)
                 if previous is not None and previous != runtime.active:
@@ -142,6 +173,9 @@ def monitor(runtime, profiles, stop, state):
                 retry_switch_at, idle_retry_delay = 0, 2
             next_poll = time.time() + poll_delay(fresh, runtime.active, history=state.get('accounts', {}))
             state["next_check_at"] = next_poll
+            runtime.quota_periods = {name: max((window.get('last_reset_confirmed_at', 0)
+                                      for window in value.get('windows', {}).values()), default=0)
+                                     for name, value in state['accounts'].items()}
             check_limited = True
         state["desired"] = desired
         if (desired is not None and time.time() >= retry_switch_at
@@ -155,6 +189,7 @@ def monitor(runtime, profiles, stop, state):
                 if changed and old != runtime.active:
                     next_poll = time.time() + poll_delay(state['accounts'], runtime.active)
                     state['next_check_at'] = next_poll
+                    state['last_observed_active'] = runtime.active
                     state["last_switch_at"] = time.time()
                     state["switch_count"] = state.get("switch_count", 0) + 1
                 if (changed and check_limited
@@ -216,7 +251,8 @@ def main():
         except BlockingIOError:
             return
         for prefix in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-', '.usage-request.json-',
-                       '.profile-registration.json-', '.usage-'):
+                       '.profile-registration.json-', '.profile-registration-company.json-',
+                       '.profile-registration-personal.json-', '.continuation-followups.json-', '.usage-'):
             for orphan in STATE_FILE.parent.glob(prefix + '*'):
                 try:
                     if not orphan.is_file() or orphan.is_symlink():
@@ -236,6 +272,8 @@ def main():
                 except FileNotFoundError:
                     pass
         state = load()
+        if 'active' in state:
+            state.setdefault('last_observed_active', state['active'])
         state.update(status="starting", active=None, pid=os.getpid(),
                      pid_start=process_start(os.getpid()), updated_at=time.time())
         save(state)

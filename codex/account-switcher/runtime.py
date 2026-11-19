@@ -112,13 +112,16 @@ def preserve_server_package(binary, home):
     packages.mkdir(mode=0o700, exist_ok=True)
     current = packages / release.name
     executables = ('codex', 'codex-code-mode-host', 'codex-exec-server')
-    def sizes(package):
+    def identity(package):
         result = []
         for name in executables:
             path = package / 'bin' / name
-            if not path.is_file() or not os.access(path, os.X_OK) or not path.stat().st_size:
+            if not path.is_file() or not os.access(path, os.X_OK):
                 return None
-            result.append(path.stat().st_size)
+            info = path.stat()
+            if not info.st_size:
+                return None
+            result.append([info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns])
         return result
 
     def digests(package):
@@ -131,11 +134,14 @@ def preserve_server_package(binary, home):
             result.append(digest.hexdigest())
         return result
 
-    cached, original = sizes(current), sizes(release)
+    cached, original = identity(current), identity(release)
     manifest = '.switcher-checksums.json'
-    recorded = load(current / manifest).get('sha256')
-    expected = digests(release) if original is not None else recorded
-    matches = cached is not None and expected and digests(current) == expected
+    recorded = load(current / manifest)
+    expected = recorded.get('sha256')
+    if original and (not expected or original != recorded.get('source')):
+        expected = digests(release)
+    matches = cached and expected and (cached == recorded.get('cache') and expected == recorded.get('sha256')
+                                       or digests(current) == expected)
     if not matches:
         if original is None:
             raise UsageUnavailable(f"Codex package {release.name} has incomplete executables")
@@ -143,14 +149,14 @@ def preserve_server_package(binary, home):
             staging = Path(temporary)
             staged = staging / "package"
             shutil.copytree(release, staged)
-            if sizes(staged) != original or digests(staged) != expected:
+            if identity(staged) is None or digests(staged) != expected or identity(release) != original:
                 raise UsageUnavailable(f"Codex package {release.name} changed during staging")
-            save({'sha256': expected}, staged / manifest)
+            save({'sha256': expected, 'source': original, 'cache': identity(staged)}, staged / manifest)
             if current.exists() or current.is_symlink():
                 current.rename(staging / 'replaced')
             staged.rename(current)
-    elif recorded != expected:
-        save({'sha256': expected}, current / manifest)
+    elif original is not None and (recorded.get('source') != original or recorded.get('cache') != cached):
+        save({'sha256': expected, 'source': original, 'cache': cached}, current / manifest)
 
     return current / "bin" / installed.name
 
@@ -238,6 +244,9 @@ class Runtime:
         self.exit_watch = None
         self.active = None
         self.continued = {}
+        self.followups = {}
+        self.quota_periods = {}
+        self.limit_failure = False
         self.continuation_seen = set()
         self.continuation_missing = None
         self.uncertain_continuations = {}
@@ -266,6 +275,7 @@ class Runtime:
         self.continuation_path = self.home / 'continuation-receipts.json'
         self.uncertain_continuations = load(self.continuation_path)
         self.continued.update(self.uncertain_continuations)
+        self.followups = load(self.home / 'continuation-followups.json')
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
             try:
@@ -276,6 +286,8 @@ class Runtime:
             else:
                 self.pid, self.pid_start = peer_process(probe)
                 self.observe_account()
+                if restore_account and self.active is None:
+                    self.restore_account(restore_account)
                 return
             finally:
                 probe.close()
@@ -440,7 +452,7 @@ class Runtime:
             yield not client.request("thread/backgroundTerminals/list", params)["data"]
             yield not client.request("thread/queue/list", params)["data"]
             goal = client.request("thread/goal/get", params)["goal"]
-            yield not goal or goal["status"] == "complete"
+            yield not goal or goal["status"] in ("complete", "paused")
 
     def finish_upgrade(self, serial):
         self.observe_account()
@@ -519,9 +531,17 @@ class Runtime:
                 self.release_ids.popleft()
         return not self.release_ids and not self.release_cursor
 
+    def take_limit_failure(self):
+        with self.activity_lock:
+            pending, self.limit_failure = self.limit_failure, False
+            return pending
+
     def activity(self, method, params):
         owner = params.get('threadId') or (params.get('thread') or {}).get('id')
         with self.activity_lock:
+            turn = params.get('turn') or {}
+            if method == 'turn/completed' and (turn.get('error') or {}).get('codexErrorInfo') == 'usageLimitExceeded':
+                self.limit_failure = True
             if owner:
                 self.settled_threads.pop(owner, None)
             else:
@@ -647,7 +667,8 @@ class Runtime:
                         self.continuation_missing = deque()
                         for gone in self.continued.keys() - self.continuation_seen - self.uncertain_continuations.keys():
                             self.continued.pop(gone)
-                        self.continuation_missing.extend(self.uncertain_continuations.keys() - self.continuation_seen)
+                        self.continuation_missing.extend((self.uncertain_continuations.keys() | self.followups.keys())
+                                                         - self.continuation_seen)
                         with self.activity_lock:
                             for gone in self.settled_threads.keys() - self.continuation_seen:
                                 self.settled_threads.pop(gone)
@@ -656,11 +677,18 @@ class Runtime:
                         # An unloaded conversation may return. Confirm deletion before permitting replay.
                         try:
                             client.request('thread/read', {'threadId': gone, 'includeTurns': False})
+                            if gone in self.followups:
+                                latest = newest_turn(client, gone)
+                                if latest and (latest['id'] != self.followups[gone][0] or latest['status'] == 'completed'):
+                                    self.followups.pop(gone)
+                                    self.store_followups()
                         except RpcRejected as error:
                             if error.thread_missing:
                                 self.uncertain_continuations.pop(gone, None)
                                 self.continued.pop(gone, None)
                                 self.store_continuations()
+                                if self.followups.pop(gone, None):
+                                    self.store_followups()
                         except UsageUnavailable:
                             pass
                         continue
@@ -711,6 +739,15 @@ class Runtime:
                     self.store_continuations()
             return
         turn = newest_turn(client, thread_id)
+        workspace = getattr(self.profiles.get(self.active), 'account_id', None)
+        period = [workspace if isinstance(workspace, str) else self.active, self.quota_periods.get(self.active, 0)]
+        prior = self.followups.get(thread_id)
+        if prior and turn:
+            if prior == [turn['id'], *period] and turn['status'] == 'failed':
+                return
+            if prior[0] != turn['id'] or turn['status'] == 'completed':
+                self.followups.pop(thread_id)
+                self.store_followups()
         uncertain = self.uncertain_continuations.get(thread_id)
         if uncertain and turn and turn['id'] != uncertain:
             self.uncertain_continuations.pop(thread_id, None)
@@ -729,16 +766,17 @@ class Runtime:
         latest = newest_turn(client, thread_id)
         if self.continuation_changed or latest != turn:
             return
+        if client.request('thread/queue/list', {'threadId': thread_id})['data'] or self.continuation_changed:
+            return
         self.uncertain_continuations[thread_id] = turn['id']
         self.store_continuations()
-        if (self.continuation_changed or client.request('thread/queue/list', {'threadId': thread_id})['data']
-                or self.continuation_changed):
+        if self.continuation_changed:
             self.uncertain_continuations.pop(thread_id, None)
             self.store_continuations()
             return
         self.continued[thread_id] = turn['id']
         try:
-            client.request('turn/start', {
+            result = client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
             })
         except (RpcRejected, RpcNotSent):
@@ -750,8 +788,16 @@ class Runtime:
             self.uncertain_continuations[thread_id] = turn['id']
             raise
         else:
+            started = (result.get('turn') or {}).get('id') if isinstance(result, dict) else None
+            if isinstance(started, str):
+                self.followups[thread_id] = [started, *period]
+                self.store_followups()
             self.uncertain_continuations.pop(thread_id, None)
             self.store_continuations()
+
+    def store_followups(self):
+        if self.continuation_path:
+            save(self.followups, self.home / 'continuation-followups.json')
 
     def store_continuations(self):
         if self.continuation_path:

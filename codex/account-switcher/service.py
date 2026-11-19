@@ -1,10 +1,13 @@
 """Start the user-owned supervisor only when an automatic session is requested."""
 
+from contextlib import closing
 import errno
+import fcntl
 import os
 from pathlib import Path
 import plistlib
 import re
+import select
 import socket
 import subprocess
 import sys
@@ -35,11 +38,65 @@ def running(state):
     return process_start(state.get('pid')) == state['pid_start']
 
 
-def install_service():
+def service_plist():
+    return Path.home() / f'Library/LaunchAgents/{LABEL}.plist'
+
+
+def job_status(target):
+    return subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True, timeout=10)
+
+
+def job_pid(output):
+    match = re.search(r'^\s*pid = ([1-9]\d*)\s*$', output, re.M)
+    return int(match[1]) if match else None
+
+
+def start_reload_watcher(pending):
+    with pending.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        try:
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--finish-reload', str(lock.fileno())],
+                             pass_fds=(lock.fileno(),), start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as error:
+            print(f'Codex service registration is pending: {error}', file=sys.stderr)
+
+
+def finish_pending_reload():
+    target = f'gui/{os.getuid()}/{LABEL}'
+    pending = service_plist().with_suffix('.reload-pending')
+    while pending.exists():
+        try:
+            registered = job_status(target)
+            pid = job_pid(registered.stdout) if registered.returncode == 0 else None
+            if pid:
+                with closing(select.kqueue()) as watcher:
+                    watcher.control([select.kevent(pid, filter=select.KQ_FILTER_PROC, flags=select.KQ_EV_ADD,
+                                                   fflags=select.KQ_NOTE_EXIT)], 0, 0)
+                    # Recheck the job after registering so a recycled PID cannot strand this watcher.
+                    if job_pid(job_status(target).stdout) == pid:
+                        watcher.control([], 1, None)
+            install_service(watch=False)
+        except (OSError, subprocess.TimeoutExpired, UsageUnavailable):
+            pass
+        if pending.exists():
+            time.sleep(2)
+
+
+def install_service(*, watch=True):
+    destination = service_plist()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.with_suffix('.install-lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        install_registration(destination, watch)
+
+
+def install_registration(destination, watch):
     domain = f'gui/{os.getuid()}'
     target = f'{domain}/{LABEL}'
-    destination = Path.home() / f'Library/LaunchAgents/{LABEL}.plist'
-    destination.parent.mkdir(parents=True, exist_ok=True)
     # Cellar의 패치 버전 경로는 Homebrew 업데이트로 사라질 수 있다.
     python = Path(f'/opt/homebrew/opt/python@{sys.version_info.major}.{sys.version_info.minor}'
                   f'/bin/python{sys.version_info.major}.{sys.version_info.minor}')
@@ -53,7 +110,8 @@ def install_service():
         'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
         'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null',
     }
-    registered = subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True, timeout=10)
+    pending = destination.with_suffix('.reload-pending')
+    registered = job_status(target)
     already_loaded = False
     if registered.returncode == 0:
         try:
@@ -65,9 +123,22 @@ def install_service():
         arguments = [line.strip() for line in match[1].splitlines() if line.strip()] if match else saved.get('ProgramArguments')
         already_loaded = arguments == configuration['ProgramArguments'] and all(
             Path(path).is_file() for path in arguments)
-        if already_loaded and saved == configuration:
+        properties = re.search(r'^\s*properties = (.+)$', output, re.M)
+        stale = (saved != configuration or pending.exists() or properties is not None
+                 and 'keepalive' not in properties[1].lower().split(' | '))
+        if already_loaded and not stale:
             return
-        if not already_loaded:
+        inactive = re.search(r'^\s*state = (?:not running|exited|waiting|spawn scheduled)\s*$', output, re.M)
+        if already_loaded and (not inactive or job_pid(output)):
+            # Reload only once launchd reports that the existing supervisor has exited.
+            if not pending.exists():
+                pending.touch(mode=0o600)
+            if watch and job_pid(output):
+                start_reload_watcher(pending)
+            if saved == configuration:
+                return
+        else:
+            already_loaded = False
             result = subprocess.run(['/bin/launchctl', 'bootout', target], capture_output=True, timeout=10)
             if result.returncode:
                 raise UsageUnavailable("Could not replace the obsolete supervisor registration")
@@ -85,6 +156,7 @@ def install_service():
     if result.returncode and subprocess.run(['/bin/launchctl', 'print', target],
                                            capture_output=True, timeout=10).returncode:
         raise UsageUnavailable(f'Automatic supervisor registration failed: status={result.returncode}')
+    pending.unlink(missing_ok=True)
 
 
 def ensure():
@@ -108,3 +180,9 @@ def ensure():
             raise UsageUnavailable("Automatic account service could not start")
         time.sleep(0.2)
     raise UsageUnavailable("Automatic account service is not ready; saved logins are unchanged")
+
+
+if __name__ == '__main__' and len(sys.argv) == 3 and sys.argv[1] == '--finish-reload':
+    # The inherited flock keeps this the only watcher through exec and until exit.
+    with os.fdopen(int(sys.argv[2]), 'a'):
+        finish_pending_reload()

@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+from functools import lru_cache
 import os
 import select
 import socket
@@ -10,8 +11,12 @@ import threading
 import time
 
 
-XOR_TABLES = tuple(bytes(value ^ key for value in range(256)) for key in range(256))
 WRITE_TIMEOUT = 30
+
+
+@lru_cache(maxsize=256)
+def xor_table(key):
+    return bytes(value ^ key for value in range(256))
 
 
 def write_all(connection, parts, deadline, cancel=None):
@@ -45,7 +50,7 @@ def write_all(connection, parts, deadline, cancel=None):
 def mask_payload(data, mask):
     result = bytearray(data)
     for index, key in enumerate(mask):
-        result[index::4] = data[index::4].translate(XOR_TABLES[key])
+        result[index::4] = data[index::4].translate(xor_table(key))
     return result
 
 

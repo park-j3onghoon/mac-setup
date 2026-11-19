@@ -340,6 +340,48 @@ class ProxyTest(unittest.TestCase):
             self.proxy.pending[request['id']].put({'result': server.request(request['method'], request['params'])})
         self.fail('unsubscribe was not requested')
 
+    def test_timed_out_unsubscribe_forwards_unconfirmed_closure(self):
+        self.reach_unsubscribe()
+        self.proxy.check_deadline = 0
+        self.proxy.inspect_idle()
+        payload = b'{"method":"thread/closed","params":{"threadId":"thread"}}'
+        self.proxy.receive('server', payload)
+        self.assertEqual(self.proxy.events.get_nowait()[1], payload)
+
+    def test_transient_resume_retains_original_input_for_bounded_retry(self):
+        self.proxy.idle.sleeping.add('thread')
+        self.send_client({'id': 41, 'method':'turn/start', 'params':{'threadId':'thread'}})
+        self.proxy.advance_wakes(1)
+        request_id = self.proxy.wake_requests['thread'][0]
+        self.proxy.pending[request_id].put({'error':{'message':'thread is closing; retry'}})
+        self.proxy.advance_wakes(2)
+        self.assertEqual(self.proxy.deferred_count, 1)
+        self.proxy.advance_wakes(3)
+        self.proxy.pending[self.proxy.wake_requests['thread'][0]].put({'result':{}})
+        self.proxy.advance_wakes(4)
+        out = [json.loads(item.args[0]) for item in self.server.send.call_args_list]
+        self.assertEqual([item['method'] for item in out], ['thread/resume','thread/resume','turn/start'])
+        self.assertEqual(out[-1]['id'], 41)
+
+    def test_successful_realtime_stop_reopens_idle_cleanup(self):
+        for n, method in enumerate(('thread/realtime/start', 'thread/realtime/stop')):
+            self.send_client({'id':n,'method':method,'params':{'threadId':'thread'}})
+            self.proxy.forward_server({'id':n,'result':{}},b'{}')
+            self.assertEqual('thread' in self.proxy.idle.realtime, n == 0)
+        self.assertEqual([t for t,_ in self.proxy.idle.candidates(1e12)], ['thread'])
+        self.proxy.idle.preserve('thread')
+        self.proxy.realtime_changed('thread',False)
+        self.assertTrue(self.proxy.idle.threads['thread']['blocked'])
+
+    def test_final_busy_check_reschedules_within_one_second(self):
+        server = Server()
+        checks = iter([True, False])
+        resources = IdleThreads(server.request, 900, lambda:next(checks))
+        resources.track({'thread':{'id':'thread','ephemeral':False}},{},0)
+        resources.park(900)
+        self.assertFalse(resources.sleeping)
+        self.assertEqual([t for t,_ in resources.candidates(901)], ['thread'])
+
     def test_rejected_unsubscribe_does_not_hide_real_thread_closed(self):
         """명시적으로 거절된 회수는 sleeping을 되돌려 진짜 종료 알림을 보존한다."""
         response = self.reach_unsubscribe()

@@ -29,6 +29,10 @@ def credentials(home):
         raise UsageUnavailable("Saved ChatGPT login cannot be read") from error
 
 
+class RegistrationMismatch(UsageUnavailable):
+    pass
+
+
 class Profile:
     def __init__(self, name, home, binary=BINARY):
         self.name, self.home, self.binary = name, home, binary
@@ -52,7 +56,7 @@ class Profile:
         with self.lock:
             current = credentials(self.home)['chatgptAccountId']
             if current != expected:
-                raise UsageUnavailable('Saved workspace changed after registration was requested')
+                raise RegistrationMismatch('Saved workspace changed after registration was requested')
             self._disconnect()
             self.account_id = current
             self.failed_refresh = None
@@ -112,14 +116,18 @@ class Profile:
     def usage(self):
         self.tokens()
         with self.lock:
-            try:
-                result = self._connect().request("account/rateLimits/read", timeout=20)
-                if result.get("accountId") != self.account_id:
+            client, account_id = self._connect(), self.account_id
+        try:
+            result = client.request("account/rateLimits/read", timeout=20)
+            with self.lock:
+                if self.client is not client or self.account_id != account_id or result.get("accountId") != account_id:
                     raise UsageUnavailable(f"The {self.name} usage belongs to another workspace")
-                return snapshot(result)
-            except Exception:
-                self._disconnect()
-                raise
+            return snapshot(result)
+        except Exception:
+            with self.lock:
+                if self.client is client:
+                    self._disconnect()
+            raise
 
     def close(self):
         with self.lock:

@@ -6,6 +6,7 @@ import os
 import queue
 import re
 import select
+import socket
 import subprocess
 import threading
 import time
@@ -79,6 +80,7 @@ class Rpc:
     def __init__(self, binary, home, socket_path=None, handler=None, notification=None, *, cancel=None):
         self.process = self.websocket = None
         self.closing = threading.Event()
+        self.reader_wakeup = None
         self.workers = set()
         self.cleanup_lock = threading.Lock()
         self.timeouts = 0
@@ -100,6 +102,7 @@ class Rpc:
         self.reader = threading.Thread(target=self._read, daemon=True)
         try:
             if self.process:
+                self.reader_wakeup = socket.socketpair()
                 os.set_blocking(self.process.stdin.fileno(), False)
             self.reader.start()
             result = self.request("initialize", {
@@ -136,7 +139,7 @@ class Rpc:
                     write_all(self.process.stdin.fileno(), (payload + b'\n',), deadline, cancel)
             except (ValueError, OSError) as error:
                 self.closed = True
-                self.closing.set()
+                self.wake_reader()
                 if self.websocket:
                     self.websocket.close()
                 elif self.process:
@@ -241,7 +244,7 @@ class Rpc:
         except (OSError, EOFError, ValueError, queue.Full):
             pass
         finally:
-            self.closing.set()
+            self.wake_reader()
             if self.websocket:
                 self.websocket.close()
             with self.lock:
@@ -254,13 +257,29 @@ class Rpc:
                         pass
             if self.process:
                 self.close_process()
+                self.close_wakeup()
+
+    def wake_reader(self):
+        self.closing.set()
+        if self.reader_wakeup:
+            try:
+                self.reader_wakeup[1].shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def close_wakeup(self):
+        pair = self.reader_wakeup
+        if pair:
+            for endpoint in pair:
+                endpoint.close()
 
     def stdio_lines(self):
         fd = self.process.stdout.fileno()
         buffered = bytearray()
         while not self.closing.is_set():
-            if not select.select([fd], [], [], .05)[0]:
-                continue
+            ready, _, _ = select.select([fd, self.reader_wakeup[0]], [], [])
+            if self.reader_wakeup[0] in ready:
+                return
             chunk = os.read(fd, 65536)
             if not chunk:
                 return
@@ -302,7 +321,7 @@ class Rpc:
 
     def close(self):
         self.closed = True
-        self.closing.set()
+        self.wake_reader()
         if self.websocket:
             self.websocket.close()
         if self.process and self.process.poll() is None:
@@ -311,6 +330,8 @@ class Rpc:
             self.reader.join(timeout=.5)
         if self.process:
             self.close_process()
+            if self.reader.ident is None or not self.reader.is_alive():
+                self.close_wakeup()
         with self.lock:
             workers = tuple(self.workers)
         deadline = time.monotonic() + 1

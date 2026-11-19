@@ -98,6 +98,7 @@ class IdleThreads:
         self.can_park = can_park
         self.threads = {}
         self.sleeping = set()
+        self.realtime = set()
         self.inspecting = None
         self.child_counts = Counter()
         self.due = []
@@ -107,6 +108,7 @@ class IdleThreads:
     def forget(self, thread_id):
         saved = self.threads.pop(thread_id, None)
         self.sleeping.discard(thread_id)
+        self.realtime.discard(thread_id)
         self.scheduled.pop(thread_id, None)
         if saved and saved["parent"]:
             parent = saved["parent"]
@@ -150,7 +152,7 @@ class IdleThreads:
                 continue
             del self.scheduled[owner]
             saved = self.threads.get(owner)
-            if not saved or saved['blocked'] or owner in self.sleeping and not saved['parent']:
+            if not saved or saved['blocked'] or owner in self.realtime or owner in self.sleeping and not saved['parent']:
                 continue
             next_due = saved['last_activity'] + self.delay
             self.schedule(owner, max(now + max(.001, self.delay), next_due))
@@ -291,8 +293,9 @@ class IdleThreads:
                 self.touch(thread_id, now + (time.monotonic() - started))
                 continue
             if not self.can_park():
+                self.schedule(thread_id, now + 1, earlier=True)
                 continue
-            if (self.threads.get(thread_id) is not saved or saved['blocked']
+            if (self.threads.get(thread_id) is not saved or saved['blocked'] or thread_id in self.realtime
                     or saved['last_activity'] != activity):
                 continue
             # thread/closed 종료 알림보다 먼저 표시한다. TUI는 이 알림을 받으면 종료한다.
@@ -459,6 +462,9 @@ class Proxy:
         self.request_owners = {}
         self.owner_counts = Counter()
         self.early_closes = {}
+        self.uncertain_unsubscribes = {}
+        self.unsubscribe_lock = threading.RLock()
+        self.wake_retry_limits = {}
         self.check_params = {}
         self.writers = {}
         self.stopped = threading.Event()
@@ -524,24 +530,40 @@ class Proxy:
         target = self.pending.get(request_id)
         if side == 'server' and 'method' not in message and (
                 target is not None or isinstance(request_id, str) and request_id.startswith(self.prefix)):
-            if target is not None:
-                target.put_nowait(message)
-                self.next_wake_check = 0
-                self.events.put(('maintenance', None))
+            with self.unsubscribe_lock:
+                owner = self.uncertain_unsubscribes.pop(request_id, None)
+                if owner is not None:
+                    if 'error' in message:
+                        self.idle.sleeping.discard(owner)
+                elif target is not None:
+                    target.put_nowait(message)
+                    self.next_wake_check = 0
+                    self.events.put(('maintenance', None))
             return
         params = message.get("params") or {}
         thread_id = params.get("threadId") or (params.get("thread") or {}).get("id")
         child_woke = (message.get("method") == "thread/status/changed"
                       and params["status"]["type"] != "notLoaded"
                       and self.idle.threads.get(thread_id, {}).get("parent"))
-        if (side == "server" and thread_id in self.idle.sleeping
-                and not child_woke
-                and message.get("method") in ("thread/closed", "thread/started", "thread/status/changed")):
-            if (message['method'] == 'thread/closed' and getattr(self, 'check_method', None) == 'thread/unsubscribe'
-                    and self.check_params.get('threadId') == thread_id):
-                self.early_closes[thread_id] = (side, payload, routing(message, side))
+        if side == 'server' and message.get('method') == 'thread/closed':
+            with self.unsubscribe_lock:
+                if self.clear_uncertain_unsubscribe(thread_id):
+                    self.idle.sleeping.discard(thread_id)
+                elif thread_id in self.idle.sleeping:
+                    if (getattr(self, 'check_method', None) == 'thread/unsubscribe'
+                            and self.check_params.get('threadId') == thread_id):
+                        self.early_closes[thread_id] = (side, payload, routing(message, side))
+                    return
+        if (side == "server" and thread_id in self.idle.sleeping and not child_woke
+                and message.get("method") in ("thread/started", "thread/status/changed")):
             return
-        self.events.put((side, payload, routing(message, side)))
+        route = routing(message, side)
+        if 'method' not in message and 'id' in message:
+            other = 'client' if side == 'server' else 'server'
+            owner = self.request_owners.get((other, message['id']))
+            if owner:
+                route['params']['threadId'] = owner
+        self.events.put((side, payload, route))
 
     def run(self):
         writers = []
@@ -647,6 +669,19 @@ class Proxy:
             except queue.Empty:
                 if now >= self.check_deadline:
                     self.idle.touch(self.idle.inspecting, now)
+                    if self.check_method == 'thread/unsubscribe':
+                        owner = self.check_params['threadId']
+                        with self.unsubscribe_lock:
+                            if not self.pending[self.check_id].empty():
+                                return
+                            early = self.early_closes.pop(owner, None)
+                            if early:
+                                self.idle.sleeping.discard(owner)
+                                self.events.put(early)
+                            else:
+                                if len(self.uncertain_unsubscribes) >= self.request_limit:
+                                    raise OSError('Too many unresolved unsubscribe responses')
+                                self.uncertain_unsubscribes[self.check_id] = owner
                     self.cancel_inspection()
                 return
             self.pending.pop(self.check_id)
@@ -706,17 +741,25 @@ class Proxy:
             self.pending.pop(request_id)
             if 'error' not in response:
                 self.idle.sleeping.discard(target)
+                self.wake_retry_limits.pop(target, None)
+                self.clear_uncertain_unsubscribe(target)
                 self.idle.touch(target, now)
                 continue
             detail = response['error'].get('message', '')
             gone = detail in (f'thread not found: {target}', f'no rollout found for thread id {target}',
                               'thread no longer available')
+            retry_closing = ('is closing; retry' in detail and now < self.wake_retry_limits.get(target, now))
             for owner in owners:
+                if retry_closing:
+                    self.wakeups[owner] = now + .1
+                    continue
                 if gone:
                     self.wakeups.pop(owner, None)
                 else:
                     self.wakeups[owner] = now + 5
                 self.flush_deferred(owner, failed=True)
+            if not retry_closing:
+                self.wake_retry_limits.pop(target, None)
             if gone:
                 self.idle.forget(target)
 
@@ -729,7 +772,8 @@ class Proxy:
                 self.flush_deferred(owner)
             elif target not in self.wake_requests and target not in self.resuming:
                 params = {**self.idle.threads[target]['params'], 'threadId': target, 'excludeTurns': True}
-                self.wake_requests[target] = self.begin_request('thread/resume', params), now + 30
+                end = self.wake_retry_limits.setdefault(target, now + 30)
+                self.wake_requests[target] = self.begin_request('thread/resume', params), end
         future = [due for due in self.wakeups.values() if due > now]
         future.extend(end for _, end in self.wake_requests.values())
         self.next_wake_check = min(future, default=0)
@@ -841,6 +885,8 @@ class Proxy:
             if pending:
                 self.pending.pop(pending[0], None)
             self.idle.forget(thread_id)
+            self.clear_uncertain_unsubscribe(thread_id)
+            self.wake_retry_limits.pop(thread_id, None)
             self.resuming.discard(thread_id)
             self.discoveries.pop(thread_id, None)
             self.wakeups.pop(thread_id, None)
@@ -860,9 +906,10 @@ class Proxy:
                     return
                 self.release_request('client', message['id'])
                 request = self.client_requests.pop(message["id"], None)
-                if request and request[0].startswith('thread/realtime/') and 'result' in message:
-                    self.idle.preserve(request[1].get('threadId'))
+                if request and request[0] in ('thread/realtime/start', 'thread/realtime/stop') and 'result' in message:
+                    self.realtime_changed(request[1].get('threadId'), request[0].endswith('/start'))
                 if request and "result" in message and request[0] in ("thread/start", "thread/resume", "thread/fork"):
+                    self.clear_uncertain_unsubscribe(message['result']['thread']['id'])
                     self.idle.track(message["result"], request[1], time.monotonic())
                     if request[0] != "thread/start" and not message["result"]["thread"].get("parentThreadId"):
                         # 기존 runtime의 evicted ephemeral 자식 상태는 RPC로 열거할 수 없다.
@@ -874,6 +921,8 @@ class Proxy:
                     self.resuming.discard(owner)
                     self.explicit_resumes.pop(owner, None)
                     self.flush_deferred(owner, failed="result" not in message)
+        if method in ('thread/realtime/started', 'thread/realtime/closed'):
+            self.realtime_changed(thread_id, method.endswith('/started'))
         if thread_id and method and (method == "thread/status/changed" or method.startswith(("thread/goal/", "thread/queue/"))):
             self.idle.touch(thread_id, time.monotonic())
         if thread_id and method in ("turn/started", "turn/completed", "item/started", "item/completed"):
@@ -899,6 +948,21 @@ class Proxy:
                 raise OSError('Too many undiscovered threads')
             self.discoveries[thread_id] = None
         self.send('client', payload)
+
+    def clear_uncertain_unsubscribe(self, owner):
+        with self.unsubscribe_lock:
+            matches = [key for key, value in self.uncertain_unsubscribes.items() if value == owner]
+            for key in matches:
+                self.uncertain_unsubscribes.pop(key)
+            return bool(matches)
+
+    def realtime_changed(self, owner, active):
+        if owner in self.idle.threads:
+            if active:
+                self.idle.realtime.add(owner)
+            else:
+                self.idle.realtime.discard(owner)
+            self.idle.touch(owner, time.monotonic())
 
     def retain_request(self, side, request_id, size, owner=None):
         key = (side, request_id)

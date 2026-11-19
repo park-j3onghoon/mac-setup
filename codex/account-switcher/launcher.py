@@ -5,13 +5,13 @@ from contextlib import closing
 from datetime import datetime
 import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
 
-from idle import start_proxy
 from policy import UsageUnavailable, choose
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
@@ -75,17 +75,22 @@ def show_status():
                                if name not in state['errors']}, preferred=state.get('preferred', 'company'))
         except UsageUnavailable:
             selected = 'unknown'
-    print(f"selected: {selected}; service: {state.get('status', 'not started')}")
+    status = state.get('status', 'not started')
+    if not is_running and status not in ('failed', 'not started'):
+        status = 'stopped'
+    print(f"selected: {selected}; service: {status}")
     if is_running and state.get("runtime_version"):
         print(f"shared server: {state['runtime_version']}")
         if state.get("upgrade_target"):
             print(f"update to {state['upgrade_target']}: {state.get('upgrade_error') or state.get('upgrade_status')}")
-    if state.get("desired") and state["desired"] != state.get("active"):
+    if is_running and state.get("desired") and state["desired"] != state.get("active"):
         print(f"waiting for active work to finish: {state['desired']}")
     if state.get("errors") or state.get("runtime_error") or state.get("account_error"):
         print("Some checks failed; recorded usage may be stale.")
     if state.get('uncertain_continuation_count'):
         print(f"Continuations awaiting confirmation: {state['uncertain_continuation_count']}")
+    if state.get('registration_error'):
+        print(f"Profile registration: {state['registration_error']}")
     if state.get('release_error'):
         print(f"Subscription cleanup failed: {state['release_error']}")
     return 0
@@ -128,7 +133,15 @@ def server_version(socket_path):
 
 
 def terminal_command(socket_path):
-    installed = BINARY.resolve(strict=True)
+    try:
+        installed = BINARY.resolve(strict=True)
+    except FileNotFoundError:
+        version = server_version(socket_path)
+        if isinstance(version, str) and Path(version).name == version:
+            cached = RUNTIME / 'app-server-packages' / version / 'bin/codex'
+            if cached.is_file() and os.access(cached, os.X_OK):
+                return [str(cached), '-c', 'check_for_update_on_startup=false']
+        raise
     command = [str(installed)]
     cache = server_package_cache(installed, RUNTIME)
     if cache is None:
@@ -144,6 +157,11 @@ def terminal_command(socket_path):
                 # Homebrew로 업데이트해도 이 서버에 맞춰 고른 CLI의 버전은 바뀌지 않는다.
                 return [str(cli), "-c", "check_for_update_on_startup=false"]
     return command
+
+
+def start_proxy(socket_path, delay):
+    from idle import start_proxy as start
+    return start(socket_path, delay)
 
 
 def launch_automatic(arguments):
@@ -243,9 +261,11 @@ def main(arguments):
         name = arguments[1]
         if name not in PROFILES:
             raise UsageUnavailable('Choose company or personal for registration')
-        save({'profile': name, 'requested_at': time.time(),
-              'account_id': credentials(PROFILES[name])['chatgptAccountId']},
-             RUNTIME / 'profile-registration.json')
+        binding = {'profile': name, 'requested_at': time.time(),
+                   'account_id': credentials(PROFILES[name])['chatgptAccountId']}
+        save(binding, RUNTIME / f'profile-registration-{name}.json')
+        # A previously started supervisor still consumes the single-file protocol.
+        save(binding, RUNTIME / 'profile-registration.json')
         return 0
     # Explicit CODEX_HOME always wins, including invocations from existing sessions.
     if os.environ.get("CODEX_HOME"):
@@ -267,11 +287,17 @@ def main(arguments):
         usages = {}
         from service import running
         state = load()
-        if running(state):
-            requested = time.time()
-            save({'requested_at': requested}, RUNTIME / 'usage-request.json')
+        if state.get('upgrade_status') != 'draining' and running(state):
+            request_path = RUNTIME / 'usage-request.json'
+            with (RUNTIME / 'usage-request.lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                previous = max(state.get('usage_request_at', 0), load(request_path).get('requested_at', 0))
+                requested = max(time.time(), math.nextafter(previous, math.inf))
+                save({'requested_at': requested}, request_path)
             deadline = time.monotonic() + 30
             while state.get('usage_request_at', 0) < requested:
+                if state.get('status') in ('stopped', 'failed') or state.get('upgrade_status') == 'draining':
+                    break
                 if time.monotonic() >= deadline:
                     if running(state):
                         raise UsageUnavailable('Timed out waiting for fresh profile usage')

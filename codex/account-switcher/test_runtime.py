@@ -301,7 +301,8 @@ with socket.socket(socket.AF_UNIX) as server:
 
     def call_tool(self, runtime):
         with socket.socket(socket.AF_UNIX) as client:
-            client.settimeout(5)
+            # This fixture execs another Python interpreter for its first reply.
+            client.settimeout(20)
             client.connect(str(runtime.socket))
             with client.makefile() as response:
                 return response.readline().strip()
