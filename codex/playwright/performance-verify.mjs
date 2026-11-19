@@ -30,6 +30,11 @@ try {
   await call('browser_navigate', {url: origin + '/work'});
   await call('browser_click', {target: '#button'});
   assert.equal(activeTab(), initialTab);
+  await call('browser_evaluate', {function: '() => { window.logTimer = setInterval(() => console.warn("continuous log"), 1); }'});
+  const loggingStart = performance.now();
+  await call('browser_evaluate', {function: '() => document.title'});
+  assert(performance.now() - loggingStart < 1000, 'Continuous console blocked response');
+  await call('browser_evaluate', {function: '() => clearInterval(window.logTimer)'});
   const start = performance.now();
   await call('browser_evaluate', {function: '() => document.title'});
   const evaluateMs = performance.now() - start;

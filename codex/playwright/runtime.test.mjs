@@ -7,6 +7,36 @@ import {Admission} from './admission.mjs';
 import {evaluateBounded} from './payloads.mjs';
 import {maintainStorage, batchConsole} from './storage.mjs';
 import heartbeat from './heartbeat.cjs';
+import {EventEmitter} from 'node:events';
+import {withPageFocus} from './focus.mjs';
+import {loadRuntime, installPerformanceAdapter} from './runtime.mjs';
+
+test('focus restoration waits for dialog dismissal without blocking its tool', async () => {
+  const page = new EventEmitter();
+  const sent = [];
+  let dialog = false;
+  page.isClosed = () => false;
+  page._connection = {toImpl: () => ({delegate: {_mainFrameSession: {_client: {send: async (_, {enabled}) => {
+    assert(!dialog, 'A focus command was sent while a modal blocked CDP');
+    sent.push(enabled);
+  }}}}})};
+  await withPageFocus(page, () => dialog, async () => { dialog = true; });
+  assert.deepEqual(sent, [true]);
+  await withPageFocus(page, () => dialog, async () => { dialog = false; page.emit('dialogclosed'); });
+  assert.deepEqual(sent, [true, false]);
+  assert.equal(page.listenerCount('dialogclosed'), 0);
+});
+
+test('evaluate and screenshot reject existing modals before page I/O', async () => {
+  const runtime = loadRuntime();
+  installPerformanceAdapter(runtime);
+  const tab = {modalStates: () => [{type: 'dialog'}], page: new Proxy({}, {get: () => assert.fail('Unexpected page I/O')})};
+  const context = {ensureTab: async () => tab};
+  for (const name of ['browser_evaluate', 'browser_take_screenshot']) {
+    const tool = runtime.tools.browserTools.find(tool => tool.schema.name === name);
+    await assert.rejects(tool.handle(context, {}, {addResult() {}}), /dialog/);
+  }
+});
 
 test('bounded admission preserves FIFO, rejects overflow and cancels queued work', async () => {
   const gate = new Admission(1, 1);
@@ -31,6 +61,9 @@ test('page-side serialization bounds large, deep and cyclic results', async () =
   await assert.rejects(evaluateBounded({expression: '() => "x".repeat(1500000)'}), /budget/);
   await assert.rejects(evaluateBounded({expression: '() => { let a={}; for(let i=0;i<40;i++)a={a};return a; }'}), /levels/);
   assert.match(await evaluateBounded({expression: '() => { const a={};a.self=a;return a; }'}), /Circular/);
+  await assert.rejects(evaluateBounded({expression: '() => Symbol("x".repeat(1500000))'}), /budget/);
+  assert.match(await evaluateBounded({expression: '() => new Map([["key", 7]])'}), /key/);
+  assert.match(await evaluateBounded({expression: '() => new Error("known error")'}), /known error/);
 });
 
 test('retention removes only stale artifacts and rotates the launchd log inode', async () => {

@@ -12,14 +12,14 @@ import sys
 import tempfile
 
 
-LABEL = 'local.codex-playwright'
-PORT = 8931
+LABEL = 'local.codex-playwright-performance'
+PORT = 8932
 
 
 def install(profile, token):
     directory = Path(__file__).resolve().parent
-    cli = directory / 'node_modules/@playwright/mcp/cli.js'
-    if not cli.is_file():
+    cli = directory / 'server.mjs'
+    if not (directory / 'node_modules/@playwright/mcp/cli.js').is_file():
         raise FileNotFoundError(f'Playwright dependency missing: run npm ci in {directory}')
     node = shutil.which('node')
     if node is None:
@@ -29,9 +29,12 @@ def install(profile, token):
     if not extension.is_dir():
         raise FileNotFoundError(f'Playwright Extension is not installed in Chrome profile {profile}')
     runtime = Path.home() / '.local/share/codex-playwright'
+    domain = f'gui/{os.getuid()}'
+    if subprocess.run(['/bin/launchctl', 'print', f'{domain}/{LABEL}'], capture_output=True, timeout=10).returncode == 0:
+        raise RuntimeError('Service is already loaded. Drain active sessions before replacing it.')
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
     runtime.chmod(0o700)
-    log = runtime / 'server.log'
+    log = runtime / 'performance-server.log'
     descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.fchmod(descriptor, 0o600)
     os.close(descriptor)
@@ -42,6 +45,7 @@ def install(profile, token):
         'ProgramArguments': [node, str(cli), '--extension', '--background',
                              '--profile-dir-name', profile, '--host', '127.0.0.1', '--port', str(PORT)],
         'EnvironmentVariables': {'PLAYWRIGHT_MCP_EXTENSION_TOKEN': token,
+                                 'SHARED_PLAYWRIGHT_LOG': str(log),
                                  'PATH': '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
         'WorkingDirectory': str(runtime),
         'RunAtLoad': True,
@@ -59,8 +63,6 @@ def install(profile, token):
         os.replace(temporary, destination)
     finally:
         Path(temporary).unlink(missing_ok=True)
-    domain = f'gui/{os.getuid()}'
-    subprocess.run(['/bin/launchctl', 'bootout', f'{domain}/{LABEL}'], capture_output=True, timeout=10)
     subprocess.run(['/bin/launchctl', 'bootstrap', domain, str(destination)], check=True, timeout=10)
     print(f'Shared Playwright installed: http://127.0.0.1:{PORT}/mcp (profile={profile})')
 

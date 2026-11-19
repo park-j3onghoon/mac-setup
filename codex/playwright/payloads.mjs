@@ -12,6 +12,15 @@ export async function evaluateBounded({expression, limit = 8 * 1024 * 1024}, ele
   let characters = 0, nodes = 0;
   const ancestors = [];
   const text = JSON.stringify(result, function (key, value) {
+    if (typeof value === 'function' || typeof value === 'symbol') value = String(value);
+    if (typeof value === 'number' && !Number.isFinite(value)) value = String(value);
+    if (value instanceof Map || value instanceof Set) {
+      if (value.size > 100000) throw new Error('Collection exceeds 100000 values; return a smaller result.');
+      value = {type: value.constructor.name, entries: [...value]};
+    } else if (value instanceof Error) value = {name: value.name, message: value.message, stack: value.stack};
+    else if (value && typeof value === 'object' && !Array.isArray(value) &&
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value)))
+      throw new Error('Unsupported evaluation value; return plain JSON, Map, Set or Error.');
     if (++nodes > 100000) throw new Error('Evaluation exceeds 100000 values; return a smaller result.');
     characters += key.length + (typeof value === 'string' ? value.length * 6 : 24);
     if (characters > limit) throw new Error('Evaluation exceeds the 8 MiB serialization budget; return a smaller result.');
@@ -24,7 +33,8 @@ export async function evaluateBounded({expression, limit = 8 * 1024 * 1024}, ele
     }
     return value;
   }, 2);
-  if (text && new TextEncoder().encode(text).length > limit)
+  const serialized = text ?? String(result);
+  if (new TextEncoder().encode(serialized).length > limit)
     throw new Error('Evaluation exceeds 8 MiB; return a smaller result.');
-  return text ?? String(result);
+  return serialized;
 }

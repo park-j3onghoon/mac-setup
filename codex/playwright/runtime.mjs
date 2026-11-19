@@ -8,9 +8,19 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {Admission} from './admission.mjs';
+import {withPageFocus} from './focus.mjs';
 
 const require = createRequire(import.meta.url);
-export function loadRuntime() {
+async function withDeadline(promise, milliseconds) {
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Evaluation timed out; page-side effects may still be pending.')), milliseconds);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+export function loadRuntime({maxSessions = 16} = {}) {
+  if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 16) throw new Error('Session limit must be 1..16.');
   const file = require.resolve('playwright-core/lib/coreBundle');
   let source = readFileSync(file, 'utf8');
   if (createHash('sha256').update(source).digest('hex') !== '9d3260b17408501ba46ca708fa870a7c95e1e3f6e9cc34d799465f17b7d78c50')
@@ -21,7 +31,7 @@ export function loadRuntime() {
   };
   // Admission must happen before an extension relay or Chrome tab is created.
   replace('        clientCount++;\n        const promise = sharedBrowserPromise;',
-    '        if (clientCount >= 16) throw new Error("Active browser session limit (16) reached; close or wait for idle sessions.");\n        clientCount++;\n        const promise = sharedBrowserPromise;');
+    `        if (clientCount >= ${maxSessions}) throw new Error("Active browser session limit (${maxSessions}) reached; close or wait for idle sessions.");\n        clientCount++;\n        const promise = sharedBrowserPromise;`);
   const heartbeatStart = source.indexOf('    startHeartbeat = (server) => {');
   const heartbeatEnd = source.indexOf('\n    };', heartbeatStart) + '\n    };'.length;
   if (heartbeatStart < 0 || heartbeatEnd <= heartbeatStart) throw new Error('Heartbeat patch boundary missing.');
@@ -37,30 +47,36 @@ export function loadRuntime() {
   return loaded.exports;
 }
 
-export function installPerformanceAdapter({tools}) {
+export function installPerformanceAdapter({tools}, {idleMs = 30 * 60 * 1000} = {}) {
+  if (!Number.isInteger(idleMs) || idleMs < 1000 || idleMs > 30 * 60 * 1000) throw new Error('Idle timeout must be 1000..1800000 ms.');
   const {z} = require('playwright-core/lib/utilsBundle');
+  const unsafeIndex = tools.browserTools.findIndex(tool => tool.schema.name === 'browser_run_code_unsafe');
+  if (unsafeIndex !== -1) tools.browserTools.splice(unsafeIndex, 1);
   const evaluate = tools.browserTools.find(tool => tool.schema.name === 'browser_evaluate');
   evaluate.schema.inputSchema = evaluate.schema.inputSchema.extend({
     waitForSettled: z.boolean().default(false).describe('Wait for additional navigation/network settling. Normally await the required promise inside the expression instead.'),
   });
   evaluate.handle = async (context, params, response, signal) => {
     const tab = await context.ensureTab();
+    if (tab.modalStates().length) throw new Error('Close the page dialog/file chooser with its dedicated tool before evaluating JavaScript.');
     const target = params.target && await tab.targetLocator({target: params.target, element: params.element || 'element'});
     context.skipCompletionWait = !params.waitForSettled;
     try {
       await tab.waitForCompletion(async () => {
         const expression = params.function;
-        const text = target
-          ? await target.locator.evaluate(`(element, params) => (${evaluateBounded.toString()})(params, element)`, {expression})
-          : await tab.page.evaluate(evaluateBounded, {expression});
+        const text = await withDeadline(target
+          ? target.locator.evaluate(`(element, params) => (${evaluateBounded.toString()})(params, element)`, {expression})
+          : tab.page.evaluate(evaluateBounded, {expression}), 40000);
         await response.addResult('Evaluation result', text, {prefix: 'result', ext: 'json', suggestedFilename: params.filename});
       });
     }
     finally { context.skipCompletionWait = false; }
   };
   const waitForCompletion = tools.Tab.prototype.waitForCompletion;
-  tools.Tab.prototype.waitForCompletion = function (callback) {
-    return this.context.skipCompletionWait ? callback() : waitForCompletion.call(this, callback);
+  tools.Tab.prototype.waitForCompletion = async function (callback) {
+    if (!this.context.skipCompletionWait) return waitForCompletion.call(this, callback);
+    await this._initializedPromise;
+    return this._raceAgainstModalStates(callback);
   };
   const addRequest = tools.Tab.prototype._addRequest;
   tools.Tab.prototype._addRequest = function (request) {
@@ -104,7 +120,7 @@ export function installPerformanceAdapter({tools}) {
   };
   const disposeTab = tools.Tab.prototype.dispose;
   tools.Tab.prototype.dispose = async function () {
-    await this._consoleLog.flush?.();
+    await this._consoleLog.close?.();
     return disposeTab.call(this);
   };
   const headerSnapshot = tools.Tab.prototype.headerSnapshot;
@@ -130,6 +146,7 @@ export function installPerformanceAdapter({tools}) {
     context.config = {...context.config, snapshot: {...context.config.snapshot, mode: 'none'}, webmcp: false,
       timeouts: {...context.config.timeouts, navigation: 45000},
       outputDir: path.join(context.config.outputDir || path.resolve('artifacts'), randomUUID())};
+    context.options = {...context.options, config: context.config};
     context.workPages = new Set();
     context.keptPages = new Set();
     const track = page => {
@@ -212,6 +229,7 @@ export function installPerformanceAdapter({tools}) {
       try {
         if (tool.schema.name === 'browser_take_screenshot') {
           const tab = await context.ensureTab();
+          if (tab.modalStates().length) throw new Error('Close the page dialog/file chooser before taking a screenshot.');
           const target = params.target && await tab.targetLocator({target: params.target, element: params.element || 'element'});
           const size = target ? await target.locator.boundingBox() : await tab.page.evaluate(full => ({
             width: full ? Math.max(document.documentElement.scrollWidth, innerWidth) : innerWidth,
@@ -244,25 +262,14 @@ export function installPerformanceAdapter({tools}) {
       this._busy = false;
       if (!this._disposed) this._performanceIdleTimer = setTimeout(() => {
         void this.dispose().catch(error => console.error('Idle cleanup failed:', error.name));
-      }, 30 * 60 * 1000).unref();
+      }, idleMs).unref();
     }
   };
   async function callWithFocus(...args) {
     const page = this._context?.currentTab()?.page;
     // Extension mode omits default focus emulation. Use its already authorized
     // page session; attaching to the browser target is intentionally forbidden.
-    const client = page && !page.isClosed() && page._connection.toImpl(page).delegate._mainFrameSession._client;
-    try {
-      if (client) await client.send('Emulation.setFocusEmulationEnabled', {enabled: true});
-      return await callTool.apply(this, args);
-    } finally {
-      if (client && !page.isClosed()) {
-        try {
-          await client.send('Emulation.setFocusEmulationEnabled', {enabled: false});
-        } catch (error) {
-          if (!page.isClosed() && this._browserContext.browser()?.isConnected()) throw error;
-        }
-      }
-    }
+    return withPageFocus(page, () => this._context.currentTab()?.modalStates().some(state => state.type === 'dialog'),
+      () => callTool.apply(this, args));
   }
 }

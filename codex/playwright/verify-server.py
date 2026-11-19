@@ -10,8 +10,16 @@ import tempfile
 import time
 
 directory = Path(__file__).resolve().parent
-configuration = plistlib.loads((Path.home() / 'Library/LaunchAgents/local.codex-playwright.plist').read_bytes())
+launch_agents = Path.home() / 'Library/LaunchAgents'
+configuration_file = launch_agents / 'local.codex-playwright-performance.plist'
+if not configuration_file.exists():
+    configuration_file = launch_agents / 'local.codex-playwright.plist'
+configuration = plistlib.loads(configuration_file.read_bytes())
 environment = dict(os.environ, **configuration['EnvironmentVariables'])
+environment.pop('SHARED_PLAYWRIGHT_LOG', None)
+if '--lifecycle' in sys.argv:
+    sys.argv.remove('--lifecycle')
+    environment.update(SHARED_PLAYWRIGHT_MAX_SESSIONS='2', SHARED_PLAYWRIGHT_IDLE_MS='2000')
 node = configuration['ProgramArguments'][0]
 with tempfile.TemporaryDirectory(prefix='playwright-regression-') as workspace:
     with tempfile.TemporaryFile(mode='w+') as log:

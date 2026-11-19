@@ -76,8 +76,12 @@ export function batchConsole(log) {
   };
   const take = log._take.bind(log);
   log._take = async () => {
-    do { await log.flush(); } while (pending.length || dropped);
+    await log.flush();
     return take();
   };
-  log.stop = () => { log._stopped = true; void log.flush(); };
+  log.close = async () => {
+    log._stopped = true;
+    do { await log.flush(); } while (pending.length || dropped);
+  };
+  log.stop = () => { void log.close(); };
 }

@@ -5,7 +5,7 @@ import {once} from 'node:events';
 
 const require = createRequire(import.meta.url);
 const {Client, StreamableHTTPClientTransport} = require('playwright-core/lib/utilsBundle');
-const endpoint = new URL(process.argv[2] || 'http://127.0.0.1:8931/mcp');
+const endpoint = new URL(process.argv[2] || 'http://127.0.0.1:8932/mcp');
 const site = http.createServer((request, response) => {
   const name = request.url.slice(1);
   if (!/^session-[0-9]+$/.test(name)) {
@@ -32,7 +32,9 @@ async function connect(index) {
   const session = {client, transport, index, pageOpened: false, closed: false};
   sessions.push(session);
   await client.connect(transport);
-  assert((await client.listTools()).tools.some(tool => tool.name === 'browser_tabs'));
+  const toolNames = (await client.listTools()).tools.map(tool => tool.name);
+  assert(toolNames.includes('browser_tabs'));
+  assert(!toolNames.includes('browser_run_code_unsafe'), 'Unsafe Node execution exposed by shared server');
   session.pageOpened = true;
   await call(session, 'browser_navigate', {url: `${origin}/session-${index}`});
   return session;
@@ -72,6 +74,9 @@ try {
       function: `() => { document.querySelector('input').value = '${own}'; return document.title; }`,
     });
   }
+  const files = await Promise.all(clients.map(session => call(session, 'browser_evaluate', {function: '() => "x".repeat(100000)'})));
+  const directories = files.map(text => text.match(/artifacts\/([a-f0-9-]+)\//)?.[1]);
+  assert(directories.every(Boolean) && new Set(directories).size === 3, 'Session artifacts share a directory');
   await close(clients[0]);
   for (const session of clients.slice(1)) {
     const value = await call(session, 'browser_evaluate', {function: '() => document.querySelector("input").value'});

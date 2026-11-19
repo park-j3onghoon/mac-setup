@@ -5,8 +5,8 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 
 const require = createRequire(import.meta.url);
-const runtime = loadRuntime();
-installPerformanceAdapter(runtime);
+const runtime = loadRuntime({maxSessions: Number(process.env.SHARED_PLAYWRIGHT_MAX_SESSIONS || 16)});
+installPerformanceAdapter(runtime, {idleMs: Number(process.env.SHARED_PLAYWRIGHT_IDLE_MS || 1800000)});
 const {program} = require('playwright-core/lib/utilsBundle');
 const version = require('@playwright/mcp/package.json').version;
 runtime.tools.decorateMCPCommand(program.version(version).name('Shared Playwright'), version);
