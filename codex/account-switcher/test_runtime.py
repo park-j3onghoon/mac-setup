@@ -553,6 +553,26 @@ class ContinueTest(unittest.TestCase):
         self.assertEqual(len(self.started()), 20)
         self.assertEqual(len({value['threadId'] for value in self.started()}), 20)
 
+    def test_one_thread_timeout_does_not_repeat_at_the_head_of_every_batch(self):
+        """한 대화가 예산 끝까지 시간 초과해도 다음 묶음은 뒤 대화로 진행한다."""
+        clock = [0]
+        self.answer({'bad': ('idle', LIMITED), 'good': ('idle', {
+            'data': [dict(LIMITED['data'][0], id='good-turn')]})})
+        answer = self.runtime.client.request.side_effect
+
+        def request(method, params=None, timeout=30):
+            if method == 'thread/read' and params['threadId'] == 'bad':
+                clock[0] += timeout
+                raise UsageUnavailable('thread read timed out')
+            return answer(method, params, timeout)
+
+        self.runtime.client.request.side_effect = request
+        with patch('runtime.time.monotonic', side_effect=lambda: clock[0]):
+            self.assertFalse(self.runtime.continue_batch(self.runtime.client))
+            with self.assertRaises(UsageUnavailable):
+                self.runtime.continue_batch(self.runtime.client)
+        self.assertEqual([value['threadId'] for value in self.started()], ['good'])
+
     def test_definite_pre_send_failure_can_retry_after_reconnection(self):
         """전송하기 전 끊긴 연결은 복구 후 자동 이어하기를 다시 시도한다."""
         from rpc import RpcNotSent

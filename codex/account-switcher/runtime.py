@@ -151,11 +151,11 @@ def all_idle(client, deadline=None):
     return all(quiet(thread) for _, thread in loaded_threads(client, deadline))
 
 
-def newest_turn(client, thread_id, deadline=None):
+def newest_turn(client, thread_id):
     try:
-        turns = scan_request(client, "thread/turns/list", {
+        turns = client.request("thread/turns/list", {
             "threadId": thread_id, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
-        }, deadline).get("data", [])
+        }).get("data", [])
     except RpcRejected:
         # A thread whose first turn has not been written yet has no rollout to list.
         return None
@@ -416,24 +416,24 @@ class Runtime:
                 continue
             thread_id = self.continuation_ids[0]
             try:
-                self.continue_thread(thread_id, client, deadline)
+                # Finish one thread with the per-RPC timeout; restarting its metadata phases
+                # at every batch boundary would starve both slow and later threads.
+                self.continue_thread(thread_id, client)
             except UsageUnavailable:
-                if time.monotonic() >= deadline:
-                    return False
                 self.continuation_failed = True
             self.continuation_ids.popleft()
         return False
 
-    def continue_thread(self, thread_id, client, deadline):
-        thread = scan_request(client, 'thread/read', {
+    def continue_thread(self, thread_id, client):
+        thread = client.request('thread/read', {
             'threadId': thread_id, 'includeTurns': False,
-        }, deadline).get('thread', {})
+        }).get('thread', {})
         # A parent drives its sub-agents; direct turn/start on a child is rejected.
         if thread.get('parentThreadId') or not quiet(thread):
             if thread.get('status', {}).get('type') == 'active':
                 self.uncertain_continuations.pop(thread_id, None)
             return
-        turn = newest_turn(client, thread_id, deadline)
+        turn = newest_turn(client, thread_id)
         uncertain = self.uncertain_continuations.get(thread_id)
         if uncertain and turn and turn['id'] != uncertain:
             self.uncertain_continuations.pop(thread_id, None)
@@ -442,13 +442,9 @@ class Runtime:
             return
         self.continued.add(turn['id'])
         try:
-            # Do not classify a batch budget expiring before send as an uncertain submission.
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RpcNotSent('Continuation batch budget exhausted')
             client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
-            }, timeout=min(30, remaining))
+            })
         except (RpcRejected, RpcNotSent):
             self.continued.discard(turn['id'])
             raise
