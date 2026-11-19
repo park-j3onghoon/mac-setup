@@ -41,8 +41,14 @@ def show_status():
         state = dict(state)
     else:
         state["active"] = None
+        state['errors'] = {}
         for name, home in PROFILES.items():
-            current = read_snapshot(BINARY, home)
+            try:
+                current = read_snapshot(BINARY, home)
+            except (UsageUnavailable, OSError) as error:
+                state['errors'][name] = type(error).__name__
+                print(f'{name}: usage unavailable')
+                continue
             state.setdefault("accounts", {})[name] = record(
                 state.get("accounts", {}).get(name), current,
             )
@@ -64,9 +70,11 @@ def show_status():
             print("  last reset confirmed: " + datetime.fromtimestamp(max(confirmed)).astimezone().isoformat())
     selected = state.get("active") or "unknown"
     if not is_running:
-        selected = choose({
-            name: value["used_percent"] for name, value in state.get("accounts", {}).items()
-        }, preferred=state.get("preferred", "company"))
+        try:
+            selected = choose({name: value['used_percent'] for name, value in state.get('accounts', {}).items()
+                               if name not in state['errors']}, preferred=state.get('preferred', 'company'))
+        except UsageUnavailable:
+            selected = 'unknown'
     print(f"selected: {selected}; service: {state.get('status', 'not started')}")
     if is_running and state.get("runtime_version"):
         print(f"shared server: {state['runtime_version']}")
@@ -247,7 +255,7 @@ def main(arguments):
         summary = ", ".join(f"{name} {used:g}% used" for name, used in usages.items())
         selected = choose(usages)
         print(f"[codex] {summary}; selected {selected}", file=sys.stderr)
-    if not (PROFILES[selected] / "auth.json").is_file():
+    if command_name(arguments) != 'login' and not (PROFILES[selected] / "auth.json").is_file():
         raise UsageUnavailable(f"Saved {selected} login is missing")
     environment = dict(os.environ, CODEX_HOME=str(PROFILES[selected]))
     os.execve(str(BINARY), [str(BINARY), *arguments], environment)

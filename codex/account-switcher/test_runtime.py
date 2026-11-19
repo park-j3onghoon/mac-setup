@@ -235,6 +235,16 @@ class PackagedRuntimeTest(unittest.TestCase):
 
         self.assertEqual(self.call_tool(repaired), '0.170.0')
 
+    def test_corrupt_install_does_not_replace_the_working_cache(self):
+        from runtime import preserve_server_package
+        release = self.install('0.170.0')
+        cached = preserve_server_package(self.binary, self.home)
+        host = cached.parent / 'codex-code-mode-host'
+        good = host.read_bytes()
+        (release / 'bin' / host.name).write_bytes(b'')
+        preserve_server_package(self.binary, self.home)
+        self.assertEqual(host.read_bytes(), good)
+
     def test_supervisor_disconnect_keeps_owned_server_available(self):
         """감독의 상태 저장 오류나 종료가 공유 서버의 대화와 도구를 종료하지 않는다."""
         self.install("0.170.0")
@@ -491,13 +501,26 @@ class ContinueTest(unittest.TestCase):
             {"threadId": "t1", "input": [{"type": "text", "text": CONTINUE_PROMPT}]},
         ])
 
+    def test_new_user_turn_prevents_an_extra_continuation(self):
+        self.answer({'t1': ('idle', LIMITED)})
+        answer = self.runtime.client.request.side_effect
+        def request(method, params=None, **kwargs):
+            if method == 'thread/turns/list':
+                self.runtime.activity('turn/started', {'threadId': 't1'})
+            return answer(method, params, **kwargs)
+        self.runtime.client.request.side_effect = request
+        self.runtime.continue_limited()
+        self.assertEqual(self.started(), [])
+
     def test_running_threads_and_other_endings_are_left_alone(self):
+        unprompted = RpcRejected("Codex thread/turns/list failed")
+        unprompted.no_history = True
         self.answer({
             "running": ("active", LIMITED),
             "done": ("idle", {"data": [{"id": "turn-2", "status": "completed"}]}),
             "crashed": ("systemError", {"data": [{"id": "turn-3", "status": "failed",
                                                   "error": {"codexErrorInfo": "other"}}]}),
-            "unprompted": ("idle", RpcRejected("Codex thread/turns/list failed")),
+            "unprompted": ("idle", unprompted),
         })
         self.runtime.continue_limited()
         self.assertEqual(self.started(), [])
@@ -671,7 +694,6 @@ class SwitchingTest(unittest.TestCase):
                 with self.assertRaises(UsageUnavailable):
                     self.runtime.select('personal')
                 self.assertEqual(self.runtime.active, 'company')
-                self.profiles['personal'].tokens.assert_not_called()
                 self.assertNotIn('account/login/start', [
                     call.args[0] for call in self.runtime.client.request.call_args_list])
 
@@ -691,6 +713,15 @@ class SwitchingTest(unittest.TestCase):
         ]
         self.assertTrue(self.runtime.select("personal"))
         self.assertEqual(self.runtime.active, "personal")
+
+    def test_activity_during_the_final_quota_check_postpones_login(self):
+        self.runtime.client.request.return_value = {'data': []}
+        def quota():
+            self.runtime.activity('turn/started', {'threadId': 'new'})
+            return usage(10, 9999, 1000)
+        self.profiles['personal'].usage.side_effect = quota
+        self.assertFalse(self.runtime.select('personal'))
+        self.assertNotIn('account/login/start', [c.args[0] for c in self.runtime.client.request.call_args_list])
 
     def test_manual_switch_reauthenticates_without_waiting_for_active_work(self):
         """수동 전환은 실행 중인 대화가 있어도 새 계정으로 로그인하고 검증한다."""
@@ -1017,7 +1048,7 @@ class MonitorTest(unittest.TestCase):
                      "personal": usage(personal, 9999, 1000)}, {})
                    for company, personal in ((5, 20), (95, 20), (95, 95), (0, 95))]
         selected, state = self.run_monitor(batches)
-        self.assertEqual(selected, ["company", "personal", "company", "company"])
+        self.assertEqual(selected, ["company", "personal", "personal", "company"])
         self.assertEqual(state["active"], "company")
 
     def test_limit_stopped_work_continues_only_on_an_account_below_the_threshold(self):
@@ -1025,7 +1056,7 @@ class MonitorTest(unittest.TestCase):
                      "personal": usage(personal, 9999, 1000)}, {})
                    for company, personal in ((95, 20), (95, 95))]
         selected, _ = self.run_monitor(batches)
-        self.assertEqual(selected, ["personal", "company"])
+        self.assertEqual(selected, ["personal", "personal"])
         self.runtime.continue_limited.assert_called_once_with()
 
     def test_lookup_failure_keeps_current_account_and_old_reset_record(self):

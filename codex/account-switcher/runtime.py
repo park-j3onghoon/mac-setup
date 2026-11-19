@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import closing
 from pathlib import Path
 import resource
+import select
 import shutil
 import signal
 import socket
@@ -69,14 +70,26 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
     # model); earlier versions linked the personal config here.
     target = home / "config.toml"
     if target.is_symlink() and target.readlink() != config:
-        target.unlink()
-    if not target.exists() and not target.is_symlink():
-        target.symlink_to(config)
+        with tempfile.TemporaryDirectory(dir=home) as directory:
+            replacement = Path(directory) / 'config.toml'
+            replacement.symlink_to(config)
+            os.replace(replacement, target)
+    else:
+        link_missing(target, config)
     for name in ("AGENTS.md", "skills", "agents", "rules",
                  "plugins", "packages", "hooks.json", ".hook-trust"):
         target = home / name
         if not target.exists() and not target.is_symlink() and (shared / name).exists():
-            target.symlink_to(shared / name, target_is_directory=(shared / name).is_dir())
+            link_missing(target, shared / name)
+
+
+def link_missing(target, source):
+    if not target.exists() and not target.is_symlink():
+        try:
+            target.symlink_to(source)
+        except FileExistsError:
+            if not target.is_symlink() or target.readlink() != source:
+                raise
 
 
 def server_package_cache(installed, home):
@@ -95,15 +108,25 @@ def preserve_server_package(binary, home):
     packages.mkdir(mode=0o700, exist_ok=True)
     current = packages / release.name
     executables = ('codex', 'codex-code-mode-host', 'codex-exec-server')
-    with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
-        staging = Path(temporary)
-        if not all((current / 'bin' / name).is_file() and os.access(current / 'bin' / name, os.X_OK)
-                   for name in executables):
+    def sizes(package):
+        result = []
+        for name in executables:
+            path = package / 'bin' / name
+            if not path.is_file() or not os.access(path, os.X_OK) or not path.stat().st_size:
+                return None
+            result.append(path.stat().st_size)
+        return result
+
+    cached, original = sizes(current), sizes(release)
+    if cached is None or original is not None and cached != original:
+        if original is None:
+            raise UsageUnavailable(f"Codex package {release.name} has incomplete executables")
+        with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
+            staging = Path(temporary)
             staged = staging / "package"
             shutil.copytree(release, staged)
-            for name in executables:
-                if not (staged / 'bin' / name).is_file() or not os.access(staged / "bin" / name, os.X_OK):
-                    raise UsageUnavailable(f"Codex package {release.name} is missing executable {name}")
+            if sizes(staged) != original:
+                raise UsageUnavailable(f"Codex package {release.name} changed during staging")
             if current.exists() or current.is_symlink():
                 current.rename(staging / 'replaced')
             staged.rename(current)
@@ -158,8 +181,18 @@ def quiet(thread):
     return thread.get("status", {}).get("type") in QUIET
 
 
-def all_idle(client, deadline=None):
-    return all(quiet(thread) for _, thread in loaded_threads(client, deadline))
+def all_idle(client, deadline=None, progress=None):
+    if progress is None:
+        return all(quiet(thread) for _, thread in loaded_threads(client, deadline))
+    # Each RPC keeps its own timeout. Save the iterator between maintenance slices.
+    if 'threads' not in progress:
+        progress['threads'] = loaded_threads(client)
+    for _, thread in progress['threads']:
+        if not quiet(thread):
+            return False
+        if time.monotonic() >= deadline:
+            return None
+    return True
 
 
 def newest_turn(client, thread_id):
@@ -167,9 +200,10 @@ def newest_turn(client, thread_id):
         turns = client.request("thread/turns/list", {
             "threadId": thread_id, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
         }).get("data", [])
-    except RpcRejected:
-        # A thread whose first turn has not been written yet has no rollout to list.
-        return None
+    except RpcRejected as error:
+        if error.no_history:
+            return None
+        raise
     return turns[0] if turns else None
 
 
@@ -180,8 +214,11 @@ class Runtime:
         self.process = self.client = None
         self.pid = None
         self.pid_start = None
+        self.exit_watch = None
         self.active = None
-        self.continued = set()
+        self.continued = {}
+        self.continuation_seen = set()
+        self.continuation_missing = None
         self.uncertain_continuations = {}
         self.continuation_future = None
         self.continuation_ids = deque()
@@ -194,6 +231,8 @@ class Runtime:
         self.idle_job = None
         self.activity_lock = threading.Lock()
         self.activity_serial = 0
+        self.continuing_thread = None
+        self.continuation_changed = False
         self.prepared_upgrade = None
 
     def start(self, *, restore_account=None):
@@ -264,14 +303,51 @@ class Runtime:
             return
         account = (response.get("workspaceRouting") or {}).get("chatgptAccountId")
         self.active = next((name for name, profile in self.profiles.items()
-                            if profile.account_id == account), None)
+                            if account and profile.account_id == account), None)
         if self.active is None:
             raise UsageUnavailable("Existing runtime account is outside the saved profiles")
 
     def running(self):
         if self.process is not None:
             return self.process.poll() is None
-        return self.pid_start is not None and process_start(self.pid) == self.pid_start
+        if not self.pid_start:
+            return False
+        if self.exit_watch:
+            if not self.exit_watch.control([], 1, 0):
+                return True
+            self.exit_watch.close()
+            self.exit_watch = None
+            self.pid_start = None
+            return False
+        watch = select.kqueue()
+        try:
+            try:
+                watch.control([select.kevent(self.pid, filter=select.KQ_FILTER_PROC,
+                                             flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                                             fflags=select.KQ_NOTE_EXIT)], 0, 0)
+            except (OSError, ValueError):
+                # The kernel may deny event registration. Only a confirmed exit or PID reuse
+                # means this adopted server is gone.
+                started = process_start(self.pid)
+                if started:
+                    return started == self.pid_start
+                try:
+                    os.kill(self.pid, 0)
+                except ProcessLookupError:
+                    return False
+                except PermissionError:
+                    pass
+                return True
+            started = process_start(self.pid)
+            if not started:
+                return True
+            if started != self.pid_start:
+                return False
+            self.exit_watch, watch = watch, None
+            return True
+        finally:
+            if watch is not None:
+                watch.close()
 
     def drain_for_upgrade(self, installed):
         if self.prepared_upgrade != installed:
@@ -333,7 +409,7 @@ class Runtime:
             raise UsageUnavailable("Unexpected runtime request")
         previous = params.get("previousAccountId")
         for profile in self.profiles.values():
-            if profile.account_id == previous:
+            if previous and profile.account_id == previous:
                 return profile.tokens(force=True)
         raise UsageUnavailable("Unknown account requested a token refresh")
 
@@ -378,6 +454,9 @@ class Runtime:
                 and params.get('status', {}).get('type') not in QUIET):
             with self.activity_lock:
                 self.activity_serial += 1
+                owner = params.get("threadId") or (params.get("thread") or {}).get("id")
+                if self.continuing_thread and owner in (None, self.continuing_thread):
+                    self.continuation_changed = True
 
     @property
     def idle_pending(self):
@@ -387,10 +466,11 @@ class Runtime:
         if self.idle_job is None:
             with self.activity_lock:
                 deadline = time.monotonic() + 300
+                progress = {}
                 self.idle_job = {'name': name, 'tokens': tokens, 'client': self.client,
-                                 'serial': self.activity_serial, 'deadline': deadline,
-                                 'future': self.worker_pool().submit(
-                                     all_idle, self.client, deadline=deadline)}
+                                 'serial': self.activity_serial, 'deadline': deadline, 'progress': progress,
+                                 'future': self.worker_pool().submit(all_idle, self.client,
+                                     deadline=time.monotonic() + 30, progress=progress)}
         job = self.idle_job
         try:
             idle = job['future'].result(timeout=.02)
@@ -401,8 +481,14 @@ class Runtime:
             raise
         self.idle_job = None
         with self.activity_lock:
-            return (idle and job['name'] == name and job['tokens'] == tokens
-                    and job['client'] is self.client and job['serial'] == self.activity_serial)
+            valid = (time.monotonic() < job['deadline'] and job['name'] == name and job['tokens'] == tokens
+                     and job['client'] is self.client and job['serial'] == self.activity_serial)
+            if valid and idle is None:
+                job['deadline'] = time.monotonic() + 300
+                job['future'] = self.worker_pool().submit(all_idle, self.client,
+                    deadline=time.monotonic() + 30, progress=job['progress'])
+                self.idle_job = job
+            return valid and idle is True
 
     def worker_pool(self):
         if self.idle_pool is None:
@@ -419,21 +505,29 @@ class Runtime:
         if not force and self.idle_pending:
             return False
         profile = self.profiles[name]
+        tokens = profile.tokens()
+        with self.activity_lock:
+            serial = self.activity_serial
+        if not force and not self.idle_ready(name, tokens):
+            return False
         if profile.usage()['used_percent'] >= THRESHOLD:
             raise UsageUnavailable('Target account no longer has available quota')
-        tokens = profile.tokens()
-        if not force and not self.idle_ready(name, tokens):
+        if not force and serial != self.activity_serial:
             return False
         old = self.active
         self.activity('turn/started', {})
+        login_sent = False
         try:
             self.login(tokens)
+            login_sent = True
             verified = self.client.request("account/rateLimits/read")
             if verified.get("accountId") != profile.account_id:
                 raise UsageUnavailable("Runtime account verification did not match")
             self.active = name
             return True
-        except Exception:
+        except Exception as error:
+            if isinstance(error, RpcNotSent) and not login_sent:
+                raise
             self.active = None
             if old is not None:
                 try:
@@ -470,13 +564,35 @@ class Runtime:
             if not self.continuation_ids:
                 if self.continuation_started and not self.continuation_cursor:
                     failed = self.continuation_failed
+                    if self.continuation_missing is None:
+                        self.continuation_missing = deque()
+                        if not failed:
+                            for gone in self.continued.keys() - self.continuation_seen - self.uncertain_continuations.keys():
+                                self.continued.pop(gone)
+                            self.continuation_missing.extend(self.uncertain_continuations.keys() - self.continuation_seen)
+                    if self.continuation_missing:
+                        gone = self.continuation_missing.popleft()
+                        # An unloaded conversation may return. Confirm deletion before permitting replay.
+                        try:
+                            client.request('thread/read', {'threadId': gone, 'includeTurns': False})
+                        except RpcRejected as error:
+                            if error.thread_missing:
+                                self.uncertain_continuations.pop(gone, None)
+                                self.continued.pop(gone, None)
+                        except UsageUnavailable:
+                            pass
+                        continue
+                    self.continuation_missing = None
                     self.continuation_started = self.continuation_failed = False
-                    if failed or self.uncertain_continuations:
+                    unresolved = bool(self.uncertain_continuations.keys() & self.continuation_seen)
+                    self.continuation_seen.clear()
+                    if failed or unresolved:
                         raise UsageUnavailable('Some limited threads could not be continued')
                     return True
                 page = scan_request(client, 'thread/loaded/list',
                                     {'cursor': self.continuation_cursor}, deadline)
                 self.continuation_ids.extend(page.get('data', []))
+                self.continuation_seen.update(page.get('data', []))
                 self.continuation_cursor = page.get('nextCursor')
                 self.continuation_started = True
                 continue
@@ -491,6 +607,15 @@ class Runtime:
         return False
 
     def continue_thread(self, thread_id, client):
+        with self.activity_lock:
+            self.continuing_thread, self.continuation_changed = thread_id, False
+        try:
+            self._continue_thread(thread_id, client)
+        finally:
+            with self.activity_lock:
+                self.continuing_thread = None
+
+    def _continue_thread(self, thread_id, client):
         thread = client.request('thread/read', {
             'threadId': thread_id, 'includeTurns': False,
         }).get('thread', {})
@@ -503,22 +628,30 @@ class Runtime:
         uncertain = self.uncertain_continuations.get(thread_id)
         if uncertain and turn and turn['id'] != uncertain:
             self.uncertain_continuations.pop(thread_id, None)
-        if (not turn or turn['id'] in self.continued or turn['status'] != 'failed'
+        if (not turn or self.continued.get(thread_id) == turn['id'] or turn['status'] != 'failed'
                 or (turn.get('error') or {}).get('codexErrorInfo') != 'usageLimitExceeded'):
             return
-        self.continued.add(turn['id'])
+        if self.continuation_changed:
+            return
+        latest = newest_turn(client, thread_id)
+        if self.continuation_changed or latest != turn:
+            return
+        self.continued[thread_id] = turn['id']
         try:
             client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
             })
         except (RpcRejected, RpcNotSent):
-            self.continued.discard(turn['id'])
+            self.continued.pop(thread_id, None)
             raise
         except UsageUnavailable:
             self.uncertain_continuations[thread_id] = turn['id']
             raise
 
     def close(self):
+        if self.exit_watch is not None:
+            self.exit_watch.close()
+            self.exit_watch = None
         if self.client:
             self.client.close()
             self.client = None

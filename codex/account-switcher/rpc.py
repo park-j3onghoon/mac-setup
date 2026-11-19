@@ -54,6 +54,9 @@ NOTIFICATIONS = (
 class RpcRejected(UsageUnavailable):
     """The server explicitly rejected the request; a transport failure is uncertain."""
 
+    no_history = False
+    thread_missing = False
+
 
 class RpcNotSent(UsageUnavailable):
     """The transport failed before writing any of this request."""
@@ -142,7 +145,20 @@ class Rpc:
             if message.get('_connection_closed'):
                 raise UsageUnavailable('Codex connection ended')
             if "error" in message:
-                raise RpcRejected(f"Codex {method} failed")
+                rejected = RpcRejected(f"Codex {method} failed")
+                if method == 'thread/read':
+                    thread_id = (params or {}).get('threadId')
+                    detail = message['error'].get('message')
+                    rejected.thread_missing = (detail in (f'no rollout found for thread id {thread_id}',
+                                                          f'thread not found: {thread_id}')
+                                               or not (params or {}).get('includeTurns')
+                                               and detail == f'thread not loaded: {thread_id}')
+                if method == 'thread/turns/list':
+                    thread_id = (params or {}).get('threadId')
+                    rejected.no_history = message['error'].get('message') == (
+                        f'thread {thread_id} is not materialized yet; '
+                        'thread/turns/list is unavailable before first user message')
+                raise rejected
             return message.get("result") or {}
         finally:
             with self.lock:
@@ -155,6 +171,7 @@ class Rpc:
                 try:
                     message = json.loads(line)
                 except (ValueError, UnicodeDecodeError):
+                    del line
                     continue
                 if "method" in message and "id" in message:
                     if not self.handlers.acquire(blocking=False):
@@ -171,6 +188,7 @@ class Rpc:
                         target.put_nowait(message)
                 elif self.notification and 'method' in message:
                     self.notification(message['method'], message.get('params') or {})
+                del message, line
         except (OSError, EOFError, ValueError, queue.Full):
             pass
         finally:

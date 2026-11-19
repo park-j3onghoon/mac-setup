@@ -52,12 +52,17 @@ def monitor(runtime, profiles, stop, state):
     check_limited = False
     saved_content = None
     saved_at = 0
+    previous_wall = 0
     while not stop.is_set():
         if not runtime.running():
             if state.get("upgrade_status") == "draining":
                 return True
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
+        if now < previous_wall:
+            next_poll = next_release = next_upgrade = retry_switch_at = saved_at = 0
+            saved_content = None
+        previous_wall = now
         if state.get("runtime_version") and state.get("upgrade_status") != "draining" and now >= next_upgrade:
             try:
                 check_upgrade(runtime, state)
@@ -83,6 +88,7 @@ def monitor(runtime, profiles, stop, state):
                 state.pop("release_error", None)
             except Exception as error:
                 state["release_error"] = type(error).__name__
+                complete = not (runtime.release_ids or runtime.release_cursor)
             next_release = time.time() + (2 if complete is False else 60)
         if now >= next_poll:
             previous_desired = desired
@@ -98,8 +104,6 @@ def monitor(runtime, profiles, stop, state):
                                  preferred=state["preferred"])
             except UsageUnavailable:
                 desired = None
-            if desired != previous_desired:
-                retry_switch_at, idle_retry_delay = 0, 2
             try:
                 previous = state.get("active", runtime.active)
                 runtime.observe_account()
@@ -112,7 +116,11 @@ def monitor(runtime, profiles, stop, state):
                     }
             except Exception as error:
                 state["account_error"] = type(error).__name__
-            next_poll = time.time() + poll_delay(state.get("accounts", {}), runtime.active)
+            if runtime.active and len(fresh) == 2 and all(v['used_percent'] >= THRESHOLD for v in fresh.values()):
+                desired = runtime.active
+            if desired != previous_desired:
+                retry_switch_at, idle_retry_delay = 0, 2
+            next_poll = time.time() + poll_delay(fresh, runtime.active)
             state["next_check_at"] = next_poll
             check_limited = True
         state["desired"] = desired
