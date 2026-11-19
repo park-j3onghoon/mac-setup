@@ -219,15 +219,28 @@ class TerminalVersionTest(unittest.TestCase):
     def test_terminal_tracks_the_live_server_across_a_homebrew_upgrade_and_restart(self):
         """새 대화와 resume은 구형 서버에 맞추고 서버가 교체되면 새 CLI를 쓴다."""
         self.assertEqual(self.launched("0.169.0", []), self.previous)
+        self.assertEqual(self.run.call_args.args[1][1:3], ["-c", "check_for_update_on_startup=false"])
         saved = launcher.RUNTIME / "app-server-packages" / "0.169.0" / "bin" / "codex"
         saved.parent.mkdir(parents=True)
         self.previous.rename(saved)
         self.assertEqual(self.launched("0.169.0", ["resume", "--last"]), saved)
+        self.assertEqual(self.run.call_args.args[1][1:3], ["-c", "check_for_update_on_startup=false"])
         self.assertEqual(self.launched("0.170.0", []), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
+
+    def test_current_server_uses_homebrew_for_future_updates(self):
+        """같은 버전 보관본이 있어도 Homebrew 설치를 인식하는 CLI로 새 업데이트를 확인한다."""
+        cached = launcher.RUNTIME / "app-server-packages" / "0.170.0" / "bin" / "codex"
+        cached.parent.mkdir(parents=True)
+        cached.touch(mode=0o700)
+
+        self.assertEqual(self.launched("0.170.0", []), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
 
     def test_unavailable_version_or_package_keeps_the_installed_cli_usable(self):
         """소켓 조회 실패나 이전 패키지 부재에도 기존 CLI로 resume을 열 수 있다."""
         self.assertEqual(self.launched("0.168.0", ["resume"]), self.installed)
+        self.assertNotIn("check_for_update_on_startup=false", self.run.call_args.args[1])
         for failure in (TimeoutError(), EOFError()):
             with self.subTest(failure=failure):
                 self.connection.messages.side_effect = failure

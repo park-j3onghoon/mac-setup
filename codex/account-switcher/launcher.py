@@ -115,21 +115,23 @@ def server_version(socket_path):
             return match[1] if match else None
 
 
-def terminal_binary(socket_path):
+def terminal_command(socket_path):
     installed = BINARY.resolve(strict=True)
+    command = [str(installed)]
     cache = server_package_cache(installed, RUNTIME)
     if cache is None:
-        return installed
+        return command
     try:
         version = server_version(socket_path)
     except (OSError, EOFError, ValueError):
-        return installed
-    if version:
+        return command
+    if version and version != installed.parent.parent.name:
         for packages in (cache, installed.parents[2]):
             cli = packages / version / "bin" / "codex"
             if cli.is_file() and os.access(cli, os.X_OK):
-                return cli
-    return installed
+                # Homebrew로 업데이트해도 이 서버에 맞춰 고른 CLI의 버전은 바뀌지 않는다.
+                return [str(cli), "-c", "check_for_update_on_startup=false"]
+    return command
 
 
 def launch_automatic(arguments):
@@ -146,10 +148,10 @@ def launch_automatic(arguments):
         idle_seconds = float(os.environ.get("CODEX_IDLE_SECONDS", "900"))
     except ValueError as error:
         raise UsageUnavailable("CODEX_IDLE_SECONDS must be a number") from error
-    cli = str(terminal_binary(SOCKET))
+    command = terminal_command(SOCKET)
     endpoint = start_proxy(SOCKET, idle_seconds) if idle_seconds > 0 else SOCKET
-    os.execve(cli, [cli, "--remote", "unix://" + str(endpoint), *directory,
-                    *cmux_tab_overrides(), *arguments], environment)
+    os.execve(command[0], [*command, "--remote", "unix://" + str(endpoint), *directory,
+                           *cmux_tab_overrides(), *arguments], environment)
 
 
 def cmux_tab_overrides():
