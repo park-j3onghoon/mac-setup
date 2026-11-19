@@ -145,12 +145,12 @@ def all_idle(client, deadline=None):
     return all(quiet(thread) for _, thread in loaded_threads(client, deadline))
 
 
-def newest_turn(client, thread_id):
+def newest_turn(client, thread_id, deadline=None):
     try:
-        turns = client.request("thread/turns/list", {
+        turns = scan_request(client, "thread/turns/list", {
             "threadId": thread_id, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
-        }).get("data", [])
-    except UsageUnavailable:
+        }, deadline).get("data", [])
+    except RpcRejected:
         # A thread whose first turn has not been written yet has no rollout to list.
         return None
     return turns[0] if turns else None
@@ -165,6 +165,12 @@ class Runtime:
         self.pid_start = None
         self.active = None
         self.continued = set()
+        self.uncertain_continuations = {}
+        self.continuation_future = None
+        self.continuation_ids = deque()
+        self.continuation_cursor = None
+        self.continuation_started = False
+        self.continuation_failed = False
         self.release_ids = deque()
         self.release_cursor = None
         self.idle_pool = None
@@ -257,6 +263,8 @@ class Runtime:
 
     def release_subscriptions(self):
         """한 대화씩 최대 2초 안에 정리하여 감독 루프에 제어를 돌려준다."""
+        if self.continuation_future is not None and not self.continuation_future.done():
+            return False
         if self.idle_job is not None:
             if self.idle_job['future'].done() and time.monotonic() >= self.idle_job['deadline']:
                 self.idle_job = None
@@ -301,13 +309,11 @@ class Runtime:
 
     def idle_ready(self, name, tokens):
         if self.idle_job is None:
-            if self.idle_pool is None:
-                self.idle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='codex-idle')
             with self.activity_lock:
                 deadline = time.monotonic() + 300
                 self.idle_job = {'name': name, 'tokens': tokens, 'client': self.client,
                                  'serial': self.activity_serial, 'deadline': deadline,
-                                 'future': self.idle_pool.submit(
+                                 'future': self.worker_pool().submit(
                                      all_idle, self.client, deadline=deadline)}
         job = self.idle_job
         try:
@@ -321,6 +327,11 @@ class Runtime:
         with self.activity_lock:
             return (idle and job['name'] == name and job['tokens'] == tokens
                     and job['client'] is self.client and job['serial'] == self.activity_serial)
+
+    def worker_pool(self):
+        if self.idle_pool is None:
+            self.idle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='codex-maintenance')
+        return self.idle_pool
 
     def select(self, name, *, force=False):
         if self.client.closed:
@@ -368,33 +379,75 @@ class Runtime:
         A turn started from this connection still sends its approval requests to the terminal
         that opened the thread (measured on 0.168.0, 2026-11-13).
         """
-        failed = False
-        for thread_id in loaded_thread_ids(self.client):
-            try:
-                self.continue_thread(thread_id)
-            except UsageUnavailable:
-                failed = True
-        if failed:
-            raise UsageUnavailable('Some limited threads could not be continued')
+        if self.continuation_future is None:
+            self.continuation_future = self.worker_pool().submit(self.continue_batch, self.client)
+        try:
+            complete = self.continuation_future.result(timeout=.02)
+        except FutureTimeout:
+            return False
+        except Exception:
+            self.continuation_future = None
+            raise
+        self.continuation_future = None
+        return complete
 
-    def continue_thread(self, thread_id):
-        thread = self.client.request('thread/read', {
+    def continue_batch(self, client):
+        """Keep the page cursor across bounded background batches."""
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if not self.continuation_ids:
+                if self.continuation_started and not self.continuation_cursor:
+                    failed = self.continuation_failed
+                    self.continuation_started = self.continuation_failed = False
+                    if failed or self.uncertain_continuations:
+                        raise UsageUnavailable('Some limited threads could not be continued')
+                    return True
+                page = scan_request(client, 'thread/loaded/list',
+                                    {'cursor': self.continuation_cursor}, deadline)
+                self.continuation_ids.extend(page.get('data', []))
+                self.continuation_cursor = page.get('nextCursor')
+                self.continuation_started = True
+                continue
+            thread_id = self.continuation_ids[0]
+            try:
+                self.continue_thread(thread_id, client, deadline)
+            except UsageUnavailable:
+                if time.monotonic() >= deadline:
+                    return False
+                self.continuation_failed = True
+            self.continuation_ids.popleft()
+        return False
+
+    def continue_thread(self, thread_id, client, deadline):
+        thread = scan_request(client, 'thread/read', {
             'threadId': thread_id, 'includeTurns': False,
-        }).get('thread', {})
+        }, deadline).get('thread', {})
         # A parent drives its sub-agents; direct turn/start on a child is rejected.
         if thread.get('parentThreadId') or not quiet(thread):
+            if thread.get('status', {}).get('type') == 'active':
+                self.uncertain_continuations.pop(thread_id, None)
             return
-        turn = newest_turn(self.client, thread_id)
+        turn = newest_turn(client, thread_id, deadline)
+        uncertain = self.uncertain_continuations.get(thread_id)
+        if uncertain and turn and turn['id'] != uncertain:
+            self.uncertain_continuations.pop(thread_id, None)
         if (not turn or turn['id'] in self.continued or turn['status'] != 'failed'
                 or (turn.get('error') or {}).get('codexErrorInfo') != 'usageLimitExceeded'):
             return
         self.continued.add(turn['id'])
         try:
-            self.client.request('turn/start', {
+            # Do not classify a batch budget expiring before send as an uncertain submission.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RpcNotSent('Continuation batch budget exhausted')
+            client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
-            })
+            }, timeout=min(30, remaining))
         except (RpcRejected, RpcNotSent):
             self.continued.discard(turn['id'])
+            raise
+        except UsageUnavailable:
+            self.uncertain_continuations[thread_id] = turn['id']
             raise
 
     def close(self):

@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from policy import UsageUnavailable
+from rpc import RpcRejected
 from runtime import CONTINUE_PROMPT, Runtime, all_idle, prepare_home
 from state import load, poll_delay, record, save, snapshot
 from supervisor import monitor
@@ -437,6 +438,32 @@ class ContinueTest(unittest.TestCase):
     def setUp(self):
         self.runtime = Runtime({})
         self.runtime.client = Mock()
+        self.addCleanup(self.runtime.close)
+
+    def test_slow_continuation_scan_keeps_supervisor_responsive(self):
+        """이어하기 점검도 감독을 막지 않고 다음 호출에서 진행을 이어간다."""
+        entered, release = threading.Event(), threading.Event()
+        self.answer({'t1': ('idle', LIMITED)})
+        answer = self.runtime.client.request.side_effect
+
+        def request(method, params=None, **kwargs):
+            if method == 'thread/read':
+                entered.set()
+                release.wait(2)
+            return answer(method, params, **kwargs)
+
+        self.runtime.client.request.side_effect = request
+        started = time.monotonic()
+        try:
+            self.assertFalse(self.runtime.continue_limited())
+            self.assertLess(time.monotonic() - started, .5)
+            self.assertTrue(entered.wait(.5))
+            release.set()
+            self.runtime.continuation_future.result(timeout=1)
+            self.assertTrue(self.runtime.continue_limited())
+            self.assertEqual(len(self.started()), 1)
+        finally:
+            release.set()
 
     def answer(self, threads, parents=None):
         def request(method, params=None, timeout=30):
@@ -470,7 +497,7 @@ class ContinueTest(unittest.TestCase):
             "done": ("idle", {"data": [{"id": "turn-2", "status": "completed"}]}),
             "crashed": ("systemError", {"data": [{"id": "turn-3", "status": "failed",
                                                   "error": {"codexErrorInfo": "other"}}]}),
-            "unprompted": ("idle", UsageUnavailable("Codex thread/turns/list failed")),
+            "unprompted": ("idle", RpcRejected("Codex thread/turns/list failed")),
         })
         self.runtime.continue_limited()
         self.assertEqual(self.started(), [])
@@ -494,16 +521,37 @@ class ContinueTest(unittest.TestCase):
         answer = self.runtime.client.request.side_effect
         failures = [RpcRejected('rejected')]
 
-        def request(method, params=None):
+        def request(method, params=None, **kwargs):
             if method == 'turn/start' and params['threadId'] == 'bad' and failures:
                 raise failures.pop()
-            return answer(method, params)
+            return answer(method, params, **kwargs)
 
         self.runtime.client.request.side_effect = request
         with self.assertRaises(UsageUnavailable):
             self.runtime.continue_limited()
         self.runtime.continue_limited()
         self.assertEqual([value['threadId'] for value in self.started()], ['bad', 'good', 'bad'])
+
+    def test_continuation_batches_preserve_progress_at_the_time_budget(self):
+        """예산 경계의 대화까지 다음 묶음에서 이어 처리해 어느 대화도 계속 누락되지 않는다."""
+        clock = [0]
+        self.answer({f't{i}': ('idle', {'data': [dict(LIMITED['data'][0], id=f'turn-{i}')]})
+                     for i in range(20)})
+        answer = self.runtime.client.request.side_effect
+
+        def slow(method, params=None, **kwargs):
+            clock[0] += 2
+            return answer(method, params, **kwargs)
+
+        self.runtime.client.request.side_effect = slow
+        with patch('runtime.time.monotonic', side_effect=lambda: clock[0]):
+            for _ in range(30):
+                if self.runtime.continue_limited():
+                    break
+            else:
+                self.fail('scan did not finish')
+        self.assertEqual(len(self.started()), 20)
+        self.assertEqual(len({value['threadId'] for value in self.started()}), 20)
 
     def test_definite_pre_send_failure_can_retry_after_reconnection(self):
         """전송하기 전 끊긴 연결은 복구 후 자동 이어하기를 다시 시도한다."""
@@ -512,10 +560,10 @@ class ContinueTest(unittest.TestCase):
         answer = self.runtime.client.request.side_effect
         failures = [RpcNotSent('connection was already closed')]
 
-        def request(method, params=None):
+        def request(method, params=None, **kwargs):
             if method == 'turn/start' and failures:
                 raise failures.pop()
-            return answer(method, params)
+            return answer(method, params, **kwargs)
 
         self.runtime.client.request.side_effect = request
         with self.assertRaises(UsageUnavailable):
@@ -528,16 +576,21 @@ class ContinueTest(unittest.TestCase):
         self.answer({'t1': ('idle', LIMITED)})
         answer = self.runtime.client.request.side_effect
 
-        def request(method, params=None):
+        def request(method, params=None, **kwargs):
             if method == 'turn/start':
                 raise UsageUnavailable('connection ended after send')
-            return answer(method, params)
+            return answer(method, params, **kwargs)
 
         self.runtime.client.request.side_effect = request
         with self.assertRaises(UsageUnavailable):
             self.runtime.continue_limited()
-        self.runtime.continue_limited()
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.continue_limited()
         self.assertEqual(len(self.started()), 1)
+        self.assertEqual(self.runtime.uncertain_continuations, {'t1': 'turn-1'})
+        self.answer({'t1': ('idle', {'data': [{'id': 'new-turn', 'status': 'completed'}]})})
+        self.runtime.continue_limited()
+        self.assertEqual(self.runtime.uncertain_continuations, {})
 
 
 class SwitchingTest(unittest.TestCase):

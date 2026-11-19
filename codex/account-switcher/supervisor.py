@@ -104,8 +104,7 @@ def monitor(runtime, profiles, stop, state):
                     state["switch_count"] = state.get("switch_count", 0) + 1
                 if (changed and check_limited
                         and state["accounts"][runtime.active]["used_percent"] < THRESHOLD):
-                    runtime.continue_limited()
-                    check_limited = False
+                    check_limited = runtime.continue_limited() is False
                 state["status"] = "ready" if changed else "waiting_for_idle"
                 if changed:
                     retry_switch_at, idle_retry_delay = 0, 2
@@ -121,6 +120,11 @@ def monitor(runtime, profiles, stop, state):
         elif desired is None or 'account_error' in state:
             state["status"] = "degraded"
         state['active'] = runtime.active
+        uncertain = getattr(runtime, 'uncertain_continuations', {})
+        if isinstance(uncertain, dict) and uncertain:
+            state['uncertain_continuation_count'] = len(uncertain)
+        else:
+            state.pop('uncertain_continuation_count', None)
         content = json.dumps({key: value for key, value in state.items() if key != 'updated_at'},
                              sort_keys=True)
         if content != saved_content or time.time() - saved_at >= 30:
