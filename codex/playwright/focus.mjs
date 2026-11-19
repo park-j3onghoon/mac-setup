@@ -1,6 +1,11 @@
 const states = new WeakMap();
 const clientFor = page => !page.isClosed() && page._connection.toImpl(page).delegate._mainFrameSession._client;
 
+export function releasePageFocus(page) {
+  states.get(page)?.cancel?.();
+  states.delete(page);
+}
+
 export async function withPageFocus(page, hasDialog, action) {
   if (!page || page.isClosed()) return action();
   const state = states.get(page) || {active: 0};
@@ -20,12 +25,13 @@ export async function withPageFocus(page, hasDialog, action) {
     state.active--;
     if (hasDialog() && !page.isClosed()) {
       if (!state.deferred) {
-        const cancel = () => { page.off('dialogclosed', finish); page.off('close', cancel); state.deferred = false; };
+        const cancel = () => { page.off('dialogclosed', finish); page.off('close', cancel); state.deferred = false; state.cancel = undefined; };
         const finish = () => {
           cancel();
           void restore().catch(error => console.error('Deferred focus restore failed:', error.name));
         };
         state.deferred = true;
+        state.cancel = cancel;
         page.once('dialogclosed', finish);
         page.once('close', cancel);
       }

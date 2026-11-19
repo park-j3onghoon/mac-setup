@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {Admission} from './admission.mjs';
-import {withPageFocus} from './focus.mjs';
+import {withPageFocus, releasePageFocus} from './focus.mjs';
 
 const require = createRequire(import.meta.url);
 async function withDeadline(promise, milliseconds) {
@@ -187,6 +187,7 @@ export function installPerformanceAdapter({tools}, {idleMs = 30 * 60 * 1000} = {
       const context = this._context;
       const pages = [...(context?.workPages || [])].filter(page => !page.isClosed() && !context.keptPages.has(page));
       await Promise.allSettled(pages.map(page => page.close({runBeforeUnload: false})));
+      for (const page of context?.workPages || []) releasePageFocus(page);
       await dispose.call(this);
       context?.workPages.clear();
       context?.keptPages.clear();

@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
-import {pathToFileURL} from 'node:url';
 import {directory, socketPath, statusPath, prepareDirectory} from './runtime.mjs';
 
 prepareDirectory();
@@ -8,7 +7,7 @@ const status = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 const command = execFileSync('/bin/ps', ['-p', String(status.pid), '-o', 'command='], {encoding: 'utf8'});
 if (!command.includes('/codex/chrome-devtools/daemon.mjs')) throw new Error('Legacy daemon identity did not match.');
 // SIGUSR1 opens Node's loopback inspector without stopping the event loop.
-let openedInspector = false;
+let openedInspector = process.argv.includes('--close-inspector');
 let targets;
 try { targets = await (await fetch('http://127.0.0.1:9229/json/list')).json(); }
 catch {
@@ -39,19 +38,20 @@ async function evaluate(expression) {
       timer = setTimeout(() => reject(new Error('Node inspector response timed out.')), 5000);
     })]);
   } finally { clearTimeout(timer); pending.delete(id); }
-  if (message.error || message.result.exceptionDetails) throw new Error('Retirement registration failed; daemon was left running.');
+  if (message.error || message.result.exceptionDetails) throw new Error('Retirement registration failed; daemon was left running. ' +
+    (message.error?.message || message.result.exceptionDetails.exception?.description?.split('\n')[0] || 'Inspector error'));
   return message.result.result.value;
 }
 let verified = false;
 try {
   if (await evaluate('process.pid') !== status.pid) throw new Error('Inspector belongs to another process.');
   verified = true;
-  const moduleURL = pathToFileURL(`${import.meta.dirname}/retirement.mjs`).href;
+  const modulePath = `${import.meta.dirname}/retirement.mjs`;
   const armed = await evaluate(`(async () => {
     if (globalThis.__codexChromeRetirement) return true;
     const server = process._getActiveHandles().find(handle => handle.listening && handle.address?.() === ${JSON.stringify(socketPath)});
     if (!server) return false;
-    const {retireWhenIdle} = await import(${JSON.stringify(moduleURL)});
+    const {retireWhenIdle} = process.getBuiltinModule('module').createRequire(${JSON.stringify(import.meta.filename)})(${JSON.stringify(modulePath)});
     globalThis.__codexChromeRetirement = retireWhenIdle(server, () => process.emit('SIGTERM'));
     return true;
   })()`);
@@ -60,6 +60,6 @@ try {
   console.log(JSON.stringify({pid: status.pid, retirementArmed: true, clientsAtRegistration: status.clients}));
 } finally {
   if (verified && openedInspector)
-    await evaluate("import('node:inspector').then(inspector => { setTimeout(() => inspector.close(), 100); return true; })");
+    await evaluate("setTimeout(() => process.getBuiltinModule('inspector').close(), 100); true");
   ws.close();
 }

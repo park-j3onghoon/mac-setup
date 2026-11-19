@@ -8,7 +8,7 @@ import {evaluateBounded} from './payloads.mjs';
 import {maintainStorage, batchConsole} from './storage.mjs';
 import heartbeat from './heartbeat.cjs';
 import {EventEmitter} from 'node:events';
-import {withPageFocus} from './focus.mjs';
+import {withPageFocus, releasePageFocus} from './focus.mjs';
 import {loadRuntime, installPerformanceAdapter} from './runtime.mjs';
 
 test('focus restoration waits for dialog dismissal without blocking its tool', async () => {
@@ -25,6 +25,10 @@ test('focus restoration waits for dialog dismissal without blocking its tool', a
   await withPageFocus(page, () => dialog, async () => { dialog = false; page.emit('dialogclosed'); });
   assert.deepEqual(sent, [true, false]);
   assert.equal(page.listenerCount('dialogclosed'), 0);
+  await withPageFocus(page, () => dialog, async () => { dialog = true; });
+  releasePageFocus(page);
+  assert.equal(page.listenerCount('dialogclosed'), 0);
+  assert.equal(page.listenerCount('close'), 0);
 });
 
 test('evaluate and screenshot reject existing modals before page I/O', async () => {
