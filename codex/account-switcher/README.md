@@ -80,6 +80,9 @@ CODEX_ACCOUNT=personal codex     # 개인 고정, 자동 전환 없음
 `~/.local/bin/codex`는 이 디렉터리의 `launcher.py`를 가리킨다. 실제 CLI는
 `/opt/homebrew/bin/codex`다. 최초 실행 시 백그라운드 감독 프로세스를 시작하고,
 같은 사용자 전용 Unix 소켓으로 공식 Codex 터미널을 연결한다. 추가 패키지는 없다.
+감독은 사용자 launchd 작업 `local.codex-account-switcher`로 등록한다. 감독이 종료되면
+launchd가 최소 10초 간격으로 다시 시작하고 기존 공유 서버에 연결한다.
+이미 등록된 작업과 진행 중인 대화는 새 터미널 실행으로 재시작하지 않는다.
 
 감독이 새 공유 서버를 띄울 때는 Homebrew가 설치한 Codex 패키지 전체를
 `~/.codex-auto/app-server-packages/<버전>/`에 보관하고 그 안의 실행 파일로 서버를 시작한다.
