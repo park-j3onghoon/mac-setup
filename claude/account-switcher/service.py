@@ -11,6 +11,13 @@ from refresh import record_switch
 from storage import SwitcherError, fingerprint
 
 
+def matches_identity(account, actual):
+    return (actual.get('email') == account.get('emailAddress')
+            and actual.get('uuid') == account.get('accountUuid')
+            and (account.get('organizationUuid') is None
+                 or actual.get('organizationUuid') == account['organizationUuid']))
+
+
 def validate_config(config):
     required = ('primary', 'fallback', 'config_home', 'config_path',
                 'claude_executable', 'supported_version')
@@ -44,10 +51,7 @@ class Switcher:
         if cache.get(account.get('emailAddress')) == identity:
             return
         actual = self.api.profile(bundle['oauth'])
-        if (actual.get('email') != account.get('emailAddress')
-                or actual.get('uuid') != account.get('accountUuid')
-                or (account.get('organizationUuid') is not None
-                    and actual.get('organizationUuid') != account['organizationUuid'])):
+        if not matches_identity(account, actual):
             raise SwitcherError('OAuth token ownership does not match the saved account')
         cache[account['emailAddress']] = identity
         self._verified_identities = cache
@@ -87,20 +91,26 @@ class Switcher:
             return
         with self.live.locked():
             blob, account = self.live.read()
-            current = fingerprint(blob['claudeAiOauth'])
-            before = journal['before']
-            after = journal['after']
-            allowed_emails = {before['account']['emailAddress'], after['account']['emailAddress']}
-            if account['emailAddress'] not in allowed_emails:
-                raise SwitcherError('Pending swap found a different login; manual recovery required')
-            if current == fingerprint(after['oauth']):
-                self.live.write_account(after['account'])
-                recovered_email = after['account']['emailAddress']
-            elif current == fingerprint(before['oauth']):
-                self.live.write_account(before['account'])
-                recovered_email = before['account']['emailAddress']
-            else:
+        oauth = blob['claudeAiOauth']
+        before, after = journal['before'], journal['after']
+        allowed = (after['account'], before['account'])
+        if account['emailAddress'] not in {entry['emailAddress'] for entry in allowed}:
+            raise SwitcherError('Pending swap found a different login; manual recovery required')
+        recovered = next((entry['account'] for entry in (after, before)
+                          if fingerprint(oauth) == fingerprint(entry['oauth'])), None)
+        if recovered is None:
+            # A native refresh can replace the token between the credential and metadata writes.
+            actual = self.api.profile(oauth)
+            recovered = next((entry for entry in allowed if matches_identity(entry, actual)), None)
+            if recovered is None:
                 raise SwitcherError('Pending swap found a renewed login; manual recovery required')
+        with self.live.locked():
+            latest, latest_account = self.live.read()
+            if latest['claudeAiOauth'] != oauth or latest_account != account:
+                raise SwitcherError('Claude login changed during recovery; retry later')
+            recovered_email = recovered['emailAddress']
+            self.vault.write(recovered_email, {'oauth': oauth, 'account': recovered})
+            self.live.write_account(recovered)
             runtime = self.state.load('runtime')
             runtime.update(active=recovered_email,
                            settle_until=time.time() + self.config['settle_seconds'])

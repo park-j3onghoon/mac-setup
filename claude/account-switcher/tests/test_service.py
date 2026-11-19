@@ -290,10 +290,48 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             app.tick(apply=True, now=NOW)
         app.vault.active['claudeAiOauth']['accessToken'] = 'new-external-login'
+        app.api.profile_overrides['new-external-login'] = {
+            'email': 'other@example.com', 'uuid': 'uuid-other@example.com'}
         # when & then
         with self.assertRaises(SwitcherError):
             app.recover()
         self.assertEqual(app.vault.active['claudeAiOauth']['accessToken'], 'new-external-login')
+
+    def test_recovery_keeps_the_targets_renewed_token_after_an_interrupted_swap(self):
+        """교체 직후 중단되어도 대상 계정이 갱신한 최신 인증으로 전환을 마무리한다."""
+        app = self.app
+        app.vault.crash_after_write = True
+        with self.assertRaises(KeyboardInterrupt):
+            app.tick(apply=True, now=NOW)
+        renewed = app.api.refresh(app.vault.active['claudeAiOauth'], NOW + 1)
+        app.vault.active['claudeAiOauth'] = renewed
+
+        app.recover()
+
+        self.assertEqual(app.live.read()[1]['emailAddress'], 'work@example.com')
+        self.assertEqual(app.vault.read('work@example.com')['oauth'], renewed)
+        self.assertEqual(app.vault.active['claudeAiOauth'], renewed)
+        self.assertEqual(app.state.load('session_refresh')['since'], NOW)
+        self.assertIsNone(app.vault.read('__transaction__'))
+
+    def test_recovery_rechecks_login_after_network_verification(self):
+        """복구 소유자 확인 중 다시 바뀐 인증에는 이전 결과를 적용하지 않는다."""
+        app = self.app
+        app.vault.crash_after_write = True
+        with self.assertRaises(KeyboardInterrupt):
+            app.tick(apply=True, now=NOW)
+        app.vault.active['claudeAiOauth'] = app.api.refresh(app.vault.active['claudeAiOauth'], NOW)
+        profile = app.api.profile
+
+        def replace(oauth):
+            app.vault.active['claudeAiOauth']['refreshToken'] = 'newer-generation'
+            return profile(oauth)
+
+        app.api.profile = replace
+        with self.assertRaises(SwitcherError):
+            app.recover()
+        self.assertEqual(app.live.read()[1]['emailAddress'], 'personal@example.com')
+        self.assertIsNotNone(app.vault.read('__transaction__'))
 
     def test_target_ownership_mismatch_prevents_switch(self):
         """저장된 인증의 실제 소유자가 다르면 교체하지 않는다."""
