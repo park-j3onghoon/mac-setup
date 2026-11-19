@@ -50,13 +50,19 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
             target.symlink_to(shared / name, target_is_directory=(shared / name).is_dir())
 
 
+def server_package_cache(installed, home):
+    if installed.parent.name == "bin" and installed.parent.parent.parent.parts[-2:] == ("Caskroom", "codex"):
+        return home / "app-server-packages"
+    return None
+
+
 def preserve_server_package(binary, home):
     installed = Path(binary).resolve(strict=True)
-    release = installed.parent.parent
-    if installed.parent.name != "bin" or release.parent.parts[-2:] != ("Caskroom", "codex"):
+    packages = server_package_cache(installed, home)
+    if packages is None:
         return installed
 
-    packages = home / "app-server-packages"
+    release = installed.parent.parent
     packages.mkdir(mode=0o700, exist_ok=True)
     current = packages / release.name
     with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:

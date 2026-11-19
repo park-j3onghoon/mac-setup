@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Launch Codex with company-first, 90%-threshold account selection."""
 
-import os
+from contextlib import closing
 from datetime import datetime
+import json
+import os
 from pathlib import Path
+import re
 import sys
 import time
 
 from idle import start_proxy
 from policy import UsageUnavailable, choose
-from runtime import raise_file_limit
+from runtime import raise_file_limit, server_package_cache
 from usage import read_usage, read_snapshot
 from state import RUNTIME, load, record, save
+from unix_ws import UnixWebSocket
 
 
 BINARY = Path("/opt/homebrew/bin/codex")
@@ -94,6 +98,40 @@ def interactive(arguments):
     return command_name(arguments) not in noninteractive
 
 
+def server_version(socket_path):
+    # 인증 갱신과 승인 요청은 기존 연결이 처리하므로 버전 조회는 initialize 응답만 읽는다.
+    with closing(UnixWebSocket(socket_path, deadline=time.monotonic() + 2)) as connection:
+        connection.send(b'{"id":1,"method":"initialize","params":'
+                        b'{"clientInfo":{"name":"codex-version-check","version":"1"}}}')
+        for raw in connection.messages():
+            message = json.loads(raw)
+            if not isinstance(message, dict) or message.get("id") != 1 or "method" in message:
+                continue
+            result = message.get("result")
+            agent = result.get("userAgent") if isinstance(result, dict) else None
+            if not isinstance(agent, str):
+                return None
+            match = re.match(r"[^/\s]+/([0-9][A-Za-z0-9.+-]*)(?:\s|$)", agent)
+            return match[1] if match else None
+
+
+def terminal_binary(socket_path):
+    installed = BINARY.resolve(strict=True)
+    cache = server_package_cache(installed, RUNTIME)
+    if cache is None:
+        return installed
+    try:
+        version = server_version(socket_path)
+    except (OSError, EOFError, ValueError):
+        return installed
+    if version:
+        for packages in (cache, installed.parents[2]):
+            cli = packages / version / "bin" / "codex"
+            if cli.is_file() and os.access(cli, os.X_OK):
+                return cli
+    return installed
+
+
 def launch_automatic(arguments):
     from service import ensure
     from runtime import SOCKET
@@ -108,9 +146,10 @@ def launch_automatic(arguments):
         idle_seconds = float(os.environ.get("CODEX_IDLE_SECONDS", "900"))
     except ValueError as error:
         raise UsageUnavailable("CODEX_IDLE_SECONDS must be a number") from error
+    cli = str(terminal_binary(SOCKET))
     endpoint = start_proxy(SOCKET, idle_seconds) if idle_seconds > 0 else SOCKET
-    os.execve(str(BINARY), [str(BINARY), "--remote", "unix://" + str(endpoint), *directory,
-                            *cmux_tab_overrides(), *arguments], environment)
+    os.execve(cli, [cli, "--remote", "unix://" + str(endpoint), *directory,
+                    *cmux_tab_overrides(), *arguments], environment)
 
 
 def cmux_tab_overrides():

@@ -45,20 +45,25 @@ def mask_payload(data, mask):
 class UnixWebSocket:
     message_limit = 16 * 1024 * 1024
     fragment_limit = 4096
+    deadline = None
 
-    def __init__(self, path):
+    def __init__(self, path, *, deadline=None):
+        self.deadline = deadline
         self.socket = socket.socket(socket.AF_UNIX)
         self.lock = threading.Lock()
         self.buffer = b""
         try:
             self.socket.settimeout(10)
+            self._apply_deadline()
             self.socket.connect(str(path))
             key = base64.b64encode(os.urandom(16)).decode()
             request = ("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
                        "Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
                        f"Sec-WebSocket-Key: {key}\r\n\r\n")
+            self._apply_deadline()
             self.socket.sendall(request.encode())
             while b"\r\n\r\n" not in self.buffer:
+                self._apply_deadline()
                 chunk = self.socket.recv(4096)
                 if not chunk or len(self.buffer) > 16384:
                     raise OSError("Invalid Codex socket handshake")
@@ -77,6 +82,13 @@ class UnixWebSocket:
             self.socket.close()
             raise
 
+    def _apply_deadline(self):
+        if self.deadline is not None:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Codex socket deadline expired")
+            self.socket.settimeout(remaining)
+
     def send_frame(self, opcode, data, deadline=None):
         length = len(data)
         if length < 126:
@@ -91,6 +103,8 @@ class UnixWebSocket:
 
     def write(self, parts, deadline=None):
         deadline = time.monotonic() + WRITE_TIMEOUT if deadline is None else deadline
+        if self.deadline is not None:
+            deadline = min(deadline, self.deadline)
         if not self.lock.acquire(timeout=max(0, deadline - time.monotonic())):
             raise TimeoutError('Codex transport write lock timed out')
         try:
@@ -107,6 +121,7 @@ class UnixWebSocket:
         remaining = count - len(buffered)
         while remaining:
             try:
+                self._apply_deadline()
                 data = self.socket.recv(max(4096, min(65536, remaining)))
             except BlockingIOError:
                 select.select([self.socket], [], [])
