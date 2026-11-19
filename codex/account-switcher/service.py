@@ -65,7 +65,7 @@ def ensure():
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         state = load()
-        if running(state) and state.get("active") and SOCKET.exists():
+        if running(state) and state.get("active") and state.get("upgrade_status") != "draining" and SOCKET.exists():
             return state
         if state.get("status") == "failed" and state.get("updated_at", 0) >= started_at:
             raise UsageUnavailable("Automatic account service could not start")

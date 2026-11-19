@@ -16,6 +16,10 @@ Python 3.10 이상, macOS 기본 Security/CoreFoundation 프레임워크와
 로그인 읽기 실패는 주기마다 하는 `/usr/bin/security` 읽기가 잡아 멈춘다.
 `config.json`의 `supported_version`은 확인 당시의 참고 버전이다.
 
+zsh에서 `claude update`와 `codex update`는 Codex와 Claude를 함께 업데이트한다.
+새 Claude 세션은 갱신된 실행 파일로 시작하고 이미 열린 세션은 재시작 시 반영된다.
+공유 Codex 서버의 교체 조건은 [Codex 계정 자동 전환](../../codex/account-switcher/README.md)에 있다.
+
 ## 최초 설정
 
 ```sh

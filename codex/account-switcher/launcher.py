@@ -3,15 +3,17 @@
 
 from contextlib import closing
 from datetime import datetime
+import fcntl
 import json
 import os
 from pathlib import Path
-import re
+import subprocess
 import sys
 import time
 
 from idle import start_proxy
 from policy import UsageUnavailable, choose
+from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
 from usage import read_usage, read_snapshot
 from state import RUNTIME, load, record
@@ -66,6 +68,10 @@ def show_status():
             name: value["used_percent"] for name, value in state.get("accounts", {}).items()
         }, preferred=state.get("preferred", "company"))
     print(f"selected: {selected}; service: {state.get('status', 'not started')}")
+    if is_running and state.get("runtime_version"):
+        print(f"shared server: {state['runtime_version']}")
+        if state.get("upgrade_target"):
+            print(f"update to {state['upgrade_target']}: {state.get('upgrade_error') or state.get('upgrade_status')}")
     if state.get("desired") and state["desired"] != state.get("active"):
         print(f"waiting for active work to finish: {state['desired']}")
     if state.get("errors") or state.get("runtime_error") or state.get("account_error"):
@@ -106,12 +112,7 @@ def server_version(socket_path):
             message = json.loads(raw)
             if not isinstance(message, dict) or message.get("id") != 1 or "method" in message:
                 continue
-            result = message.get("result")
-            agent = result.get("userAgent") if isinstance(result, dict) else None
-            if not isinstance(agent, str):
-                return None
-            match = re.match(r"[^/\s]+/([0-9][A-Za-z0-9.+-]*)(?:\s|$)", agent)
-            return match[1] if match else None
+            return version_from_initialize(message.get("result"))
 
 
 def terminal_command(socket_path):
@@ -168,8 +169,58 @@ def cmux_tab_overrides():
             for part in ("-c", f'shell_environment_policy.set.{name}="{value}"')]
 
 
+def report_runtime_update():
+    from service import running
+    installed = BINARY.resolve().parent.parent.name
+    deadline = time.monotonic() + 35
+    while True:
+        state = load()
+        if state.get("status") == "failed" or state.get("upgrade_error"):
+            print("[codex] Shared server update failed. Check codex --account-status.", file=sys.stderr)
+            return False
+        if not running(state):
+            print(f"[codex] Next automatic server will start from the installed release ({installed}).")
+            return True
+        if state.get("runtime_version") == installed and state.get("active"):
+            print(f"[codex] Shared server is using {installed}.")
+            return True
+        if state.get("upgrade_target") == installed and state.get("upgrade_status") == "waiting_for_idle":
+            print(f"[codex] Installed {installed}; the switcher will replace {state['runtime_version']} "
+                  "when active work finishes. Check codex --account-status.")
+            return True
+        if time.monotonic() >= deadline:
+            print("[codex] Server update is unconfirmed. Check codex --account-status.", file=sys.stderr)
+            return False
+        time.sleep(0.5)
+
+
+def update_clis():
+    failed = False
+    for binary in (BINARY, Path.home() / ".local/bin/claude"):
+        try:
+            result = subprocess.run([str(binary), "update"])
+        except OSError as error:
+            print(f"[update] {binary}: {error}", file=sys.stderr)
+            failed = True
+        else:
+            if result.returncode:
+                print(f"[update] {binary.name} update exited {result.returncode}", file=sys.stderr)
+                failed = True
+    confirmed = report_runtime_update()
+    return int(failed or not confirmed)
+
+
 def main(arguments):
     raise_file_limit()
+    if arguments == ["update"]:
+        RUNTIME.mkdir(mode=0o700, exist_ok=True)
+        with (RUNTIME / "cli-update.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("[update] Another CLI update is running.", file=sys.stderr)
+                return 1
+            return update_clis()
     if arguments == ["--account-status"]:
         return show_status()
     # Explicit CODEX_HOME always wins, including invocations from existing sessions.

@@ -3,6 +3,7 @@
 import json
 import os
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -58,6 +59,15 @@ class RpcNotSent(UsageUnavailable):
     """The transport failed before writing any of this request."""
 
 
+def version_from_initialize(result):
+    agent = result.get("userAgent") if isinstance(result, dict) else None
+    if isinstance(agent, str):
+        match = re.match(r"[^/\s]+/([0-9][A-Za-z0-9.+-]*)(?:\s|$)", agent)
+        if match:
+            return match[1]
+    return None
+
+
 class Rpc:
     def __init__(self, binary, home, socket_path=None, handler=None, notification=None):
         self.process = self.websocket = None
@@ -80,13 +90,14 @@ class Rpc:
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
         try:
-            self.request("initialize", {
+            result = self.request("initialize", {
                 "clientInfo": {"name": "codex-account-switcher", "version": "2.0.0"},
                 "capabilities": {"experimentalApi": True,
                                  "optOutNotificationMethods": [method for method in NOTIFICATIONS
                                      if not notification or method not in (
                                          'thread/status/changed', 'thread/started', 'turn/started')]},
             })
+            self.version = version_from_initialize(result)
             self.send({"method": "initialized"})
         except Exception:
             self.close()

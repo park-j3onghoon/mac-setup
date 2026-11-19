@@ -3,9 +3,11 @@
 import os
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextlib import closing
 from pathlib import Path
 import resource
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -106,11 +108,20 @@ def preserve_server_package(binary, home):
                 current.rename(staging / 'replaced')
             staged.rename(current)
 
+    return current / "bin" / installed.name
+
+
+def prune_server_packages(server_binary, home):
+    current = Path(server_binary).parent.parent
+    packages = home / "app-server-packages"
+    if current.parent != packages:
+        return
+    with tempfile.TemporaryDirectory(prefix=".staging-", dir=packages) as temporary:
+        staging = Path(temporary)
         # 정리 중 종료돼도 다음 시작에서 반쯤 지운 릴리스를 재사용하지 않도록 먼저 이름을 옮긴다.
         for previous in packages.iterdir():
             if previous not in (current, staging) and previous.is_dir() and not previous.is_symlink():
                 previous.rename(staging / previous.name)
-    return current / "bin" / installed.name
 
 
 def scan_request(client, method, params, deadline=None):
@@ -129,7 +140,7 @@ def loaded_thread_ids(client, deadline=None):
     cursor = None
     while True:
         response = scan_request(client, 'thread/loaded/list', {'cursor': cursor}, deadline)
-        yield from response.get('data', [])
+        yield from response['data']
         cursor = response.get("nextCursor")
         if not cursor:
             return
@@ -183,8 +194,9 @@ class Runtime:
         self.idle_job = None
         self.activity_lock = threading.Lock()
         self.activity_serial = 0
+        self.prepared_upgrade = None
 
-    def start(self):
+    def start(self, *, restore_account=None):
         prepare_home(self.home)
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
@@ -228,7 +240,10 @@ class Runtime:
                     except (ConnectionRefusedError, FileNotFoundError):
                         pass
                 time.sleep(0.1)
-        except Exception:
+            if restore_account:
+                self.restore_account(restore_account)
+            prune_server_packages(server_binary, self.home)
+        except BaseException:
             self.stop()
             raise
 
@@ -257,6 +272,61 @@ class Runtime:
         if self.process is not None:
             return self.process.poll() is None
         return self.pid_start is not None and process_start(self.pid) == self.pid_start
+
+    def drain_for_upgrade(self, installed):
+        if self.prepared_upgrade != installed:
+            candidate = preserve_server_package(installed, self.home)
+            with tempfile.TemporaryDirectory(dir=self.home) as probe:
+                config = self.home / "config.toml"
+                if config.exists():
+                    (Path(probe) / "config.toml").symlink_to(config)
+                with closing(Rpc(candidate, probe)) as client:
+                    if client.version != installed.parent.parent.name:
+                        raise UsageUnavailable("The staged Codex server reported a different version")
+            self.prepared_upgrade = installed
+        if self.client.closed:
+            self.observe_account()
+        if self.idle_pending or (self.continuation_future and not self.continuation_future.done()):
+            return False
+        with self.activity_lock:
+            serial = self.activity_serial
+        deadline = time.monotonic() + 4
+        for thread_id, thread in loaded_threads(self.client, deadline):
+            if not quiet(thread) or thread.get("ephemeral"):
+                return False
+            params = {"threadId": thread_id}
+            if scan_request(self.client, "thread/backgroundTerminals/list", params, deadline)["data"]:
+                return False
+            if scan_request(self.client, "thread/queue/list", params, deadline)["data"]:
+                return False
+            goal = scan_request(self.client, "thread/goal/get", params, deadline)["goal"]
+            if goal and goal["status"] == "active":
+                return False
+        self.observe_account()
+        if self.active is None:
+            raise UsageUnavailable("Cannot restore an unknown account after the update")
+        self.profiles[self.active].tokens()
+        if peer_process(self.client.websocket.socket) != (self.pid, self.pid_start):
+            raise UsageUnavailable("The shared socket no longer belongs to the recorded runtime")
+        # Codex의 SIGHUP은 유휴 확인 도중 시작한 턴도 끝까지 기다린다.
+        with self.activity_lock:
+            if serial != self.activity_serial:
+                return False
+            os.kill(self.pid, signal.SIGHUP)
+        return True
+
+    def login(self, tokens):
+        self.client.request("account/login/start", {
+            "type": "chatgptAuthTokens", **tokens,
+        })
+
+    def restore_account(self, name):
+        self.observe_account()
+        if self.active is None:
+            self.login(self.profiles[name].tokens())
+            self.observe_account()
+        if self.active != name:
+            raise UsageUnavailable("Updated runtime account did not match the previous account")
 
     def refresh(self, method, params):
         if method != "account/chatgptAuthTokens/refresh":
@@ -357,9 +427,7 @@ class Runtime:
         old = self.active
         self.activity('turn/started', {})
         try:
-            self.client.request("account/login/start", {
-                "type": "chatgptAuthTokens", **tokens,
-            })
+            self.login(tokens)
             verified = self.client.request("account/rateLimits/read")
             if verified.get("accountId") != profile.account_id:
                 raise UsageUnavailable("Runtime account verification did not match")
@@ -369,9 +437,7 @@ class Runtime:
             self.active = None
             if old is not None:
                 try:
-                    self.client.request("account/login/start", {
-                        "type": "chatgptAuthTokens", **self.profiles[old].tokens(),
-                    })
+                    self.login(self.profiles[old].tokens())
                     restored = self.client.request("account/rateLimits/read")
                     if restored.get("accountId") == self.profiles[old].account_id:
                         self.active = old

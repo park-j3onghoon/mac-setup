@@ -11,7 +11,7 @@ import time
 
 from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile
-from runtime import Runtime, prepare_home
+from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
 from state import RUNTIME, load, poll_delay, preference, record, save
 
@@ -31,10 +31,21 @@ def collect(profiles):
     return snapshots, errors
 
 
+def check_upgrade(runtime, state):
+    installed = runtime.binary.resolve(strict=True)
+    if server_package_cache(installed, runtime.home) and installed.parent.parent.name != state["runtime_version"]:
+        state["upgrade_target"] = installed.parent.parent.name
+        state["upgrade_status"] = "draining" if runtime.drain_for_upgrade(installed) else "waiting_for_idle"
+    else:
+        state.pop("upgrade_target", None)
+        state.pop("upgrade_status", None)
+
+
 def monitor(runtime, profiles, stop, state):
     state.setdefault("preferred", "company")
     next_poll = 0
     next_release = 0
+    next_upgrade = 0
     retry_switch_at = 0
     idle_retry_delay = 2
     desired = None
@@ -43,8 +54,22 @@ def monitor(runtime, profiles, stop, state):
     saved_at = 0
     while not stop.is_set():
         if not runtime.running():
+            if state.get("upgrade_status") == "draining":
+                return True
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
+        if state.get("runtime_version") and state.get("upgrade_status") != "draining" and now >= next_upgrade:
+            try:
+                check_upgrade(runtime, state)
+                state.pop("upgrade_error", None)
+            except (OSError, KeyError, ValueError) as error:
+                state["upgrade_error"] = type(error).__name__
+            next_upgrade = time.time() + 15
+        if state.get("upgrade_status") == "draining":
+            state.update(updated_at=time.time(), active=None, restore_account=runtime.active)
+            save(state)
+            stop.wait(2)
+            continue
         requested = preference()
         if requested and requested.get("requested_at") != state.get("preference_at"):
             state.update(preferred=requested["preferred"], preference_at=requested.get("requested_at"),
@@ -134,6 +159,26 @@ def monitor(runtime, profiles, stop, state):
         stop.wait(2)
 
 
+def run_runtimes(profiles, stop, state):
+    while not stop.is_set():
+        runtime = Runtime(profiles)
+        try:
+            runtime.start(restore_account=state.get("restore_account"))
+            same_runtime = (runtime.pid, runtime.pid_start) == (state.get("runtime_pid"), state.get("runtime_pid_start"))
+            if not same_runtime or state.get("upgrade_status") != "draining":
+                state.pop("upgrade_status", None)
+                state.pop("upgrade_target", None)
+                state.pop("restore_account", None)
+            state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start,
+                         runtime_version=runtime.client.version)
+            if not monitor(runtime, profiles, stop, state):
+                return
+        finally:
+            runtime.close()
+        state.update(status="starting", active=None, runtime_pid=None, runtime_pid_start=None, updated_at=time.time())
+        save(state)
+
+
 def main():
     prepare_home()
     with (RUNTIME / "supervisor.lock").open("a") as lock:
@@ -148,19 +193,14 @@ def main():
         stop = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
         signal.signal(signal.SIGINT, lambda *_: stop.set())
-        profiles, runtime = {}, None
+        profiles = {}
         try:
             profiles = {name: Profile(name, home) for name, home in PROFILES.items()}
-            runtime = Runtime(profiles)
-            runtime.start()
-            state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start)
-            monitor(runtime, profiles, stop, state)
+            run_runtimes(profiles, stop, state)
         except Exception as error:
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())
             save(state)
         finally:
-            if runtime:
-                runtime.close()
             for profile in profiles.values():
                 profile.close()
             if state.get("status") != "failed":

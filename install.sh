@@ -93,6 +93,7 @@ prune_dangling() {
 log "Shell dotfile symlink"
 link_file "$REPO_DIR/mac/zshrc"    "$HOME/.zshrc"
 link_file "$REPO_DIR/mac/zprofile" "$HOME/.zprofile"
+link_file "$REPO_DIR/mac/ai-cli-update.zsh" "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/ai-cli-update.zsh"
 
 # ---- 4. Claude 설정 ----
 log "~/.claude/ 설정 symlink"
