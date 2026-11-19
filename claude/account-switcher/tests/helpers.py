@@ -79,7 +79,7 @@ class MetadataApi:
 
 
 class TestSwitcher(Switcher):
-    def check_version(self):
+    def check_version(self, *, recovery_email=None):
         pass
 
 

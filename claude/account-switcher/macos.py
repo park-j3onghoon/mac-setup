@@ -18,6 +18,10 @@ class KeychainError(RuntimeError):
     pass
 
 
+class SavedCredentialError(KeychainError):
+    """The switcher's private saved item was inaccessible."""
+
+
 def system_awake(runner=subprocess.run):
     """False in a dark wake: a lid-closed maintenance wake runs without graphics."""
     try:
@@ -229,13 +233,19 @@ class Vault:
         return self.keychain.read(CLAUDE_SERVICE, self.username)
 
     def read(self, name):
-        return self.keychain.read(self.SERVICE, f'{self.namespace}:{name}')
+        return self.saved_item(self.keychain.read, name)
 
     def write(self, name, value):
-        self.keychain.write(self.SERVICE, f'{self.namespace}:{name}', value)
+        self.saved_item(self.keychain.write, name, value)
 
     def delete(self, name):
-        self.keychain.delete(self.SERVICE, f'{self.namespace}:{name}')
+        self.saved_item(self.keychain.delete, name)
+
+    def saved_item(self, operation, name, *args):
+        try:
+            return operation(self.SERVICE, f'{self.namespace}:{name}', *args)
+        except KeychainError as exc:
+            raise SavedCredentialError(str(exc)) from exc
 
 
 class NativeKeychain:

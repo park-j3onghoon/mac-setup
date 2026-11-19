@@ -17,8 +17,8 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from refresh import SelfRestart, SessionEnded  # noqa: E402
-from storage import State, SwitcherError, read_json  # noqa: E402
+from refresh import SelfRestart, SessionEnded, SessionUnavailable  # noqa: E402
+from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
 LOG = 'session-restarts.log'
@@ -26,6 +26,14 @@ LOG = 'session-restarts.log'
 
 def state_dir():
     return Path(os.environ.get('ACCOUNT_SWITCHER_STATE_DIR') or DEFAULT_STATE)
+
+
+def transcript_hint(session_id, value):
+    if isinstance(value, str):
+        path = Path(value).resolve()
+        if path.name == f'{session_id}.jsonl' and path.is_relative_to(Path.home() / '.claude/projects'):
+            return path
+    return None
 
 
 def hook():
@@ -46,15 +54,19 @@ def hook():
             if managed.get('sessionId') == session_id:
                 return 0
         restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
-        transcript = payload.get('transcript_path')
-        if isinstance(transcript, str):
-            path = Path(transcript).resolve()
-            if path.name == f'{session_id}.jsonl' and path.is_relative_to(Path.home() / '.claude/projects'):
-                restart.transcript = path
+        hint = transcript_hint(session_id, payload.get('transcript_path'))
+        restart.transcript = hint
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).
-        if restart.limited() or restart.needed():
+        try:
+            needed = restart.limited(retry_replacement=False) or restart.needed()
+        except SessionUnavailable:
+            # The Stop hook must return while a temporarily missing transcript is republished.
+            needed = True
+        if needed:
             environment = os.environ.copy()
+            if hint:
+                environment['CLAUDE_SWITCHER_TRANSCRIPT'] = str(hint)
             if isinstance(restart.last_session, dict):
                 environment['CLAUDE_SWITCHER_REGISTRY_PID'] = str(restart.last_session['pid'])
             subprocess.Popen([sys.executable, __file__, '--helper', session_id, surface],
@@ -71,13 +83,14 @@ def helper(session_id, surface):
     try:
         with state.lock(lock):
             restart = SelfRestart(state, Path.home() / '.claude', session_id, surface)
+            restart.transcript = transcript_hint(session_id, os.environ.get('CLAUDE_SWITCHER_TRANSCRIPT'))
             pid = os.environ.get('CLAUDE_SWITCHER_REGISTRY_PID', '')
             if pid.isdecimal():
                 restart.registry_hint = {'pid': int(pid)}
             outcome = restart.run()
-    except SwitcherError:
+    except LockBusy:
         return 0  # Another helper already handles this session.
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+    except (SwitcherError, OSError, ValueError, subprocess.SubprocessError) as exc:
         outcome = f'error:{type(exc).__name__}'
     with (state.root / LOG).open('a') as stream:
         stream.write(json.dumps({'at': time.time(), 'session': session_id[:8],

@@ -18,6 +18,10 @@ class SwitcherError(RuntimeError):
     """An operator-safe error message, never an upstream response or token."""
 
 
+class LockBusy(SwitcherError):
+    """A different process currently owns the requested lock."""
+
+
 def fingerprint(oauth):
     token = oauth.get('accessToken')
     if not isinstance(token, str) or not token:
@@ -105,7 +109,7 @@ class State:
                     flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
                     fcntl.flock(fd, flags)
                 except BlockingIOError:
-                    raise SwitcherError(f'Another switcher process holds {name}') from None
+                    raise LockBusy(f'Another switcher process holds {name}') from None
                 if transient:
                     # A contender can open the old inode just before its owner unlinks it.
                     try:

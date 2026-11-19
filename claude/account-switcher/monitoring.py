@@ -25,11 +25,13 @@ def start(state, days=14, now=None):
     with state.lock('monitoring'):
         existing = state.load('monitoring')
         if existing.get('status') == 'active' and existing['ends_at'] > now:
-            return existing
-        plan = {'schema': 1, 'status': 'active', 'starts_at': now, 'ends_at': now + days * DAY,
-                'days': days, 'review_seconds': DAY, 'next_review_at': now,
-                'last_review_at': None, 'last_report': None}
-        state.save('monitoring', plan)
+            if existing.get('last_report'):
+                return existing
+        else:
+            plan = {'schema': 1, 'status': 'active', 'starts_at': now, 'ends_at': now + days * DAY,
+                    'days': days, 'review_seconds': DAY, 'next_review_at': now,
+                    'last_review_at': None, 'last_report': None}
+            state.save('monitoring', plan)
     return review_if_due(state, now)
 
 
@@ -71,7 +73,7 @@ def review_if_due(state, now=None):
         if directory.is_symlink():
             raise SwitcherError('Monitoring report directory must not be a symlink')
         directory.mkdir(mode=0o700, exist_ok=True)
-        basename = 'final' if final else datetime.fromtimestamp(now, KST).strftime('%Y-%m-%d')
+        basename = 'final' if final else datetime.fromtimestamp(plan['next_review_at'], KST).strftime('%Y-%m-%d')
         json_path = directory / f'{basename}.json'
         write_json(json_path, report)
         text_path = directory / f'{basename}.md'

@@ -2,14 +2,16 @@
 
 from dataclasses import asdict
 import hashlib
+import json
 import math
 import time
 
 from api import ApiError
 from compatibility import check as check_compatibility
+from macos import KeychainError
 from policy import choose_account, poll_seconds
 from refresh import record_switch
-from storage import SwitcherError, fingerprint
+from storage import LockBusy, SwitcherError, fingerprint
 
 
 def matches_identity(account, actual):
@@ -17,6 +19,10 @@ def matches_identity(account, actual):
             and actual.get('uuid') == account.get('accountUuid')
             and (account.get('organizationUuid') is None
                  or actual.get('organizationUuid') == account['organizationUuid']))
+
+
+def oauth_generation(oauth):
+    return hashlib.sha256(json.dumps(oauth, sort_keys=True).encode()).hexdigest()
 
 
 def validate_config(config):
@@ -58,28 +64,59 @@ class Switcher:
         self._verified_identities = cache
 
     def capture(self, expected_email):
+        with self.state.lock():
+            return self.capture_locked(expected_email)
+
+    def capture_locked(self, expected_email):
         if expected_email not in self.accounts:
             raise SwitcherError('Account is not in the configured two-account roster')
-        with self.state.lock():
-            with self.live.locked():
-                blob, account = self.live.read()
-            if account['emailAddress'] != expected_email:
-                raise SwitcherError(f'Log into the expected account first: {expected_email}')
-            bundle = {'oauth': blob['claudeAiOauth'], 'account': account}
-            self.verify_identity(bundle)
-            with self.live.locked():
-                current, current_account = self.live.read()
-                if (current['claudeAiOauth'] != bundle['oauth']
-                        or current_account != account):
-                    raise SwitcherError('Claude login changed during enrollment; retry capture')
-                self.vault.write(expected_email, bundle)
-            roster = self.state.load('roster')
-            roster[expected_email] = {'registered': True, 'captured_at': time.time()}
-            self.state.save('roster', roster)
-            runtime = self.state.load('runtime')
-            runtime.update(active=expected_email,
-                           settle_until=time.time() + self.config['settle_seconds'])
-            self.state.save('runtime', runtime)
+        with self.live.locked():
+            blob, account = self.live.read()
+        if account['emailAddress'] != expected_email:
+            raise SwitcherError(f'Log into the expected account first: {expected_email}')
+        bundle = {'oauth': blob['claudeAiOauth'], 'account': account}
+        self.verify_identity(bundle)
+        with self.live.locked():
+            current, current_account = self.live.read()
+            if current['claudeAiOauth'] != bundle['oauth'] or current_account != account:
+                raise SwitcherError('Claude login changed during enrollment; retry capture')
+            self.vault.write(expected_email, bundle)
+        roster = self.state.load('roster')
+        roster[expected_email] = {'registered': True, 'captured_at': time.time()}
+        self.state.save('roster', roster)
+        runtime = self.state.load('runtime')
+        last_verified = runtime.get('verified_active', runtime.get('active'))
+        if last_verified in self.accounts and last_verified != expected_email:
+            record_switch(self.state, time.time())
+        runtime.update(active=expected_email, verified_active=expected_email,
+                       settle_until=time.time() + self.config['settle_seconds'])
+        self.state.save('runtime', runtime)
+        return bundle
+
+    def restore_enrollment(self, previous, unexpected):
+        # Journal only the generation hash of the unexpected account, never its credentials.
+        with self.live.locked():
+            blob, account = self.live.read()
+            if account != unexpected:
+                raise SwitcherError('Login changed after enrollment; restore using the official login')
+            journal = {'restore': previous, 'unexpected_account': account,
+                       'unexpected_generation': oauth_generation(blob['claudeAiOauth'])}
+            self.vault.write('__transaction__', journal)
+            self.finish_enrollment_restore(journal, blob, account)
+
+    def finish_enrollment_restore(self, journal, blob, account):
+        target = journal['restore']
+        if account not in (journal['unexpected_account'], target['account']):
+            raise SwitcherError('Login changed during enrollment recovery; manual recovery required')
+        if blob['claudeAiOauth'] != target['oauth']:
+            if (account != journal['unexpected_account'] or
+                    oauth_generation(blob['claudeAiOauth']) != journal['unexpected_generation']):
+                raise SwitcherError('Login changed during enrollment recovery; manual recovery required')
+            self.vault.write_active(dict(blob, claudeAiOauth=target['oauth']))
+        if account != target['account']:
+            self.live.write_account(target['account'])
+        record_switch(self.state, time.time())
+        self.vault.delete('__transaction__')
 
     def refresh_inactive(self, email, bundle, now):
         token = bundle['oauth'].get('refreshToken')
@@ -96,17 +133,31 @@ class Switcher:
         self.vault.write(email, renewed)
         return renewed
 
-    def check_version(self):
+    def check_version(self, *, recovery_email=None):
+        accounts = self.accounts + (recovery_email,) if recovery_email else self.accounts
         self.compatibility = check_compatibility(
-            self.config['claude_executable'], self.config['config_home'], self.accounts,
+            self.config['claude_executable'], self.config['config_home'], accounts,
             getattr(self, 'compatibility', None))
+
+    def prepare_write(self, journal, *, allow_network=True):
+        # A browser may already have selected the journaled third account when a new
+        # process starts. Validate the native layout before completing just that recovery.
+        email = (journal or {}).get('unexpected_account', {}).get('emailAddress')
+        self.check_version(recovery_email=email)
+        if journal is not None:
+            self.recover_journal(journal, allow_network=allow_network)
 
     def recover(self, *, allow_network=True):
         journal = self.vault.read('__transaction__')
-        if journal is None:
-            return
+        if journal is not None:
+            self.recover_journal(journal, allow_network=allow_network)
+
+    def recover_journal(self, journal, *, allow_network=True):
         with self.live.locked():
             blob, account = self.live.read()
+            if 'restore' in journal:
+                self.finish_enrollment_restore(journal, blob, account)
+                return
         oauth = blob['claudeAiOauth']
         before, after = journal['before'], journal['after']
         allowed = (after['account'], before['account'])
@@ -130,7 +181,7 @@ class Switcher:
             self.vault.write(recovered_email, {'oauth': oauth, 'account': recovered})
             self.live.write_account(recovered)
             runtime = self.state.load('runtime')
-            runtime.update(active=recovered_email,
+            runtime.update(active=recovered_email, verified_active=recovered_email,
                            settle_until=time.time() + self.config['settle_seconds'])
             if recovered_email == after['account']['emailAddress']:
                 runtime['switched_at'] = journal.get('switched_at', time.time())
@@ -190,7 +241,7 @@ class Switcher:
                     self.vault.delete('__transaction__')
                 raise SwitcherError('Account swap failed; recovery journal retained if needed') from None
             runtime = self.state.load('runtime')
-            runtime.update(active=target_email, switched_at=committed_at,
+            runtime.update(active=target_email, verified_active=target_email, switched_at=committed_at,
                            settle_until=clock() + self.config['settle_seconds'])
             self.state.save('runtime', runtime)
             record_switch(self.state, committed_at)
@@ -198,29 +249,34 @@ class Switcher:
 
     def tick(self, apply=False, now=None):
         clock = time.time if now is None else (lambda: now)
-        with self.state.lock():
-            try:
-                return self._tick_locked(apply, clock)
-            except ApiError as error:
-                runtime = self.state.load('runtime')
-                runtime['retry_after'] = max(runtime.get('retry_after', 0), clock() + error.retry_after)
-                self.state.save('runtime', runtime)
-                raise
+        try:
+            with self.state.lock():
+                try:
+                    return self._tick_locked(apply, clock)
+                except ApiError as error:
+                    runtime = self.state.load('runtime')
+                    runtime['retry_after'] = max(runtime.get('retry_after', 0), clock() + error.retry_after)
+                    self.state.save('runtime', runtime)
+                    raise
+        except LockBusy:
+            return {'observed_at': clock(), 'active': self.state.load('runtime').get('active'),
+                    'target': None, 'switched': False, 'apply': apply, 'errors': {}, 'usage': {},
+                    'reason': 'waiting_for_operation'}
 
     def _tick_locked(self, apply, clock):
         now = clock()
         runtime = self.state.load('runtime')
         if now < runtime.get('retry_after', 0):
-            if apply and self.vault.read('__transaction__') is not None:
-                self.check_version()
-                self.recover(allow_network=False)
-                runtime = self.state.load('runtime')
+            if apply:
+                journal = self.vault.read('__transaction__')
+                if journal is not None:
+                    self.prepare_write(journal, allow_network=False)
+                    runtime = self.state.load('runtime')
             return {'observed_at': now, 'active': runtime.get('active'), 'target': None,
                     'switched': False, 'apply': apply, 'errors': {}, 'usage': {},
                     'reason': 'waiting_for_retry_after'}
         if apply:
-            self.check_version()
-            self.recover()
+            self.prepare_write(self.vault.read('__transaction__'))
             runtime = self.state.load('runtime')
         elif self.vault.read('__transaction__') is not None:
             raise SwitcherError('A pending swap needs recovery; run once --apply')
@@ -248,11 +304,13 @@ class Switcher:
                      and preference.get('requested_at') != runtime.get('preference_at'))
         readings, errors, reading_tokens, stages, oauth_errors = {}, {}, {}, {}, {}
         for candidate in self.accounts:
-            bundle = active if candidate == email else self.vault.read(candidate)
-            if bundle is None:
-                errors[candidate] = 'not_enrolled'
-                continue
             try:
+                bundle = active if candidate == email else self.vault.read(candidate)
+                if bundle is None:
+                    errors[candidate] = 'not_enrolled'
+                    continue
+                if bundle.get('account', {}).get('emailAddress') != candidate:
+                    raise SwitcherError('Saved account identity is inconsistent')
                 expiry = bundle['oauth'].get('expiresAt')
                 if (candidate != email and isinstance(expiry, (int, float))
                         and expiry <= (now + 120) * 1000):
@@ -260,6 +318,7 @@ class Switcher:
                         errors[candidate] = 'inactive_token_needs_refresh'
                         continue
                     bundle = self.refresh_inactive(candidate, bundle, now)
+                if candidate != email:
                     self.verify_identity(bundle)
                 readings[candidate] = self.api.usage(bundle['oauth'], now)
                 reading_tokens[candidate] = fingerprint(bundle['oauth'])
@@ -271,6 +330,9 @@ class Switcher:
                 runtime['retry_after'] = max(runtime.get('retry_after', 0), clock() + exc.retry_after)
             except SwitcherError:
                 errors[candidate] = 'authentication_needs_attention'
+            except KeychainError:
+                # Only the switcher's saved bundle is accessed in this per-candidate block.
+                errors[candidate] = 'saved_credential_unavailable'
         preferred = preference.get('preferred', self.config['primary'])
         if preferred not in self.accounts:
             raise SwitcherError('Preferred account is not configured')
@@ -278,6 +340,8 @@ class Switcher:
         now = clock()
         decision = choose_account(email, preferred, fallback, readings, now,
                                   self.config['threshold'], 90)
+        if apply and decision.target is None and errors.get(fallback) == 'authentication_needs_attention':
+            raise SwitcherError('Fallback account ownership could not be verified')
         report = {'observed_at': now, 'active': email, 'target': decision.target,
                   'reason': decision.reason, 'apply': apply, 'switched': False, 'error_stages': stages,
                   'oauth_errors': oauth_errors,
@@ -286,6 +350,14 @@ class Switcher:
         for candidate in self.accounts:
             if candidate not in report['usage'] and candidate in previous:
                 report['usage'][candidate] = dict(previous[candidate], stale=True)
+        last_verified = runtime.get('verified_active', runtime.get('active'))
+        if apply:
+            if last_verified in self.accounts and last_verified != email:
+                record_switch(self.state, now)
+                report['identity_changed'] = True
+            runtime['verified_active'] = email
+        elif last_verified:
+            runtime['verified_active'] = last_verified
         runtime.update(active=email, observed_at=now, usage=report['usage'], errors=errors,
                        preferred=preferred, target=decision.target, error_stages=stages, oauth_errors=oauth_errors)
         if apply and email == preferred and decision.target == email:
@@ -314,6 +386,8 @@ class Switcher:
                     if isinstance(w.get('percent'), (int, float))]
         wake = now + poll_seconds(max(percents, default=None), self.config['threshold'],
                                   self.config['poll_seconds'])
+        if 'saved_credential_unavailable' in runtime.get('errors', {}).values():
+            wake = min(wake, now + 60)
         if (runtime.get('target') and runtime['target'] != runtime.get('active')
                 and runtime.get('settle_until', 0) > now):
             wake = min(wake, runtime['settle_until'])

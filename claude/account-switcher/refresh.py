@@ -25,6 +25,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import time
 
@@ -50,6 +51,7 @@ WAIT_STEP_SECONDS = 3
 LIMIT_WAIT_STEP_SECONDS = 30
 SUBAGENT_QUIET_SECONDS = 120
 WORKING_CHILDREN = frozenset({'zsh', 'bash', 'sh'})
+MCP_NAME = re.compile(r'(?:^|[/@._-])mcp(?:$|[/._-])', re.I)
 LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
 # User entries Claude Code writes itself. Background task notifications keep arriving after a
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
@@ -97,17 +99,40 @@ def input_ready(screen):
     return is_rule(lines[i - 1]) and is_rule(lines[i + 1])
 
 
-def is_generated(entry):
+def notification_text(entry):
     content = (entry.get('message') or {}).get('content')
-    text = content if isinstance(content, str) else ''
-    return entry.get('isMeta') or text.lstrip().startswith(GENERATED_PREFIXES)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and ((entry.get('origin') or {}).get('kind') == 'task-notification'
+                                      or entry.get('promptSource') == 'system'):
+        return ''.join(block['text'] for block in content if isinstance(block, dict)
+                       and block.get('type') == 'text' and isinstance(block.get('text'), str))
+    return ''
+
+
+def is_generated(entry):
+    return entry.get('isMeta') or notification_text(entry).lstrip().startswith(GENERATED_PREFIXES)
 
 
 def latest_message(projects_dir, session_id):
     """Newest real conversation entry; skip local commands and task notifications."""
-    paths = sorted(Path(projects_dir).glob(f'*/{session_id}.jsonl'),
-                   key=lambda path: path.stat().st_mtime)
-    return last_entry(paths[-1]) if paths else None
+    paths, vanished = [], False
+    for path in Path(projects_dir).glob(f'*/{session_id}.jsonl'):
+        try:
+            paths.append((path.stat().st_mtime_ns, path))
+        except FileNotFoundError:
+            vanished = True
+    for _, path in sorted(paths, reverse=True):
+        try:
+            entry = last_entry(path)
+        except FileNotFoundError:
+            vanished = True
+            continue
+        if entry is not None:
+            return entry
+    if vanished:
+        raise SessionUnavailable('Session transcript is being replaced')
+    return None
 
 
 def last_entry(path):
@@ -130,6 +155,10 @@ def completed(entry):
 
 def ended_with_limit_error(projects_dir, session_id, transcript=None):
     entry = last_entry(transcript) if transcript is not None else latest_message(projects_dir, session_id)
+    return is_limit_error(entry)
+
+
+def is_limit_error(entry):
     if not entry or entry['type'] != 'assistant' or not entry.get('isApiErrorMessage'):
         return False
     content = (entry.get('message') or {}).get('content') or []
@@ -279,34 +308,68 @@ def process_children(runner):
     return children
 
 
+def wraps_mcp(descendants, runner):
+    if len(descendants) != 1:
+        return False
+    pid, name = descendants[0]
+    if MCP_NAME.search(name):
+        return True
+    if name not in ('node', 'npm', 'npx', 'bun', 'uv', 'uvx', 'python', 'python3'):
+        return False
+    command = runner(['/bin/ps', '-p', str(pid), '-o', 'args='], capture_output=True,
+                     text=True, timeout=5, check=False)
+    try:
+        argv = shlex.split(command.stdout) if not command.returncode else []
+    except ValueError:
+        return False
+    # Only inspect the package or program that the interpreter runs, not its task arguments.
+    program = next((arg for arg in argv[1:] if not arg.startswith('-')), '')
+    return bool(MCP_NAME.search(program))
+
+
 def background_work(session, children, projects_dir, now, runner=subprocess.run, *, check_completion=False):
     """True while a shell or a subagent of this session is still working."""
-    candidates, stack = [], [session['pid']]
+    candidates, wrappers, stack = [], set(), [session['pid']]
     while stack:
         for child, name in children.get(stack.pop(), []):
             if name in WORKING_CHILDREN:
-                return True
+                descendants = children.get(child, [])
+                # Ordinary task shells remain busy. An identifiable stdio MCP wrapper can
+                # remain attached even when the conversation is idle.
+                if not wraps_mcp(descendants, runner):
+                    return True
+                wrappers.add(str(child))
             if name != 'caffeinate':
                 candidates.append(str(child))
             stack.append(child)
     if candidates:
         # A shell can exec the foreground task. A long-lived MCP process normally has pipes.
         descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(candidates),
-                              '-d', '1,2', '-Fftn'], capture_output=True, text=True,
+                              '-d', '0,1,2' if wrappers else '1,2', '-Fftn'], capture_output=True, text=True,
                              timeout=5, check=False)
         if descriptors.returncode not in (0, 1) or (descriptors.returncode and descriptors.stderr):
             raise SessionUnavailable('Could not check session task output')
         regular = False
+        pipes = set()
+        pid = fd = None
         for field in descriptors.stdout.splitlines():
-            if field.startswith(('f', 'p')):
+            if field.startswith('p'):
+                pid = field[1:]
+                regular = False
+            elif field.startswith('f'):
+                fd = field[1:]
                 regular = False
             elif field.startswith('t'):
                 regular = field == 'tREG'
+                if pid in wrappers and field in ('tPIPE', 'tFIFO'):
+                    pipes.add((pid, fd))
             elif regular and field.startswith('n'):
                 path = Path(field[1:])
                 if (path.parent.name == 'tasks' and path.parent.parent.name == session['sessionId']
                         and path.suffix == '.output'):
                     return True
+        if any((pid, fd) not in pipes for pid in wrappers for fd in ('0', '1')):
+            return True
     pattern = f"*/{session['sessionId']}/subagents/*.jsonl"
     unfinished = set()
     transcripts = set()
@@ -329,8 +392,8 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
                 continue
             if not isinstance(entry, dict) or entry.get('type') != 'user':
                 continue
-            content = (entry.get('message') or {}).get('content')
-            if isinstance(content, str) and content.lstrip().startswith('<task-notification>'):
+            content = notification_text(entry)
+            if content.lstrip().startswith('<task-notification>'):
                 task = re.search(r'<task-id>([\w-]+)</task-id>', content)
                 if task and re.search(r'<status>(completed|failed|killed|stopped)</status>', content):
                     unfinished.discard(task[1].removeprefix('agent-'))
@@ -384,10 +447,28 @@ class SelfRestart:
                 raise SessionEnded
         return session
 
-    def limited(self):
-        if self.transcript is not None and not self.transcript.is_file():
+    def limited(self, *, retry_replacement=True):
+        def check():
+            if self.transcript is not None and not self.transcript.is_file():
+                self.transcript = None
+                if retry_replacement:
+                    raise SessionUnavailable('Session transcript is being replaced')
+            return (ended_with_limit_error(self.projects, self.session_id, self.transcript),)
+
+        try:
+            return check()[0]
+        except (FileNotFoundError, SessionUnavailable):
             self.transcript = None
-        return ended_with_limit_error(self.projects, self.session_id, self.transcript)
+            if not retry_replacement:
+                raise SessionUnavailable('Session transcript is being replaced') from None
+            # A replacement may not have been published yet. Retry until evidence returns
+            # or the short replacement window closes, without treating a draft as a limit.
+            def replacement():
+                entry = latest_message(self.projects, self.session_id)
+                return (is_limit_error(entry),) if entry is not None else None
+
+            result = self.wait(replacement, 10)
+            return bool(result and result[0])
 
     def needed(self):
         """True when the latest switch happened after this session's process started."""

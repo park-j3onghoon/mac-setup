@@ -17,7 +17,7 @@ import time
 from api import Anthropic, ApiError
 from compatibility import FAILURE as COMPATIBILITY_FAILURE
 from compatibility import IncompatibleLayout
-from macos import Keychain, KeychainError, Vault, system_awake
+from macos import Keychain, KeychainError, SavedCredentialError, Vault, system_awake
 from measurement import Measurement, observe, summarize
 from monitoring import review_if_due, start as start_monitoring
 from refresh import record_switch
@@ -108,6 +108,8 @@ def halts_keychain_work(exc, awake=system_awake):
     first check of a freshly updated Claude Code ran one second into a lid-closed wake, with no
     prompt (no SecurityAgent), and halted the service for a day. That case retries instead.
     """
+    if isinstance(exc, SavedCredentialError):
+        return False
     if isinstance(exc, (KeychainError, IncompatibleLayout)):
         return True
     return str(exc) == COMPATIBILITY_FAILURE and awake()
@@ -149,6 +151,8 @@ def tick_once(app, apply, last_outcome):
             'observed_at', 'active', 'target', 'reason', 'switched', 'errors')}), flush=True)
     if report['reason'] == 'waiting_for_retry_after':
         return report, max(2, app.state.load('runtime')['retry_after'] - time.time()), outcome
+    if report['reason'] == 'waiting_for_operation':
+        return report, 5, outcome
     return report, app.next_delay(time.time()), outcome
 
 
@@ -163,10 +167,12 @@ def measure_and_review(app, measurement, report, delay):
                     error.get('retry_at', 0)) - time.time()
     if report and report.get('reason') == 'waiting_for_retry_after':
         report = None
-    if report is None and remaining <= 0 and measurement.enabled():
+    if report and report.get('reason') == 'waiting_for_operation':
+        return delay
+    if report is None and remaining <= 0:
         try:
-            report = observe(app)
-            retry = report.get('retry_after_seconds', 0)
+            report = observe(app) if measurement.enabled() else None
+            retry = report.get('retry_after_seconds', 0) if report else 0
             if retry:
                 error = {'observed_at': time.time(), 'stage': 'observe',
                          'retry_after_seconds': retry, 'retry_at': time.time() + retry}
@@ -317,27 +323,38 @@ def run_state_command(args, state):
 
 
 def enroll(app, role):
-    # Preserve the outgoing account before official login rotates the live store.
-    _, account = app.live.read()
-    app.capture(account['emailAddress'])
-    result = subprocess.run([app.config['claude_executable'], 'auth', 'login',
-                             '--email', app.config[role]])
-    if result.returncode:
-        raise SwitcherError('Official Claude login did not complete; saved account is retained')
-    expected = app.config[role]
-    identity = read_json(app.live.config).get('oauthAccount', {})
-    if identity.get('emailAddress') != expected:
-        raise SwitcherError(
-            f'Browser signed into a different account; expected {expected}. '
-            'Retry using a separate browser session.')
-    if account['emailAddress'] != expected:
-        # Open sessions keep the outgoing login in memory until they restart.
-        record_switch(app.state, time.time())
-    try:
-        app.capture(expected)
-    except KeychainError:
-        raise SwitcherError(
-            'Login completed. Run authorize once to enroll the newly saved Keychain login.') from None
+    # Hold only the switcher's operation lock while the browser is open. Claude
+    # must remain free to acquire its native credential locks to finish login.
+    with app.state.lock():
+        app.prepare_write(app.vault.read('__transaction__'))
+        _, account = app.live.read()
+        previous = app.capture_locked(account['emailAddress'])
+        expected = app.config[role]
+        result = subprocess.run([app.config['claude_executable'], 'auth', 'login',
+                                 '--email', expected])
+        identity = read_json(app.live.config).get('oauthAccount', {})
+        actual = identity.get('emailAddress')
+        if actual and actual not in (expected, account['emailAddress']):
+            try:
+                app.restore_enrollment(previous, identity)
+            except (KeychainError, SwitcherError, OSError) as exc:
+                raise SwitcherError(
+                    f'Browser signed into a different account ({actual}); use the official login '
+                    f'to restore {account["emailAddress"]}, then retry enrollment.') from exc
+            raise SwitcherError(f'Browser signed into a different account ({actual}); '
+                                f'restored {account["emailAddress"]}. Retry enrollment for {expected}.')
+        if result.returncode:
+            raise SwitcherError('Official Claude login did not complete; saved account is retained')
+        if actual != expected:
+            raise SwitcherError(f'Browser signed into a different account; expected {expected}. '
+                                'Retry using a separate browser session.')
+        try:
+            app.capture_locked(expected)
+        except KeychainError:
+            if account['emailAddress'] != expected:
+                record_switch(app.state, time.time())
+            raise SwitcherError(
+                'Login completed. Run authorize once to enroll the newly saved Keychain login.') from None
     print(f'Enrolled {role} account. No logout was used.')
 
 
@@ -369,7 +386,14 @@ def run_app_command(args, state, app):
     elif args.command == 'measure-once':
         with state.lock('daemon'):
             measurement = Measurement(state, Path(app.config['config_home']) / 'projects')
-            print(json.dumps(measurement.record(observe(app)), indent=2))
+            now = time.time()
+            if not measurement.enabled(now):
+                print('null')
+                return 0
+            measurement.resume_manual_interval(now)
+            row = measurement.record(observe(app))
+            measurement.save_manual_interval(row)
+            print(json.dumps(row, indent=2))
     elif args.command == 'run':
         run(app, args.apply)
     elif args.command == 'service-install':

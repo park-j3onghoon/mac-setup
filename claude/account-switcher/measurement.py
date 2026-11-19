@@ -29,6 +29,7 @@ class TokenTail:
         self.last_scan = None
         self.files = {}
         self.seen = {}
+        self.oldest_event = None
         self.directories = {}
         self.next_discovery = 0
         self.retry_files = set()
@@ -69,7 +70,7 @@ class TokenTail:
     def reset(self, now):
         self.__init__(self.projects, now)
 
-    def sample(self, now):
+    def sample(self, now, *, prefixes=None):
         baseline = self.last_scan is None
         cutoff = max(self.started_at - 900, now - 7200)
         counts = defaultdict(lambda: dict.fromkeys(TOKEN_FIELDS + ('requests',), 0))
@@ -87,6 +88,8 @@ class TokenTail:
             try:
                 info = path.stat()
                 identity = (info.st_dev, info.st_ino)
+                if prefixes is not None and identity not in prefixes:
+                    continue
                 if info.st_mtime < cutoff:
                     old = self.files.pop(path, None)
                     self.retry_files.discard(path)
@@ -111,14 +114,27 @@ class TokenTail:
                 if old_identity != identity or info.st_size < offset:
                     offset, discarding = 0, False
                 with path.open('rb') as stream:
+                    limit = None
+                    if prefixes is not None:
+                        limit, expected_anchor = prefixes[identity]
+                        stream.seek(max(0, limit - 64))
+                        if (limit > info.st_size or
+                                hashlib.sha256(stream.read(min(limit, 64))).hexdigest() != expected_anchor):
+                            errors += 1
+                            continue
+                    verified_offset = None
                     if offset and anchor:
                         stream.seek(max(0, offset - 64))
                         if hashlib.sha256(stream.read(min(offset, 64))).digest() != anchor:
                             offset, discarding = 0, False
+                        else:
+                            verified_offset = offset
                     stream.seek(offset)
                     errors += int(discarding)
-                    while True:
-                        line = stream.readline(MAX_LINE_BYTES + 1)
+                    line = b''
+                    while limit is None or stream.tell() < limit:
+                        size = MAX_LINE_BYTES + 1 if limit is None else min(MAX_LINE_BYTES + 1, limit - stream.tell())
+                        line = stream.readline(size)
                         if not line:
                             break
                         if discarding or len(line) > MAX_LINE_BYTES:
@@ -164,11 +180,14 @@ class TokenTail:
                         before = prior[1] if prior else (0,) * len(TOKEN_FIELDS)
                         after = tuple(max(a, b) for a, b in zip(before, values))
                         self.seen[(model, key)] = (max(stamp, prior[0] if prior else stamp), after)
+                        if self.oldest_event is None or stamp < self.oldest_event:
+                            self.oldest_event = stamp
                         for field, a, b in zip(TOKEN_FIELDS, before, after):
                             counts[model][field] += b - a
                         counts[model]['requests'] += int(prior is None)
-                    stream.seek(max(0, offset - 64))
-                    anchor = hashlib.sha256(stream.read(min(offset, 64))).digest()
+                    if offset != verified_offset:
+                        stream.seek(max(0, offset - 64))
+                        anchor = hashlib.sha256(stream.read(min(offset, 64))).digest()
                 self.files[path] = (identity, offset, discarding, anchor)
                 self.cold.pop(path, None)
                 if not line or not line.endswith(b'\n'):
@@ -176,7 +195,9 @@ class TokenTail:
             except OSError:
                 self.retry_files.add(path)
                 errors += 1
-        self.seen = {k: v for k, v in self.seen.items() if v[0] >= cutoff}
+        if self.oldest_event is not None and self.oldest_event < cutoff:
+            self.seen = {key: value for key, value in self.seen.items() if value[0] >= cutoff}
+            self.oldest_event = min((value[0] for value in self.seen.values()), default=None)
         self.last_scan = now
         return {'baseline': baseline, 'by_model': {} if baseline else dict(counts),
                 'read_errors': errors, 'basis': 'newly_observed_cumulative_counter_increments'}
@@ -258,7 +279,7 @@ def quota_deltas(previous, current):
             x, y = prior.get('resets_at'), window.get('resets_at')
             if any(v is None or not isinstance(v, (float, int)) or not math.isfinite(v) for v in (a, b)):
                 continue
-            same_reset = (x is None and y is None) or (
+            same_reset = (
                 isinstance(x, (float, int)) and isinstance(y, (float, int))
                 and abs(x - y) <= 2 and before['checked_at'] < min(x, y)
                 and reading['checked_at'] < min(x, y))
@@ -266,7 +287,8 @@ def quota_deltas(previous, current):
             result.append({'account': email, 'window': window['name'],
                            'start_percent': a, 'end_percent': b, 'delta_pp': b - a,
                            'seconds': seconds, 'valid': valid,
-                           'reason': 'same_window' if valid else 'reset_or_counter_decrease',
+                           'reason': ('same_window' if valid else 'unknown_reset'
+                                      if x is None or y is None else 'reset_or_counter_decrease'),
                            'saturated': a >= 100 or b >= 100})
     return result
 
@@ -287,25 +309,33 @@ class Measurement:
         self.pending = None
         self.appended = None
         self.pruned_day = None
+        self.plan_start = self.previous.get('plan_start')
 
     def enabled(self, now=None):
         now = time.time() if now is None else now
         plan = self.state.load('monitoring')
-        enabled = not plan or now < plan['ends_at']
-        if not enabled and self.tokens.last_scan is not None:
+        start = plan.get('starts_at')
+        enabled = not plan or (plan.get('status') != 'complete' and now < plan['ends_at'])
+        changed = (self.plan_start != start and
+                   (self.tokens.last_scan is not None or self.plan_start is not None
+                    or (start is not None and self.previous.get('captured_at', now) < start)))
+        if changed or (not enabled and (self.tokens.last_scan is not None or self.appended)):
+            self.recover_append()
             self.tokens.reset(now)
             self.previous = {}
             self.pending = None
+        self.plan_start = start
         return enabled
 
-    def record(self, report, now=None):
-        now = time.time() if now is None else now
-        self.prune(now)
-        if not self.enabled(now):
-            return None
+    def recover_append(self):
         if self.appended is not None:
             path, start, raw, saved = self.appended
-            with path.open('r+b') as stream:
+            try:
+                stream = path.open('r+b')
+            except FileNotFoundError:
+                self.appended = None
+                return
+            with stream:
                 stream.seek(start)
                 tail = stream.read(len(raw) + 1)
                 if tail == raw:
@@ -317,6 +347,43 @@ class Measurement:
                 else:
                     raise SwitcherError('Measurement append changed during recovery')
             self.appended = None
+
+    def resume_manual_interval(self, now):
+        """Rebuild in-memory request counters from verified file prefixes of the last manual poll."""
+        if not self.enabled(now) or not self.previous:
+            return
+        previous = self.previous['captured_at']
+        if not 0 < now - previous <= 180:
+            return
+        try:
+            saved = self.state.load('manual_measurement')
+            if saved.get('captured_at') != previous:
+                return
+            prefixes = {(dev, ino): (offset, anchor) for dev, ino, offset, anchor in saved['files']
+                        if isinstance(offset, int) and offset >= 0 and isinstance(anchor, str)}
+            if len(prefixes) != len(saved['files']):
+                return
+            started = float(saved.get('started_at', previous))
+        except (OSError, SwitcherError, KeyError, TypeError, ValueError):
+            return
+        self.tokens.reset(started)
+        baseline = self.tokens.sample(previous, prefixes=prefixes)
+        if baseline['read_errors'] or len(self.tokens.files) != len(prefixes):
+            self.tokens.reset(now)
+
+    def save_manual_interval(self, row):
+        if row is not None:
+            files = [[*identity, offset, anchor.hex()]
+                     for identity, offset, _, anchor in self.tokens.files.values()]
+            self.state.save('manual_measurement', {'captured_at': row['captured_at'],
+                                                  'started_at': self.tokens.started_at, 'files': files})
+
+    def record(self, report, now=None):
+        now = time.time() if now is None else now
+        self.prune(now)
+        if not self.enabled(now):
+            return None
+        self.recover_append()
         # Whitelist data rather than serializing an arbitrary caller's payload.
         usage = {}
         for email, reading in report.get('usage', {}).items():
@@ -326,22 +393,26 @@ class Measurement:
                 {k: w.get(k) for k in ('name', 'percent', 'resets_at', 'blocked')}
                 for w in reading['windows']]}
         tokens = self.tokens.sample(now)
+        changed = bool(report.get('switched') or report.get('identity_changed'))
         if self.pending:
-            for model, fields in self.pending['by_model'].items():
+            carried, prior_active, prior_changed = self.pending
+            changed |= prior_changed or prior_active != report.get('active')
+            for model, fields in carried['by_model'].items():
                 values = tokens['by_model'].setdefault(model, {})
                 for key, value in fields.items():
                     values[key] = values.get(key, 0) + value
-            tokens['read_errors'] += self.pending['read_errors']
-            tokens['baseline'] |= self.pending['baseline']
-        self.pending = tokens
+            tokens['read_errors'] += carried['read_errors']
+            tokens['baseline'] |= carried['baseline']
+        self.pending = (tokens, report.get('active'), changed)
         previous = self.previous
         stable = bool(previous and previous.get('active') == report.get('active')
-                      and not report.get('switched') and not previous.get('switched')
+                      and not changed and not previous.get('switched')
                       and not report.get('identity_changed') and not previous.get('identity_changed')
                       and not tokens['baseline'] and not tokens['read_errors']
                       and not previous.get('tokens', {}).get('read_errors')
                       and 0 < now - previous['captured_at'] <= 180)
-        row = {'schema': 1, 'captured_at': now, 'poll_started_at': report['observed_at'],
+        row = {'schema': 1, 'captured_at': now, 'plan_start': self.plan_start,
+               'poll_started_at': report['observed_at'],
                'source': report.get('source', 'switcher_poll'),
                'active': report.get('active'), 'switched': bool(report.get('switched')),
                'identity_changed': bool(report.get('identity_changed')),
