@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 import tempfile
+import subprocess
+import sys
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -101,6 +103,29 @@ class ApiTests(unittest.TestCase):
             with self.assertRaises(SwitcherError):
                 with directory_lock(path, timeout=0):
                     self.fail('must not enter')
+            self.assertTrue(path.is_dir())
+
+    def test_dead_switcher_lock_is_recovered_but_replacement_claude_lock_is_kept(self):
+        """죽은 switcher의 잠금만 회수하며 같은 경로에 새로 생긴 Claude 잠금은 지킨다."""
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / '.oauth_refresh.lock'
+            code = ('from storage import directory_lock; from pathlib import Path; import os, sys\n'
+                    'with directory_lock(Path(sys.argv[1])): os._exit(0)\n')
+            subprocess.run([sys.executable, '-B', '-c', code, str(path)], check=True)
+            self.assertTrue(path.is_dir())
+            with directory_lock(path, timeout=0):
+                self.assertTrue(path.is_dir())
+                with self.assertRaises(SwitcherError):
+                    with directory_lock(path, timeout=0):
+                        self.fail('must preserve the live switcher lock')
+            self.assertFalse(path.exists())
+
+            subprocess.run([sys.executable, '-B', '-c', code, str(path)], check=True)
+            path.rename(path.with_name('old-switcher-lock'))
+            path.mkdir()
+            with self.assertRaises(SwitcherError):
+                with directory_lock(path, timeout=0):
+                    self.fail('must preserve the replacement lock')
             self.assertTrue(path.is_dir())
 
 

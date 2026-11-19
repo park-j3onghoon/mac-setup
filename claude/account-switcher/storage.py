@@ -93,7 +93,39 @@ class State:
 
 @contextmanager
 def directory_lock(path, timeout=5):
-    """Never steal an existing Claude lock, even if it appears old."""
+    """Reclaim only our recorded directory after its kernel-held owner lock is released."""
+    path = Path(path)
+    owner = Path(str(path) + '.switcher-owner')
+    fd = os.open(owner, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise SwitcherError(f'Claude is busy: lock={path.name}') from None
+                time.sleep(0.1)
+        try:
+            recorded = json.loads(os.read(fd, 1024))
+        except (ValueError, UnicodeDecodeError):
+            recorded = None
+        if path.exists() and recorded == directory_identity(path):
+            path.rmdir()
+        with owned_directory_lock(path, max(0, deadline - time.monotonic()), fd):
+            yield
+    finally:
+        os.close(fd)
+
+
+def directory_identity(path):
+    info = path.stat()
+    return [info.st_dev, info.st_ino, info.st_birthtime]
+
+
+@contextmanager
+def owned_directory_lock(path, timeout, owner_fd):
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -103,13 +135,17 @@ def directory_lock(path, timeout=5):
             if time.monotonic() >= deadline:
                 raise SwitcherError(f'Claude is busy: lock={path.name}') from None
             time.sleep(0.1)
-    inode = path.stat().st_ino
+    identity = directory_identity(path)
+    os.lseek(owner_fd, 0, os.SEEK_SET)
+    os.ftruncate(owner_fd, 0)
+    os.write(owner_fd, json.dumps(identity).encode())
+    os.fsync(owner_fd)
     stop = threading.Event()
 
     def heartbeat():
         while not stop.wait(1):
             try:
-                if path.stat().st_ino != inode:
+                if directory_identity(path) != identity:
                     return
                 os.utime(path)
             except OSError:
@@ -119,13 +155,13 @@ def directory_lock(path, timeout=5):
     thread.start()
     try:
         yield
-        if path.stat().st_ino != inode:
+        if directory_identity(path) != identity:
             raise SwitcherError('Claude credential lock ownership changed')
     finally:
         stop.set()
         thread.join(timeout=2)
         try:
-            if path.stat().st_ino == inode:
+            if directory_identity(path) == identity:
                 path.rmdir()
         except FileNotFoundError:
             pass
