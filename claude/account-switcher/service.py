@@ -111,8 +111,9 @@ class Switcher:
                 record_switch(self.state, runtime['switched_at'])
             self.vault.delete('__transaction__')
 
-    def switch_to(self, expected, target_email, now, reading=None, token_id=None):
+    def switch_to(self, expected, target_email, now, reading=None, token_id=None, *, clock=None):
         """Preflight outside Claude's locks, then commit a recoverable local swap."""
+        clock = clock or (lambda: now)
         if target_email not in self.accounts:
             raise SwitcherError('Target account is not configured')
         target = self.vault.read(target_email)
@@ -125,7 +126,7 @@ class Switcher:
             reading = self.api.usage(target['oauth'], now)
         elif fingerprint(target['oauth']) != token_id:
             raise SwitcherError('Target credential changed after the quota reading; retry later')
-        if not reading.available(now, self.config['threshold'], 90):
+        if not reading.available(clock(), self.config['threshold'], 90):
             raise SwitcherError('Target account no longer has verified capacity')
         with self.live.locked():
             blob, account = self.live.read()
@@ -134,7 +135,11 @@ class Switcher:
                 raise SwitcherError('Live login changed during preflight; retry on the next poll')
             before = {'oauth': blob['claudeAiOauth'], 'account': account}
             self.vault.write(account['emailAddress'], before)
-            self.vault.write('__transaction__', {'before': before, 'after': target, 'switched_at': now})
+            committed_at = clock()
+            if not reading.available(committed_at, self.config['threshold'], 90):
+                raise SwitcherError('Target account no longer has verified capacity')
+            self.vault.write('__transaction__', {'before': before, 'after': target,
+                                                'switched_at': committed_at})
             patched = dict(blob)
             patched['claudeAiOauth'] = target['oauth']
             try:
@@ -156,14 +161,15 @@ class Switcher:
                     self.vault.delete('__transaction__')
                 raise SwitcherError('Account swap failed; recovery journal retained if needed') from None
             runtime = self.state.load('runtime')
-            runtime.update(active=target_email, switched_at=now,
-                           settle_until=now + self.config['settle_seconds'])
+            runtime.update(active=target_email, switched_at=committed_at,
+                           settle_until=clock() + self.config['settle_seconds'])
             self.state.save('runtime', runtime)
-            record_switch(self.state, now)
+            record_switch(self.state, committed_at)
             self.vault.delete('__transaction__')
 
     def tick(self, apply=False, now=None):
-        now = time.time() if now is None else now
+        clock = time.time if now is None else (lambda: now)
+        now = clock()
         with self.state.lock():
             if apply:
                 self.check_version()
@@ -221,6 +227,7 @@ class Switcher:
             if preferred not in self.accounts:
                 raise SwitcherError('Preferred account is not configured')
             fallback = next(candidate for candidate in self.accounts if candidate != preferred)
+            now = clock()
             decision = choose_account(email, preferred, fallback, readings, now,
                                       self.config['threshold'], 90)
             report = {'observed_at': now, 'active': email, 'target': decision.target,
@@ -238,7 +245,7 @@ class Switcher:
                     report['reason'] = 'waiting_for_credential_cache'
                 else:
                     self.switch_to(active, decision.target, now, readings[decision.target],
-                                   reading_tokens[decision.target])
+                                   reading_tokens[decision.target], clock=clock)
                     report['switched'] = True
             self.state.save('last_report', report)
             if apply:

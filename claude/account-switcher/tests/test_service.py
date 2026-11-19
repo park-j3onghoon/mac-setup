@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,6 +10,60 @@ from storage import SwitcherError, read_json
 
 
 class ServiceTests(unittest.TestCase):
+    def test_sleep_during_usage_query_does_not_accept_stale_capacity(self):
+        """절전 뒤에는 주기 시작 시각으로 오래된 사용량을 승인하지 않는다."""
+        clock = [NOW]
+        usage = self.app.api.usage
+
+        def slow_usage(oauth, now):
+            result = usage(oauth, now)
+            if oauth['accessToken'] == 'token-work':
+                clock[0] += 120
+            return result
+
+        self.app.api.usage = slow_usage
+        with patch('service.time.time', side_effect=lambda: clock[0]):
+            self.app.tick(apply=True)
+        self.assertEqual(self.app.vault.active_writes, 0)
+
+    def test_commit_rechecks_capacity_after_waiting_for_claude_lock(self):
+        """정상 사용량을 읽었어도 잠금 대기 중 오래되면 인증 쓰기 전에 재검사한다."""
+        clock = [NOW]
+        locked = self.app.live.locked
+        calls = [0]
+
+        @contextmanager
+        def delayed_lock():
+            calls[0] += 1
+            if calls[0] == 3:
+                clock[0] += 120
+            with locked():
+                yield
+
+        with patch.object(self.app.live, 'locked', delayed_lock), \
+                patch('service.time.time', side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(SwitcherError, 'capacity'):
+                self.app.tick(apply=True)
+        self.assertEqual(self.app.vault.active_writes, 0)
+
+    def test_settle_window_starts_when_credentials_are_committed(self):
+        """조회가 지연돼도 교체 후 캐시 대기 시간은 실제 교체 시각부터 보장한다."""
+        clock = [NOW]
+        usage = self.app.api.usage
+
+        def slow_usage(oauth, now):
+            result = usage(oauth, now)
+            if oauth['accessToken'] == 'token-work':
+                clock[0] += 20
+            return result
+
+        self.app.api.usage = slow_usage
+        with patch('service.time.time', side_effect=lambda: clock[0]):
+            self.app.tick(apply=True)
+        runtime = self.app.state.load('runtime')
+        self.assertEqual(runtime['switched_at'], NOW + 20)
+        self.assertEqual(runtime['settle_until'], NOW + 65)
+
     def test_switch_metadata_failure_is_recovered_with_session_marker(self):
         """인증 교체 뒤 runtime 저장이 실패해도 다음 복구가 세션 재시작 신호까지 남긴다."""
         app = self.app
