@@ -16,6 +16,7 @@ import time
 
 from api import Anthropic, ApiError
 from compatibility import FAILURE as COMPATIBILITY_FAILURE
+from compatibility import IncompatibleLayout
 from macos import Keychain, KeychainError, Vault, system_awake
 from measurement import Measurement, observe, summarize
 from monitoring import review_if_due, start as start_monitoring
@@ -63,8 +64,6 @@ def check_environment():
 
 
 def initialize(args, state):
-    if (state.root / 'config.json').exists():
-        raise SwitcherError('Configuration already exists; init never overwrites it')
     # cmux can put a temporary command shim first on PATH; launchd must outlive it.
     native = Path.home() / '.local/bin/claude'
     executable = str(native) if native.is_file() else shutil.which('claude')
@@ -78,7 +77,10 @@ def initialize(args, state):
               'config_path': str(Path.home() / '.claude.json')}
     from service import validate_config
     validate_config(config)
-    state.save('config', config)
+    with state.lock(blocking=True):
+        if (state.root / 'config.json').exists():
+            raise SwitcherError('Configuration already exists; init never overwrites it')
+        state.save('config', config)
     print('Initialized local settings. No credential was changed.')
 
 
@@ -106,7 +108,7 @@ def halts_keychain_work(exc, awake=system_awake):
     first check of a freshly updated Claude Code ran one second into a lid-closed wake, with no
     prompt (no SecurityAgent), and halted the service for a day. That case retries instead.
     """
-    if isinstance(exc, KeychainError):
+    if isinstance(exc, (KeychainError, IncompatibleLayout)):
         return True
     return str(exc) == COMPATIBILITY_FAILURE and awake()
 
@@ -152,33 +154,56 @@ def tick_once(app, apply, last_outcome):
 
 def measure_and_review(app, measurement, report, delay):
     """Return the next delay. Measurement uses no-UI reads and encrypted saved bundles."""
-    remaining = app.state.load('runtime').get('retry_after', 0) - time.time()
+    try:
+        error = app.state.load('measurement_error')
+    except (SwitcherError, OSError, ValueError) as exc:
+        print(json.dumps({'measurement_state_error': type(exc).__name__}), flush=True)
+        error = {}
+    remaining = max(app.state.load('runtime').get('retry_after', 0),
+                    error.get('retry_at', 0)) - time.time()
     if report and report.get('reason') == 'waiting_for_retry_after':
         report = None
     if report is None and remaining <= 0 and measurement.enabled():
         try:
             report = observe(app)
-            delay = max(delay, report.get('retry_after_seconds', 0))
+            retry = report.get('retry_after_seconds', 0)
+            if retry:
+                error = {'observed_at': time.time(), 'stage': 'observe',
+                         'retry_after_seconds': retry, 'retry_at': time.time() + retry}
+                save_measurement_error(app.state, error)
+                delay = max(delay, retry)
         except (SwitcherError, KeychainError, OSError, ValueError) as exc:
             if isinstance(exc, ApiError):
                 delay = max(delay, exc.retry_after)
-            app.state.save('measurement_error', {
+            save_measurement_error(app.state, {
                 'observed_at': time.time(), 'type': type(exc).__name__,
                 'http_status': getattr(exc, 'status', None),
+                'stage': 'observe', 'retry_at': time.time() + getattr(exc, 'retry_after', 0),
                 'retry_after_seconds': getattr(exc, 'retry_after', None)})
     if report is not None:
         try:
-            if measurement.record(report) is not None:
-                app.state.save('measurement_error', {})
+            if (measurement.record(report) is not None and error
+                    and error.get('retry_at', 0) <= time.time()):
+                save_measurement_error(app.state, {})
         except (SwitcherError, OSError, ValueError) as exc:
             # Measurement failures must not interrupt an account swap.
             print(json.dumps({'measurement_error': type(exc).__name__}), flush=True)
+            save_measurement_error(app.state, {'observed_at': time.time(), 'stage': 'record',
+                                               'type': type(exc).__name__,
+                                               'retry_at': error.get('retry_at', 0)})
     try:
         review_if_due(app.state)
         measurement.prune(time.time())
     except (SwitcherError, OSError, ValueError) as exc:
         print(json.dumps({'monitoring_error': type(exc).__name__}), flush=True)
     return delay
+
+
+def save_measurement_error(state, details):
+    try:
+        state.save('measurement_error', details)
+    except (SwitcherError, OSError, ValueError) as exc:
+        print(json.dumps({'measurement_state_error': type(exc).__name__}), flush=True)
 
 
 def run(app, apply):
@@ -217,22 +242,38 @@ def install_service(app):
     directory = Path.home() / 'Library/LaunchAgents'
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / f'{LABEL}.plist'
-    if destination.exists() or destination.is_symlink():
-        raise SwitcherError('Service plist already exists; uninstall it before reinstalling')
     data = {'Label': LABEL, 'ProgramArguments': [sys.executable, str(Path(__file__).resolve()),
             '--state-dir', str(app.state.root.resolve()), 'run', '--apply'],
             'RunAtLoad': True, 'KeepAlive': True, 'ThrottleInterval': 60,
             'ProcessType': 'Background', 'WorkingDirectory': str(app.state.root.resolve()),
             'StandardOutPath': str(app.state.root / 'service.log'),
             'StandardErrorPath': str(app.state.root / 'service-error.log')}
-    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        plistlib.dump(data, stream)
-    result = subprocess.run(['/bin/launchctl', 'bootstrap', f'gui/{os.getuid()}', str(destination)],
-                            capture_output=True, timeout=10)
-    if result.returncode:
-        destination.unlink()
-        raise SwitcherError(f'launchctl bootstrap failed: status={result.returncode}')
+    domain = f'gui/{os.getuid()}'
+    with app.state.lock('install', blocking=True):
+        if destination.is_symlink():
+            raise SwitcherError('Service plist path is a symlink')
+        try:
+            fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            if destination.read_bytes() != plistlib.dumps(data):
+                raise SwitcherError('Existing service plist belongs to another configuration')
+            if subprocess.run(['/bin/launchctl', 'print', f'{domain}/{LABEL}'],
+                              capture_output=True, timeout=10).returncode == 0:
+                print('Background service already installed and started.')
+                return
+        else:
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    plistlib.dump(data, stream)
+            except OSError:
+                destination.unlink(missing_ok=True)
+                raise
+        result = subprocess.run(['/bin/launchctl', 'bootstrap', domain, str(destination)],
+                                capture_output=True, timeout=10)
+        if result.returncode and subprocess.run(
+                ['/bin/launchctl', 'print', f'{domain}/{LABEL}'],
+                capture_output=True, timeout=10).returncode:
+            raise SwitcherError(f'launchctl bootstrap failed: status={result.returncode}')
     print('Background service installed and started.')
 
 

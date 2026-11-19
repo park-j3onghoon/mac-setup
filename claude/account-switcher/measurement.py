@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import time
 
 from api import ApiError
 from macos import KeychainError
-from storage import SwitcherError, fingerprint, read_json
+from storage import SwitcherError, read_json
 
 
 TOKEN_FIELDS = ('input_tokens', 'cache_creation_input_tokens',
@@ -31,6 +32,7 @@ class TokenTail:
         self.directories = {}
         self.next_discovery = 0
         self.retry_files = set()
+        self.cold = {}
 
     def discover(self, now):
         """Reuse unchanged directory listings, still stat files to detect resumed old sessions."""
@@ -64,6 +66,9 @@ class TokenTail:
             self.next_discovery = now + 600
         return paths, errors
 
+    def reset(self, now):
+        self.__init__(self.projects, now)
+
     def sample(self, now):
         baseline = self.last_scan is None
         cutoff = max(self.started_at - 900, now - 7200)
@@ -73,19 +78,42 @@ class TokenTail:
             present = set(paths)
             self.files = {path: value for path, value in self.files.items() if path in present}
             self.retry_files.intersection_update(present)
+            self.cold = {path: value for path, value in self.cold.items() if path in present}
+        scan_started = time.monotonic()
         for path in paths:
+            cold = self.cold.get(path)
+            if cold and now < cold[0]:
+                continue
             try:
                 info = path.stat()
-                if info.st_mtime < cutoff:
-                    self.files.pop(path, None)
-                    continue
-                if path not in self.retry_files and info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2):
-                    continue
                 identity = (info.st_dev, info.st_ino)
-                old_identity, offset, discarding = self.files.get(path, (None, 0, False))
+                if info.st_mtime < cutoff:
+                    old = self.files.pop(path, None)
+                    self.retry_files.discard(path)
+                    if old:
+                        checkpoint = old
+                    elif cold and cold[1][0] == identity and cold[1][1] == info.st_size:
+                        checkpoint = cold[1]
+                    else:
+                        with path.open('rb') as stream:
+                            stream.seek(max(0, info.st_size - 64))
+                            end = stream.read(64)
+                            checkpoint = (identity, info.st_size, bool(end and not end.endswith(b'\n')),
+                                          hashlib.sha256(end).digest())
+                    self.cold[path] = (now if old else now + 120, checkpoint)
+                    continue
+                if (not cold and path not in self.retry_files
+                        and info.st_mtime < (self.started_at - 900 if baseline else self.last_scan - 2)):
+                    continue
+                checkpoint = self.files.get(path) or (cold and cold[1]) or (None, 0, False, b'')
+                old_identity, offset, discarding, anchor = checkpoint
                 if old_identity != identity or info.st_size < offset:
                     offset, discarding = 0, False
                 with path.open('rb') as stream:
+                    if offset and anchor:
+                        stream.seek(max(0, offset - 64))
+                        if hashlib.sha256(stream.read(min(offset, 64))).digest() != anchor:
+                            offset, discarding = 0, False
                     stream.seek(offset)
                     errors += int(discarding)
                     while True:
@@ -112,8 +140,12 @@ class TokenTail:
                                     or not isinstance(key, str) or not isinstance(usage, dict)):
                                 continue
                             stamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00')).timestamp()
-                            if not cutoff <= stamp <= now + 5:
+                            if stamp < cutoff:
                                 continue
+                            if stamp > now + (time.monotonic() - scan_started) + 5:
+                                offset -= len(line)
+                                self.retry_files.add(path)
+                                break
                             values = tuple(usage.get(k, 0) or 0 for k in TOKEN_FIELDS)
                             if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in values):
                                 errors += 1
@@ -128,8 +160,12 @@ class TokenTail:
                         for field, a, b in zip(TOKEN_FIELDS, before, after):
                             counts[model][field] += b - a
                         counts[model]['requests'] += int(prior is None)
-                self.files[path] = (identity, offset, discarding)
-                self.retry_files.discard(path)
+                    stream.seek(max(0, offset - 64))
+                    anchor = hashlib.sha256(stream.read(min(offset, 64))).digest()
+                self.files[path] = (identity, offset, discarding, anchor)
+                self.cold.pop(path, None)
+                if not line or not line.endswith(b'\n'):
+                    self.retry_files.discard(path)
             except OSError:
                 self.retry_files.add(path)
                 errors += 1
@@ -156,7 +192,7 @@ def observe(app):
             raise SwitcherError('Login changed during measurement; retry later')
         active = ({'account': account, 'oauth': blob['claudeAiOauth']}
                   if isinstance(blob, dict) and isinstance(blob.get('claudeAiOauth'), dict) else None)
-        verified = getattr(app, '_measurement_verified', {})
+        settle_until = app.state.load('runtime').get('settle_until', 0)
         for candidate in app.accounts:
             try:
                 bundle = active if candidate == email and active else app.vault.read(candidate)
@@ -170,16 +206,19 @@ def observe(app):
                     if candidate == email:
                         errors[candidate] = 'active_token_needs_native_refresh'
                         continue
+                    if time.time() < settle_until:
+                        errors[candidate] = 'inactive_token_needs_refresh'
+                        continue
                     if read_json(app.live.config).get('oauthAccount') != account:
                         raise SwitcherError('Login changed during measurement; retry later')
-                    bundle['oauth'] = app.api.refresh(bundle['oauth'], time.time())
-                    app.vault.write(candidate, bundle)
-                token_id = fingerprint(bundle['oauth'])
-                if verified.get(candidate) != token_id:
-                    app.verify_identity(bundle)
-                    verified[candidate] = token_id
+                    bundle = app.refresh_inactive(candidate, bundle, time.time())
+                app.verify_identity(bundle)
                 if candidate == email and active and app.vault.read(email) != active:
-                    app.vault.write(email, active)
+                    with app.live.locked():
+                        current = app.vault.read_active_for_measurement()
+                        if (current and current.get('claudeAiOauth') == active['oauth']
+                                and read_json(app.live.config).get('oauthAccount') == account):
+                            app.vault.write(email, active)
                 reading = app.api.usage(bundle['oauth'], time.time())
                 readings[candidate] = asdict(reading)
             except ApiError as exc:
@@ -188,7 +227,6 @@ def observe(app):
             except (SwitcherError, KeychainError):
                 errors[candidate] = 'authentication_needs_attention'
         changed = read_json(app.live.config).get('oauthAccount') != account
-        app._measurement_verified = verified
     return {'observed_at': started, 'active': email, 'switched': False,
             'usage': readings, 'errors': errors, 'identity_changed': changed,
             'retry_after_seconds': retry, 'source': 'measurement_only'}
@@ -226,17 +264,31 @@ def quota_deltas(previous, current):
     return result
 
 
+def latest_sample(state):
+    try:
+        latest = state.load('measurement_latest')
+        return latest if isinstance(latest.get('captured_at'), (float, int)) else {}
+    except (SwitcherError, OSError, ValueError):
+        return {}
+
+
 class Measurement:
     def __init__(self, state, projects):
         self.state = state
         self.tokens = TokenTail(projects)
-        self.previous = state.load('measurement_latest')
+        self.previous = latest_sample(state)
+        self.pending = None
         self.pruned_day = None
 
     def enabled(self, now=None):
         now = time.time() if now is None else now
         plan = self.state.load('monitoring')
-        return not plan or now < plan['ends_at']
+        enabled = not plan or now < plan['ends_at']
+        if not enabled and self.tokens.last_scan is not None:
+            self.tokens.reset(now)
+            self.previous = {}
+            self.pending = None
+        return enabled
 
     def record(self, report, now=None):
         now = time.time() if now is None else now
@@ -252,11 +304,20 @@ class Measurement:
                 {k: w.get(k) for k in ('name', 'percent', 'resets_at', 'blocked')}
                 for w in reading['windows']]}
         tokens = self.tokens.sample(now)
+        if self.pending:
+            for model, fields in self.pending['by_model'].items():
+                values = tokens['by_model'].setdefault(model, {})
+                for key, value in fields.items():
+                    values[key] = values.get(key, 0) + value
+            tokens['read_errors'] += self.pending['read_errors']
+            tokens['baseline'] |= self.pending['baseline']
+        self.pending = tokens
         previous = self.previous
         stable = bool(previous and previous.get('active') == report.get('active')
                       and not report.get('switched') and not previous.get('switched')
                       and not report.get('identity_changed') and not previous.get('identity_changed')
                       and not tokens['baseline'] and not tokens['read_errors']
+                      and not previous.get('tokens', {}).get('read_errors')
                       and 0 < now - previous['captured_at'] <= 180)
         row = {'schema': 1, 'captured_at': now, 'poll_started_at': report['observed_at'],
                'source': report.get('source', 'switcher_poll'),
@@ -280,8 +341,9 @@ class Measurement:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        self.state.save('measurement_latest', row)
+        self.pending = None
         self.previous = row
+        self.state.save('measurement_latest', row)
         return row
 
     def prune(self, now):
@@ -311,7 +373,7 @@ def summarize(state, since=None, until=None):
     """Observed maxima only; rounded quota snapshots do not prove a future safety bound."""
     groups = {}
     count, paired, first, last = 0, 0, None, None
-    failed, empty, token_read_errors, long_gaps = 0, 0, 0, 0
+    failed, empty, token_read_errors, long_gaps, malformed = 0, 0, 0, 0, 0
     first_day = datetime.fromtimestamp(since, timezone.utc).date().isoformat() if since is not None else None
     last_day = datetime.fromtimestamp(until, timezone.utc).date().isoformat() if until is not None else None
     for path in sorted((state.root / 'measurements').glob('*.jsonl')):
@@ -328,6 +390,11 @@ def summarize(state, since=None, until=None):
                 try:
                     row = json.loads(line)
                 except ValueError:
+                    malformed += 1
+                    continue
+                if (not isinstance(row, dict) or not isinstance(row.get('captured_at'), (int, float))
+                        or not math.isfinite(row['captured_at'])):
+                    malformed += 1
                     continue
                 at = row['captured_at']
                 if (since is not None and at < since) or (until is not None and at >= until):
@@ -378,9 +445,9 @@ def summarize(state, since=None, until=None):
                                                                   and not d['saturated'])
     return {'samples': count, 'first_at': first, 'last_at': last,
             'paired_account_window_intervals': paired, 'windows': list(groups.values()),
-            'quality': {'failed_samples': failed, 'empty_usage_samples': empty,
+            'quality': {'failed_samples': failed, 'empty_usage_samples': empty, 'malformed_rows': malformed,
                         'token_read_errors': token_read_errors, 'gaps_over_180_seconds': long_gaps},
-            'latest': state.load('measurement_latest'),
+            'latest': latest_sample(state),
             'error': state.load('measurement_error'),
             'note': 'Observed 45-90s quota deltas; not an exact rolling 60s maximum. '
                     'Token counts are local log-counter increments, account attribution is approximate.'}

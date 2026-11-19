@@ -16,10 +16,14 @@ MARKERS = (b'.oauth_refresh.lock', b'claudeAiOauth', b'mcpOAuth',
 FAILURE = 'Installed Claude credential compatibility check failed'
 
 
+class IncompatibleLayout(SwitcherError):
+    """The installed binary or configuration has a different credential contract."""
+
+
 def check(executable, config_home, accounts, previous=None, runner=None):
     runner = subprocess.run if runner is None else runner
     if (Path(config_home) / '.config.json').exists():
-        raise SwitcherError('Legacy Claude config layout needs a separate compatibility check')
+        raise IncompatibleLayout('Legacy Claude config layout needs a separate compatibility check')
     try:
         path = Path(executable).resolve(strict=True)
         info = path.stat()
@@ -36,7 +40,7 @@ def check(executable, config_home, accounts, previous=None, runner=None):
         with path.open('rb') as stream, \
                 mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as binary:
             if not all(binary.find(marker) >= 0 for marker in MARKERS):
-                raise SwitcherError('Claude credential storage or lock contract changed')
+                raise IncompatibleLayout('Claude credential storage or lock contract changed')
         status = json.loads(runner([executable, 'auth', 'status', '--json'], capture_output=True,
                                    text=True, timeout=5, check=True).stdout)
         if (status.get('loggedIn') is not True or status.get('authMethod') != 'claude.ai'

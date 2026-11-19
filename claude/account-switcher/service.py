@@ -1,6 +1,7 @@
 """Enrollment, polling, and a recoverable swap of only Claude's account fields."""
 
 from dataclasses import asdict
+import hashlib
 import math
 import time
 
@@ -80,6 +81,21 @@ class Switcher:
                            settle_until=time.time() + self.config['settle_seconds'])
             self.state.save('runtime', runtime)
 
+    def refresh_inactive(self, email, bundle, now):
+        token = bundle['oauth'].get('refreshToken')
+        generation = hashlib.sha256(token.encode()).hexdigest() if isinstance(token, str) else None
+        if generation and generation == bundle.get('rejected_refresh'):
+            raise ApiError('token refresh', 400, 0, 'invalid_grant')
+        try:
+            oauth = self.api.refresh(bundle['oauth'], now)
+        except ApiError as error:
+            if generation and error.oauth_error == 'invalid_grant':
+                self.vault.write(email, dict(bundle, rejected_refresh=generation))
+            raise
+        renewed = {'oauth': oauth, 'account': bundle['account']}
+        self.vault.write(email, renewed)
+        return renewed
+
     def check_version(self):
         self.compatibility = check_compatibility(
             self.config['claude_executable'], self.config['config_home'], self.accounts,
@@ -144,7 +160,8 @@ class Switcher:
                     or fingerprint(blob['claudeAiOauth']) != fingerprint(expected['oauth'])):
                 raise SwitcherError('Live login changed during preflight; retry on the next poll')
             before = {'oauth': blob['claudeAiOauth'], 'account': account}
-            self.vault.write(account['emailAddress'], before)
+            if self.vault.read(account['emailAddress']) != before:
+                self.vault.write(account['emailAddress'], before)
             committed_at = clock()
             if not reading.available(committed_at, self.config['threshold'], 90):
                 raise SwitcherError('Target account no longer has verified capacity')
@@ -190,16 +207,17 @@ class Switcher:
 
     def _tick_locked(self, apply, clock):
         now = clock()
-        if apply:
-            self.check_version()
-            self.recover()
-        elif self.vault.read('__transaction__') is not None:
-            raise SwitcherError('A pending swap needs recovery; run once --apply')
         runtime = self.state.load('runtime')
         if now < runtime.get('retry_after', 0):
             return {'observed_at': now, 'active': runtime.get('active'), 'target': None,
                     'switched': False, 'apply': apply, 'errors': {}, 'usage': {},
                     'reason': 'waiting_for_retry_after'}
+        if apply:
+            self.check_version()
+            self.recover()
+            runtime = self.state.load('runtime')
+        elif self.vault.read('__transaction__') is not None:
+            raise SwitcherError('A pending swap needs recovery; run once --apply')
         with self.live.locked():
             blob, account = self.live.read()
         email = account['emailAddress']
@@ -235,9 +253,7 @@ class Switcher:
                     if not apply or (now < settle_until and not immediate):
                         errors[candidate] = 'inactive_token_needs_refresh'
                         continue
-                    bundle['oauth'] = self.api.refresh(bundle['oauth'], now)
-                    # Persist the successor before any further network request.
-                    self.vault.write(candidate, bundle)
+                    bundle = self.refresh_inactive(candidate, bundle, now)
                     self.verify_identity(bundle)
                 readings[candidate] = self.api.usage(bundle['oauth'], now)
                 reading_tokens[candidate] = fingerprint(bundle['oauth'])
@@ -246,7 +262,7 @@ class Switcher:
                 if exc.oauth_error:
                     oauth_errors[candidate] = exc.oauth_error
                 errors[candidate] = f'http_{exc.status}' if exc.status else 'metadata_unavailable'
-                runtime['retry_after'] = max(runtime.get('retry_after', 0), now + exc.retry_after)
+                runtime['retry_after'] = max(runtime.get('retry_after', 0), clock() + exc.retry_after)
             except SwitcherError:
                 errors[candidate] = 'authentication_needs_attention'
         preferred = preference.get('preferred', self.config['primary'])
@@ -292,6 +308,9 @@ class Switcher:
                     if isinstance(w.get('percent'), (int, float))]
         wake = now + poll_seconds(max(percents, default=None), self.config['threshold'],
                                   self.config['poll_seconds'])
+        if (runtime.get('target') and runtime['target'] != runtime.get('active')
+                and runtime.get('settle_until', 0) > now):
+            wake = min(wake, runtime['settle_until'])
         for usage in runtime.get('usage', {}).values():
             for window in usage.get('windows', []):
                 reset = window.get('resets_at')

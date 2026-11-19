@@ -25,7 +25,12 @@ def system_awake(runner=subprocess.run):
                         timeout=5, check=False)
     except (OSError, subprocess.SubprocessError):
         return True
-    return 'Graphics' in result.stdout
+    prefix = 'Current System Capabilities are:'
+    for line in result.stdout.splitlines() if result.returncode == 0 else ():
+        if line.strip().startswith(prefix):
+            capabilities = line.split(':', 1)[1].split()
+            return not capabilities or 'Graphics' in capabilities
+    return True
 
 
 class DictionaryKeyCallbacks(C.Structure):
@@ -185,23 +190,9 @@ class Keychain:
         Use the same API family as the native CLI and verify from a separate
         process; a same-process read-back alone cannot prove interoperability.
         """
-        raw = json.dumps(value, separators=(',', ':'), allow_nan=False).encode()
-        service_bytes, account_bytes = service.encode(), account.encode()
-        item = C.c_void_p()
-        status = self.sec.SecKeychainFindGenericPassword(
-            None, len(service_bytes), service_bytes, len(account_bytes), account_bytes,
-            None, None, C.byref(item))
-        if status:
-            raise KeychainError(f'Existing native Keychain item unavailable: status={status}')
-        try:
-            status = self.sec.SecKeychainItemModifyAttributesAndData(
-                item, None, len(raw), raw)
-            if status:
-                raise KeychainError(f'Native Keychain update failed: status={status}')
-        finally:
-            self.cf.CFRelease(item)
-        if self.read_existing(service, account) != value:
-            raise KeychainError('Native Keychain read-back verification failed')
+        native = NativeKeychain(self, account, service=service)
+        native.read()
+        native.write_item(value)
 
     def read_existing(self, service, account):
         """Read a legacy item using the same Keychain API family as security."""
@@ -262,16 +253,18 @@ class NativeKeychain:
     a prompt storm. Writing through /usr/bin/security keeps "apple-tool:".
     """
 
-    def __init__(self, keychain, username, runner=None):
-        if not username or any(c in username for c in '"\\\n'):
-            raise KeychainError('Unsupported macOS account name for the Keychain command')
+    def __init__(self, keychain, username, runner=None, *, service=None):
+        self.service = CLAUDE_SERVICE if service is None else service
+        for name in (self.service, username):
+            if not name or not name.isprintable() or any(c in name for c in ('"', '\\')):
+                raise KeychainError('Unsupported name for the Keychain command')
         self.keychain, self.username = keychain, username
         self.runner = subprocess.run if runner is None else runner
 
     def read(self):
         try:
             result = self.runner([SECURITY, 'find-generic-password',
-                                  '-s', CLAUDE_SERVICE, '-a', self.username, '-w'],
+                                  '-s', self.service, '-a', self.username, '-w'],
                                  stdin=subprocess.DEVNULL, capture_output=True, timeout=5,
                                  check=False)
             if result.returncode:
@@ -288,20 +281,23 @@ class NativeKeychain:
     def write(self, value):
         if not isinstance(value, dict) or not isinstance(value.get('claudeAiOauth'), dict):
             raise KeychainError('Native Claude credential schema changed')
+        self.write_item(value)
+
+    def write_item(self, value):
         try:
             raw = json.dumps(value, separators=(',', ':'), allow_nan=False).encode()
             if len(raw) > MAX_CREDENTIAL_BYTES:
                 raise KeychainError('Native Claude credential data exceeds the writer limit')
             data = raw.hex()
             command = (f'add-generic-password -U -a "{self.username}" '
-                       f'-s "{CLAUDE_SERVICE}" -X "{data}"\n')
+                       f'-s "{self.service}" -X "{data}"\n')
             if len(command) <= SECURITY_STDIN_LIMIT:
                 result = self.runner([SECURITY, '-i'], input=command.encode(),
                                      capture_output=True, timeout=5, check=False)
             else:
                 # Same fallback as Claude Code: `security -i` cannot read a longer line.
                 result = self.runner([SECURITY, 'add-generic-password', '-U', '-a', self.username,
-                                      '-s', CLAUDE_SERVICE, '-X', data],
+                                      '-s', self.service, '-X', data],
                                      stdin=subprocess.DEVNULL, capture_output=True, timeout=5,
                                      check=False)
             if result.returncode:
