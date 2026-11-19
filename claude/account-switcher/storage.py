@@ -136,10 +136,6 @@ def owned_directory_lock(path, timeout, owner_fd):
                 raise SwitcherError(f'Claude is busy: lock={path.name}') from None
             time.sleep(0.1)
     identity = directory_identity(path)
-    os.lseek(owner_fd, 0, os.SEEK_SET)
-    os.ftruncate(owner_fd, 0)
-    os.write(owner_fd, json.dumps(identity).encode())
-    os.fsync(owner_fd)
     stop = threading.Event()
 
     def heartbeat():
@@ -152,14 +148,23 @@ def owned_directory_lock(path, timeout, owner_fd):
                 return
 
     thread = threading.Thread(target=heartbeat, daemon=True)
-    thread.start()
+    started = False
     try:
+        os.lseek(owner_fd, 0, os.SEEK_SET)
+        os.ftruncate(owner_fd, 0)
+        record = json.dumps(identity).encode()
+        if os.write(owner_fd, record) != len(record):
+            raise OSError('Incomplete Claude lock ownership record')
+        os.fsync(owner_fd)
+        thread.start()
+        started = True
         yield
         if directory_identity(path) != identity:
             raise SwitcherError('Claude credential lock ownership changed')
     finally:
         stop.set()
-        thread.join(timeout=2)
+        if started:
+            thread.join(timeout=2)
         try:
             if directory_identity(path) == identity:
                 path.rmdir()

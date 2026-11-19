@@ -5,6 +5,7 @@ import sys
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request
+from unittest.mock import patch
 
 from api import Anthropic, ApiError, NoRedirect, parse_usage
 from helpers import NOW
@@ -113,6 +114,7 @@ class ApiTests(unittest.TestCase):
                     'with directory_lock(Path(sys.argv[1])): os._exit(0)\n')
             subprocess.run([sys.executable, '-B', '-c', code, str(path)], check=True)
             self.assertTrue(path.is_dir())
+
             with directory_lock(path, timeout=0):
                 self.assertTrue(path.is_dir())
                 with self.assertRaises(SwitcherError):
@@ -127,6 +129,16 @@ class ApiTests(unittest.TestCase):
                 with directory_lock(path, timeout=0):
                     self.fail('must preserve the replacement lock')
             self.assertTrue(path.is_dir())
+
+    def test_owner_record_failure_releases_the_new_directory_lock(self):
+        """소유 기록 쓰기에 실패해도 방금 만든 잠금을 남기지 않는다."""
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / '.oauth_refresh.lock'
+            with patch('storage.os.write', side_effect=OSError('disk failure')):
+                with self.assertRaises(OSError):
+                    with directory_lock(path, timeout=0):
+                        self.fail('recording failed')
+            self.assertFalse(path.exists())
 
 
 if __name__ == '__main__':

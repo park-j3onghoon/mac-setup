@@ -116,6 +116,26 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
         self.assertEqual(app.live.read()[1]['emailAddress'], 'work@example.com')
 
+    def test_manual_request_survives_a_temporary_usage_failure(self):
+        """사용량 조회 실패는 즉시 전환 요청의 완료로 처리하지 않는다."""
+        from api import ApiError
+        app = self.app
+        app.state.save('runtime', {'active': 'personal@example.com', 'settle_until': NOW + 300})
+        app.state.save('preference', {'preferred': 'work@example.com', 'requested_at': NOW,
+                                      'immediate': True})
+        usage = app.api.usage
+
+        def unavailable(oauth, now):
+            if oauth['accessToken'] == 'token-work':
+                raise ApiError('usage', 500, 0)
+            return usage(oauth, now)
+
+        app.api.usage = unavailable
+        app.tick(apply=True, now=NOW)
+        app.api.usage = usage
+        report = app.tick(apply=True, now=NOW + 1)
+        self.assertTrue(report['switched'])
+
     def test_dry_run_preserves_the_pending_manual_switch(self):
         """사전 확인이 수동 선택을 소비하지 않아 다음 실제 전환도 대기 없이 적용된다."""
         app = self.app

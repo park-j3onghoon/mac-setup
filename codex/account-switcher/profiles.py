@@ -24,7 +24,7 @@ def credentials(home):
         auth = claims["https://api.openai.com/auth"]
         return {"accessToken": token, "chatgptAccountId": auth["chatgpt_account_id"],
                 "chatgptPlanType": auth["chatgpt_plan_type"], "expires": claims["exp"]}
-    except (OSError, ValueError, KeyError, IndexError) as error:
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
         raise UsageUnavailable("Saved ChatGPT login cannot be read") from error
 
 

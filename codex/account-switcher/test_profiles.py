@@ -1,6 +1,7 @@
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -10,6 +11,28 @@ from runtime import Runtime
 
 
 class ProfileTest(unittest.TestCase):
+    def test_wrong_shaped_login_only_disables_that_profile(self):
+        """null 또는 다른 형태의 로그인도 보조 계정 오류로 격리한다."""
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            for content in ('null', '{"tokens": null}', '{"tokens":{"access_token":null}}'):
+                with self.subTest(content=content):
+                    (home / 'auth.json').write_text(content)
+                    profile = Profile('personal', home)
+                    self.assertIsNone(profile.account_id)
+                    with self.assertRaises(UsageUnavailable):
+                        profile.tokens()
+
+    def test_duplicate_workspaces_cannot_be_automatic_candidates(self):
+        """두 프로필이 같은 워크스페이스이면 현재 연결을 유지하고 후보를 만들지 않는다."""
+        from supervisor import collect
+        profiles = {name: Mock(account_id='same') for name in ('company', 'personal')}
+        for profile in profiles.values():
+            profile.usage.return_value = {'used_percent': 10}
+        snapshots, errors = collect(profiles)
+        self.assertEqual(snapshots, {})
+        self.assertEqual(set(errors.values()), {'DuplicateWorkspace'})
+
     def test_missing_fallback_preserves_current_account_and_can_recover(self):
         """보조 로그인 파일 오류는 정상 서버 관찰을 막지 않고 파일 복구 후 다시 조회한다."""
         restored = [False]

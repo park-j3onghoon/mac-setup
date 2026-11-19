@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import refresh_hook
+from refresh import SessionEnded
 from storage import State, SwitcherError
 
 
@@ -20,6 +21,13 @@ def restart_stub(limited=False, needed=False):
 
 
 class HookTests(unittest.TestCase):
+    def test_ended_session_is_a_successful_noop_for_the_stop_hook(self):
+        """등록이 이미 사라진 세션은 Stop 훅 오류를 만들지 않는다."""
+        with patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=SessionEnded())), \
+                patch('subprocess.Popen') as popen:
+            self.assertEqual(refresh_hook.hook(), 0)
+        popen.assert_not_called()
+
     def test_finishing_helper_does_not_break_the_next_helpers_lock(self):
         """다음 도우미가 잠금을 얻은 직후 이전 도우미가 끝나도 세 번째 도우미는 진입하지 못한다."""
         original = State.lock

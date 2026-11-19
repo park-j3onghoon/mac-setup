@@ -436,12 +436,15 @@ class ProxyTest(unittest.TestCase):
         self.send_client({'id': 40, 'method': 'turn/start', 'params': {'threadId': 'child'}})
         self.send_client({'id': 41, 'method': 'thread/read', 'params': {'threadId': 'thread'}})
         self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 41)
+        self.send_server({'method': 'turn/started', 'params': {'threadId': 'child'}})
+        self.send_client({'id': 42, 'method': 'turn/steer', 'params': {'threadId': 'child'}})
 
         self.proxy.pending[request['id']].put({'result': {}})
         self.proxy.inspect_idle()
 
         self.assertNotIn("child", self.proxy.idle.sleeping)
-        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 40)
+        order = [json.loads(call.args[0]).get('id') for call in self.server.send.call_args_list]
+        self.assertEqual([key for key in order if key in (40, 42)], [40, 42])
 
     def test_known_child_wake_keeps_the_live_forwarder_responsive(self):
         """자식 resume 응답이 없어도 실제 전달 루프는 다른 대화의 입력을 전달한다."""

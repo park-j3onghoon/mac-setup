@@ -480,7 +480,7 @@ class Proxy:
         if method == "initialized":
             self.initialized = True
         if method and thread_id:
-            if (thread_id in self.wakeups and thread_id in self.idle.sleeping
+            if (thread_id in self.wakeups
                     and method not in READ_METHODS and method != 'thread/unsubscribe'):
                 self.deferred.put_nowait((thread_id, payload, message))
                 return

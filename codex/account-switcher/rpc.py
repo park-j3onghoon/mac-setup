@@ -54,6 +54,10 @@ class RpcRejected(UsageUnavailable):
     """The server explicitly rejected the request; a transport failure is uncertain."""
 
 
+class RpcNotSent(UsageUnavailable):
+    """The transport failed before writing any of this request."""
+
+
 class Rpc:
     def __init__(self, binary, home, socket_path=None, handler=None, notification=None):
         self.process = self.websocket = None
@@ -91,10 +95,10 @@ class Rpc:
     def send(self, message, deadline=None):
         deadline = time.monotonic() + WRITE_TIMEOUT if deadline is None else deadline
         if not self.write_lock.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise UsageUnavailable('Codex write lock timed out')
+            raise RpcNotSent('Codex write lock timed out')
         try:
             if self.closed:
-                raise UsageUnavailable("Codex connection is closed")
+                raise RpcNotSent("Codex connection is closed")
             try:
                 payload = json.dumps(message).encode()
                 if self.websocket:

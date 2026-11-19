@@ -505,6 +505,24 @@ class ContinueTest(unittest.TestCase):
         self.runtime.continue_limited()
         self.assertEqual([value['threadId'] for value in self.started()], ['bad', 'good', 'bad'])
 
+    def test_definite_pre_send_failure_can_retry_after_reconnection(self):
+        """전송하기 전 끊긴 연결은 복구 후 자동 이어하기를 다시 시도한다."""
+        from rpc import RpcNotSent
+        self.answer({'t1': ('idle', LIMITED)})
+        answer = self.runtime.client.request.side_effect
+        failures = [RpcNotSent('connection was already closed')]
+
+        def request(method, params=None):
+            if method == 'turn/start' and failures:
+                raise failures.pop()
+            return answer(method, params)
+
+        self.runtime.client.request.side_effect = request
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.continue_limited()
+        self.runtime.continue_limited()
+        self.assertEqual(len(self.started()), 2)
+
     def test_uncertain_turn_start_is_not_blindly_replayed(self):
         """응답을 잃은 재개는 이미 실행됐을 수 있으므로 같은 한도 오류로 중복 전송하지 않는다."""
         self.answer({'t1': ('idle', LIMITED)})

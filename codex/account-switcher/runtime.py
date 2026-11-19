@@ -15,7 +15,7 @@ import time
 
 from policy import THRESHOLD, UsageUnavailable
 from profiles import BINARY, PROFILES
-from rpc import Rpc, RpcRejected
+from rpc import Rpc, RpcNotSent, RpcRejected
 from state import RUNTIME
 
 
@@ -393,7 +393,7 @@ class Runtime:
             self.client.request('turn/start', {
                 "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
             })
-        except RpcRejected:
+        except (RpcRejected, RpcNotSent):
             self.continued.discard(turn['id'])
             raise
 

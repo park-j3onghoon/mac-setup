@@ -260,7 +260,8 @@ class Switcher:
             self.state.save('last_report', report)
             if apply:
                 runtime = self.state.load('runtime')
-                runtime['preference_at'] = preference.get('requested_at')
+                if runtime.get('active') == preferred:
+                    runtime['preference_at'] = preference.get('requested_at')
                 self.state.save('runtime', runtime)
             return report
 

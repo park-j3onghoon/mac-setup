@@ -17,7 +17,7 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from refresh import SelfRestart  # noqa: E402
+from refresh import SelfRestart, SessionEnded  # noqa: E402
 from storage import State, SwitcherError  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
@@ -42,7 +42,7 @@ def hook():
             subprocess.Popen([sys.executable, __file__, '--helper', session_id, surface],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
-    except (SwitcherError, OSError, ValueError, subprocess.SubprocessError):
+    except (SessionEnded, SwitcherError, OSError, ValueError, subprocess.SubprocessError):
         pass
     return 0
 
