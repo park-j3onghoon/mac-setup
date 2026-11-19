@@ -55,7 +55,7 @@ class RpcRejected(UsageUnavailable):
 
 
 class Rpc:
-    def __init__(self, binary, home, socket_path=None, handler=None):
+    def __init__(self, binary, home, socket_path=None, handler=None, notification=None):
         self.process = self.websocket = None
         if socket_path:
             self.websocket = UnixWebSocket(socket_path)
@@ -66,6 +66,7 @@ class Rpc:
             )
             os.set_blocking(self.process.stdin.fileno(), False)
         self.handler = handler
+        self.notification = notification
         self.pending = {}
         self.lock = threading.Lock()
         self.write_lock = threading.Lock()
@@ -78,7 +79,9 @@ class Rpc:
             self.request("initialize", {
                 "clientInfo": {"name": "codex-account-switcher", "version": "2.0.0"},
                 "capabilities": {"experimentalApi": True,
-                                 "optOutNotificationMethods": list(NOTIFICATIONS)},
+                                 "optOutNotificationMethods": [method for method in NOTIFICATIONS
+                                     if not notification or method not in (
+                                         'thread/status/changed', 'thread/started', 'turn/started')]},
             })
             self.send({"method": "initialized"})
         except Exception:
@@ -151,6 +154,8 @@ class Rpc:
                         target = self.pending.get(message["id"])
                     if target is not None:
                         target.put_nowait(message)
+                elif self.notification and 'method' in message:
+                    self.notification(message['method'], message.get('params') or {})
         except (OSError, EOFError, ValueError, queue.Full):
             pass
         finally:

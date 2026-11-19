@@ -42,6 +42,20 @@ def connect():
 
 
 class RpcTest(unittest.TestCase):
+    def test_observer_receives_small_activity_events_without_turn_diffs(self):
+        """유휴 판단에 필요한 작은 상태 알림만 구독하고 큰 턴 diff는 계속 제외한다."""
+        received = threading.Event()
+        with patch('rpc.UnixWebSocket', Socket):
+            client = Rpc(None, None, '/fixture.sock',
+                         notification=lambda method, params: received.set())
+        self.addCleanup(client.close)
+        declined = client.websocket.sent[0]['params']['capabilities']['optOutNotificationMethods']
+        self.assertIn('turn/diff/updated', declined)
+        self.assertNotIn('thread/status/changed', declined)
+        client.websocket.incoming.put(json.dumps({'method': 'thread/status/changed',
+                                                  'params': {'status': {'type': 'active'}}}).encode())
+        self.assertTrue(received.wait(1))
+
     def test_server_request_burst_closes_connection_instead_of_growing_workers(self):
         """처리 중인 서버 요청이 상한을 넘으면 추가 스레드 대신 연결을 닫는다."""
         client, transport = connect()

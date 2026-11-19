@@ -2,6 +2,7 @@
 
 import os
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 import resource
 import shutil
@@ -9,6 +10,7 @@ import socket
 import struct
 import subprocess
 import tempfile
+import threading
 import time
 
 from policy import THRESHOLD, UsageUnavailable
@@ -105,30 +107,42 @@ def preserve_server_package(binary, home):
     return current / "bin" / installed.name
 
 
-def loaded_thread_ids(client):
+def scan_request(client, method, params, deadline=None):
+    if deadline is None:
+        return client.request(method, params)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise UsageUnavailable('Idle scan budget exhausted')
+    result = client.request(method, params, timeout=min(30, remaining))
+    if time.monotonic() >= deadline:
+        raise UsageUnavailable('Idle scan budget exhausted')
+    return result
+
+
+def loaded_thread_ids(client, deadline=None):
     cursor = None
     while True:
-        response = client.request("thread/loaded/list", {"cursor": cursor})
+        response = scan_request(client, 'thread/loaded/list', {'cursor': cursor}, deadline)
         yield from response.get('data', [])
         cursor = response.get("nextCursor")
         if not cursor:
             return
 
 
-def loaded_threads(client):
+def loaded_threads(client, deadline=None):
     """Yield (thread id, thread without turns) for every thread loaded in the runtime."""
-    for thread_id in loaded_thread_ids(client):
-        yield thread_id, client.request('thread/read', {
+    for thread_id in loaded_thread_ids(client, deadline):
+        yield thread_id, scan_request(client, 'thread/read', {
             'threadId': thread_id, 'includeTurns': False,
-        }).get('thread', {})
+        }, deadline).get('thread', {})
 
 
 def quiet(thread):
     return thread.get("status", {}).get("type") in QUIET
 
 
-def all_idle(client):
-    return all(quiet(thread) for _, thread in loaded_threads(client))
+def all_idle(client, deadline=None):
+    return all(quiet(thread) for _, thread in loaded_threads(client, deadline))
 
 
 def newest_turn(client, thread_id):
@@ -153,6 +167,10 @@ class Runtime:
         self.continued = set()
         self.release_ids = deque()
         self.release_cursor = None
+        self.idle_pool = None
+        self.idle_job = None
+        self.activity_lock = threading.Lock()
+        self.activity_serial = 0
 
     def start(self):
         prepare_home(self.home)
@@ -192,7 +210,8 @@ class Runtime:
                     raise UsageUnavailable("Automatic Codex runtime did not start")
                 if self.socket.exists():
                     try:
-                        self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+                        self.client = Rpc(self.binary, self.home, self.socket, self.refresh,
+                                          notification=self.activity)
                         break
                     except (ConnectionRefusedError, FileNotFoundError):
                         pass
@@ -211,7 +230,8 @@ class Runtime:
         if self.client is None or self.client.closed:
             if self.client:
                 self.client.close()
-            self.client = Rpc(self.binary, self.home, self.socket, self.refresh)
+            self.client = Rpc(self.binary, self.home, self.socket, self.refresh,
+                              notification=self.activity)
         response = self.client.request("account/read", {"refreshToken": False})
         if response.get("account") is None:
             return
@@ -237,6 +257,11 @@ class Runtime:
 
     def release_subscriptions(self):
         """한 대화씩 최대 2초 안에 정리하여 감독 루프에 제어를 돌려준다."""
+        if self.idle_job is not None:
+            if self.idle_job['future'].done() and time.monotonic() >= self.idle_job['deadline']:
+                self.idle_job = None
+            else:
+                return False
         if self.client.closed:
             self.release_ids.clear()
             self.release_cursor = None
@@ -264,20 +289,59 @@ class Runtime:
                 self.release_ids.popleft()
         return not self.release_ids and not self.release_cursor
 
+    def activity(self, method, params):
+        if (method in ('thread/started', 'turn/started') or method == 'thread/status/changed'
+                and params.get('status', {}).get('type') not in QUIET):
+            with self.activity_lock:
+                self.activity_serial += 1
+
+    @property
+    def idle_pending(self):
+        return self.idle_job is not None and not self.idle_job['future'].done()
+
+    def idle_ready(self, name, tokens):
+        if self.idle_job is None:
+            if self.idle_pool is None:
+                self.idle_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='codex-idle')
+            with self.activity_lock:
+                deadline = time.monotonic() + 300
+                self.idle_job = {'name': name, 'tokens': tokens, 'client': self.client,
+                                 'serial': self.activity_serial, 'deadline': deadline,
+                                 'future': self.idle_pool.submit(
+                                     all_idle, self.client, deadline=deadline)}
+        job = self.idle_job
+        try:
+            idle = job['future'].result(timeout=.02)
+        except FutureTimeout:
+            return False
+        except Exception:
+            self.idle_job = None
+            raise
+        self.idle_job = None
+        with self.activity_lock:
+            return (idle and job['name'] == name and job['tokens'] == tokens
+                    and job['client'] is self.client and job['serial'] == self.activity_serial)
+
     def select(self, name, *, force=False):
         if self.client.closed:
             self.observe_account()
         if name == self.active:
+            if self.idle_job is not None and not self.idle_pending:
+                self.idle_job = None
             return True
+        if not force and self.idle_pending:
+            return False
         profile = self.profiles[name]
         if profile.usage()['used_percent'] >= THRESHOLD:
             raise UsageUnavailable('Target account no longer has available quota')
-        if not force and not all_idle(self.client):
+        tokens = profile.tokens()
+        if not force and not self.idle_ready(name, tokens):
             return False
         old = self.active
+        self.activity('turn/started', {})
         try:
             self.client.request("account/login/start", {
-                "type": "chatgptAuthTokens", **profile.tokens(),
+                "type": "chatgptAuthTokens", **tokens,
             })
             verified = self.client.request("account/rateLimits/read")
             if verified.get("accountId") != profile.account_id:
@@ -337,6 +401,10 @@ class Runtime:
         if self.client:
             self.client.close()
             self.client = None
+        if self.idle_pool:
+            self.idle_pool.shutdown(wait=False, cancel_futures=True)
+            self.idle_pool = None
+            self.idle_job = None
 
     def stop(self):
         """새 서버 시작 실패와 명시적인 종료에서만 소유 프로세스를 내린다."""

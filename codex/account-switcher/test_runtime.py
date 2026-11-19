@@ -7,6 +7,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -403,6 +405,24 @@ class IdleTest(unittest.TestCase):
         client.request.side_effect = [{"data": ["a"]}, {"thread": {}}]
         self.assertFalse(all_idle(client))
 
+    def test_idle_scan_has_one_total_budget_across_threads(self):
+        """대화별 제한뿐 아니라 전체 점검 예산을 넘으면 유휴로 승인하지 않는다."""
+        clock = [0]
+        client = Mock()
+
+        def slow(method, params, timeout):
+            self.assertLessEqual(timeout, 5 - clock[0])
+            clock[0] += 2
+            if method == 'thread/loaded/list':
+                return {'data': ['a', 'b', 'c']}
+            return {'thread': {'status': {'type': 'idle'}}}
+
+        client.request.side_effect = slow
+        with patch('runtime.time.monotonic', side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(UsageUnavailable, 'budget'):
+                all_idle(client, deadline=5)
+        self.assertEqual(client.request.call_count, 3)
+
     def test_thread_stopped_by_an_error_does_not_block_switch(self):
         client = Mock()
         client.request.side_effect = [{"data": ["a"]}, {"thread": {"status": {"type": "systemError"}}}]
@@ -511,6 +531,45 @@ class SwitchingTest(unittest.TestCase):
         self.runtime = Runtime(self.profiles)
         self.runtime.active = "company"
         self.runtime.client = Mock(closed=False)
+        self.addCleanup(self.runtime.close)
+
+    def test_slow_idle_scan_returns_control_and_rejects_activity_during_scan(self):
+        """느린 전체 점검은 감독을 막지 않으며 그 사이 새 활동이 관측되면 다시 검사한다."""
+        entered, release = threading.Event(), threading.Event()
+
+        def scan(_client, **_kwargs):
+            entered.set()
+            release.wait(2)
+            return True
+
+        with patch('runtime.all_idle', side_effect=scan):
+            started = time.monotonic()
+            try:
+                self.assertFalse(self.runtime.select('personal'))
+                self.assertLess(time.monotonic() - started, .5)
+                self.assertTrue(entered.wait(.5))
+                self.runtime.activity('thread/status/changed', {'status': {'type': 'active'}})
+                release.set()
+                self.runtime.idle_job['future'].result(timeout=1)
+                self.assertFalse(self.runtime.select('personal'))
+                self.assertNotIn('account/login/start', [
+                    call.args[0] for call in self.runtime.client.request.call_args_list])
+            finally:
+                release.set()
+
+    def test_token_preparation_finishes_before_the_idle_snapshot(self):
+        """토큰 갱신 중 시작된 작업은 유휴 검사에서 발견하고 로그인을 바꾸지 않는다."""
+        active = [False]
+
+        def tokens():
+            active[0] = True
+            return {'accessToken': 'fixture', 'chatgptAccountId': 'personal'}
+
+        self.profiles['personal'].tokens.side_effect = tokens
+        with patch('runtime.all_idle', side_effect=lambda *_args, **_kwargs: not active[0]):
+            self.assertFalse(self.runtime.select('personal'))
+        self.assertNotIn('account/login/start', [
+            call.args[0] for call in self.runtime.client.request.call_args_list])
 
     def test_exhausted_or_unavailable_target_never_changes_login(self):
         """이전 조회에 여유가 있었어도 전환 직전 한도를 확인할 수 없으면 로그인하지 않는다."""
@@ -531,8 +590,6 @@ class SwitchingTest(unittest.TestCase):
         ]
         self.assertFalse(self.runtime.select("personal"))
         self.assertEqual(self.runtime.active, "company")
-        self.profiles["personal"].tokens.assert_not_called()
-
         methods = [call.args[0] for call in self.runtime.client.request.call_args_list]
         self.assertNotIn("account/login/start", methods)
         self.assertNotIn("turn/interrupt", methods)

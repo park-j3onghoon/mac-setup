@@ -111,7 +111,8 @@ def monitor(runtime, profiles, stop, state):
                     retry_switch_at, idle_retry_delay = 0, 2
                 else:
                     retry_switch_at = time.time() + idle_retry_delay
-                    idle_retry_delay = min(idle_retry_delay * 2, 30)
+                    idle_retry_delay = (2 if runtime.idle_pending is True
+                                        else min(idle_retry_delay * 2, 30))
                 state.pop("runtime_error", None)
             except Exception as error:
                 state["status"] = "degraded"
