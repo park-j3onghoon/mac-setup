@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 
+from transcript_usage import project
 from api import ApiError
 from macos import KeychainError
 from storage import SwitcherError, read_json
@@ -134,10 +135,29 @@ class TokenTail:
                     line = b''
                     while limit is None or stream.tell() < limit:
                         size = MAX_LINE_BYTES + 1 if limit is None else min(MAX_LINE_BYTES + 1, limit - stream.tell())
+                        start = stream.tell()
                         line = stream.readline(size)
                         if not line:
                             break
-                        if discarding or len(line) > MAX_LINE_BYTES:
+                        projected = None
+                        if len(line) > MAX_LINE_BYTES and not discarding and line.lstrip().startswith(b'{'):
+                            while not line.endswith(b'\n') and (limit is None or stream.tell() < limit):
+                                line = stream.readline(32768 if limit is None else min(32768, limit - stream.tell()))
+                                if not line:
+                                    break
+                            if not line.endswith(b'\n'):
+                                break
+                            end = stream.tell()
+                            stream.seek(start)
+                            try:
+                                projected = project(stream, end - start, TOKEN_FIELDS)
+                            except (ValueError, TypeError):
+                                errors += 1
+                                offset = end
+                                stream.seek(end)
+                                continue
+                            stream.seek(end)
+                        elif discarding or len(line) > MAX_LINE_BYTES:
                             errors += int(not discarding)
                             discarding = not line.endswith(b'\n')
                             offset = stream.tell()
@@ -145,10 +165,10 @@ class TokenTail:
                         if not line.endswith(b'\n'):
                             break
                         offset = stream.tell()
-                        if b'"usage"' not in line or b'"assistant"' not in line:
+                        if projected is None and (b'"usage"' not in line or b'"assistant"' not in line):
                             continue
                         try:
-                            row = json.loads(line)
+                            row = projected if projected is not None else json.loads(line)
                             msg = row.get('message', {})
                             if row.get('type') != 'assistant' or not isinstance(msg, dict):
                                 continue
@@ -166,7 +186,7 @@ class TokenTail:
                                 errors += 1
                                 continue
                             if stamp > horizon:
-                                offset -= len(line)
+                                offset = start
                                 self.retry_files.add(path)
                                 break
                             values = tuple(usage.get(k, 0) or 0 for k in TOKEN_FIELDS)
@@ -206,10 +226,14 @@ class TokenTail:
 def observe(app):
     """Metadata-only fallback while the account writer's compatibility guard is closed."""
     started = time.time()
-    readings, errors, retry = {}, {}, 0
+    readings, errors, retry = {}, {}, {}
+    try:
+        threshold = app.state.load('service_settings').get('threshold')
+    except (SwitcherError, ValueError, OSError):
+        threshold = None
     with app.state.lock():
         account = read_json(app.live.config).get('oauthAccount', {})
-        email = account.get('emailAddress')
+        email = app.account_key(account.get('emailAddress'))
         if email not in app.accounts:
             raise SwitcherError('Current login is outside the measurement roster')
         try:
@@ -227,7 +251,7 @@ def observe(app):
                 if bundle is None:
                     errors[candidate] = 'not_enrolled'
                     continue
-                if bundle.get('account', {}).get('emailAddress') != candidate:
+                if app.account_key(bundle.get('account', {}).get('emailAddress')) != candidate:
                     errors[candidate] = 'authentication_needs_attention'
                     continue
                 if bundle['oauth'].get('expiresAt', 0) <= (time.time() + 120) * 1000:
@@ -239,7 +263,7 @@ def observe(app):
                         continue
                     if read_json(app.live.config).get('oauthAccount') != account:
                         raise SwitcherError('Login changed during measurement; retry later')
-                    bundle = app.refresh_inactive(candidate, bundle, time.time())
+                    bundle = app.refresh_inactive(candidate, bundle, time.time(), measurement=True)
                 app.verify_identity(bundle)
                 if (candidate == email and active and app.vault.read(email) != active
                         and not app.state.load('halt')):
@@ -247,17 +271,18 @@ def observe(app):
                     if (current and current.get('claudeAiOauth') == active['oauth']
                             and read_json(app.live.config).get('oauthAccount') == account):
                         app.vault.write(email, active)
-                reading = app.api.usage(bundle['oauth'], time.time())
+                reading = app.read_usage(candidate, bundle['oauth'], time.time())
                 readings[candidate] = asdict(reading)
             except ApiError as exc:
                 errors[candidate] = f'http_{exc.status}' if exc.status else 'metadata_unavailable'
-                retry = max(retry, exc.retry_after)
+                retry[candidate] = exc.retry_after
             except (SwitcherError, KeychainError):
                 errors[candidate] = 'authentication_needs_attention'
         changed = read_json(app.live.config).get('oauthAccount') != account
     return {'observed_at': started, 'active': email, 'switched': False,
             'usage': readings, 'errors': errors, 'identity_changed': changed,
-            'retry_after_seconds': retry, 'source': 'measurement_only'}
+            'retry_after_seconds': min(retry.values()) if len(retry) == len(app.accounts) else 0,
+            'source': 'measurement_only', 'switch_threshold': threshold}
 
 
 def quota_deltas(previous, current):
@@ -412,7 +437,7 @@ class Measurement:
                       and not previous.get('tokens', {}).get('read_errors')
                       and 0 < now - previous['captured_at'] <= 180)
         row = {'schema': 1, 'captured_at': now, 'plan_start': self.plan_start,
-               'poll_started_at': report['observed_at'],
+               'poll_started_at': report['observed_at'], 'switch_threshold': report.get('switch_threshold'),
                'source': report.get('source', 'switcher_poll'),
                'active': report.get('active'), 'switched': bool(report.get('switched')),
                'identity_changed': bool(report.get('identity_changed')),
@@ -428,8 +453,9 @@ class Measurement:
         day = datetime.fromtimestamp(now, timezone.utc).strftime('%Y-%m-%d')
         path = directory / f'{day}.jsonl'
         raw = (json.dumps(row, allow_nan=False, separators=(',', ':')) + '\n').encode()
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'ab') as stream:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'a+b') as stream:
+            discard_torn_tail(stream)
             os.fchmod(stream.fileno(), 0o600)
             self.appended = (path, os.fstat(fd).st_size, raw, row)
             stream.write(raw)
@@ -464,9 +490,55 @@ class Measurement:
         self.pruned_day = day
 
 
+def discard_torn_tail(stream):
+    end = stream.seek(0, os.SEEK_END)
+    if not end:
+        return
+    stream.seek(end - 1)
+    if stream.read(1) == b'\n':
+        return
+    while end:
+        start = max(0, end - 32768)
+        stream.seek(start)
+        boundary = stream.read(end - start).rfind(b'\n')
+        if boundary >= 0:
+            stream.truncate(start + boundary + 1)
+            return
+        end = start
+    stream.truncate(0)
+
+
+def valid_sample(row):
+    def number(value):
+        return type(value) in (int, float) and -1e308 < value < 1e308
+    if not isinstance(row, dict) or not number(row.get('captured_at')):
+        return False
+    tokens, usage, deltas = row.get('tokens', {}), row.get('usage', {}), row.get('quota_deltas', [])
+    if not isinstance(tokens, dict) or not isinstance(usage, dict) or not isinstance(deltas, list):
+        return False
+    models = tokens.get('by_model', {})
+    if not isinstance(models, dict) or not number(tokens.get('read_errors', 0)):
+        return False
+    if not all(isinstance(counts, dict) and all(number(counts.get(f, 0)) for f in TOKEN_FIELDS)
+               for counts in models.values()):
+        return False
+    if row.get('token_interval_seconds') is not None and not number(row['token_interval_seconds']):
+        return False
+    if not all(isinstance(reading, dict) and number(reading.get('checked_at', row['captured_at']))
+               for reading in usage.values()):
+        return False
+    return all(isinstance(d, dict) and isinstance(d.get('valid'), bool) and
+               (not d['valid'] or ('by_model' in tokens and 'token_account_estimate' in row
+                and isinstance(d.get('account'), str) and isinstance(d.get('window'), str)
+                and isinstance(d.get('saturated'), bool)
+                and all(number(d.get(f)) for f in ('seconds', 'start_percent', 'end_percent', 'delta_pp'))))
+               for d in deltas)
+
+
 def summarize(state, since=None, until=None):
     """Observed maxima only; rounded quota snapshots do not prove a future safety bound."""
     groups = {}
+    thresholds = set()
     count, paired, first, last = 0, 0, None, None
     failed, empty, token_read_errors, long_gaps, malformed = 0, 0, 0, 0, 0
     first_day = datetime.fromtimestamp(since, timezone.utc).date().isoformat() if since is not None else None
@@ -480,20 +552,21 @@ def summarize(state, since=None, until=None):
             continue
         if path.is_symlink():
             continue
-        with path.open() as stream:
+        with path.open('rb') as stream:
             for line in stream:
                 try:
                     row = json.loads(line)
-                except ValueError:
+                except (ValueError, RecursionError):
                     malformed += 1
                     continue
-                if (not isinstance(row, dict) or not isinstance(row.get('captured_at'), (int, float))
-                        or not math.isfinite(row['captured_at'])):
+                if not valid_sample(row):
                     malformed += 1
                     continue
                 at = row['captured_at']
                 if (since is not None and at < since) or (until is not None and at >= until):
                     continue
+                if type(row.get('switch_threshold')) in (int, float) and 0 < row['switch_threshold'] <= 100:
+                    thresholds.add(row['switch_threshold'])
                 count += 1
                 failed += bool(row.get('errors'))
                 empty += not bool(row.get('usage'))
@@ -538,7 +611,7 @@ def summarize(state, since=None, until=None):
                         group['opus55_only_intervals'] += int(opus_only)
                         group['positive_opus55_intervals'] += int(opus_only and d['delta_pp'] > 0
                                                                   and not d['saturated'])
-    return {'samples': count, 'first_at': first, 'last_at': last,
+    return {'samples': count, 'switch_thresholds': sorted(thresholds), 'first_at': first, 'last_at': last,
             'paired_account_window_intervals': paired, 'windows': list(groups.values()),
             'quality': {'failed_samples': failed, 'empty_usage_samples': empty, 'malformed_rows': malformed,
                         'token_read_errors': token_read_errors, 'gaps_over_180_seconds': long_gaps},

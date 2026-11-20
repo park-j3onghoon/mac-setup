@@ -3,6 +3,9 @@
 import ctypes as C
 import getpass
 import json
+import os
+from pathlib import Path
+import pwd
 import subprocess
 import sys
 
@@ -20,6 +23,10 @@ class KeychainError(RuntimeError):
 
 class SavedCredentialError(KeychainError):
     """The switcher's private saved item was inaccessible."""
+
+
+class TransientKeychainError(KeychainError):
+    """The default user keychain is temporarily locked or unavailable."""
 
 
 def system_awake(runner=subprocess.run):
@@ -99,6 +106,24 @@ class Keychain:
         self.sec.SecKeychainItemFreeContent.argtypes = [C.c_void_p, C.c_void_p]
         self.sec.SecKeychainItemFreeContent.restype = C.c_int32
         self.sec.SecKeychainSetUserInteractionAllowed.argtypes = [C.c_bool]
+        self.sec.SecKeychainCopyDefault.argtypes = [C.POINTER(C.c_void_p)]
+        self.sec.SecKeychainCopyDefault.restype = C.c_int32
+        self.sec.SecKeychainGetStatus.argtypes = [C.c_void_p, C.POINTER(C.c_uint32)]
+        self.sec.SecKeychainGetStatus.restype = C.c_int32
+
+    def locked(self):
+        keychain, flags = C.c_void_p(), C.c_uint32()
+        status = self.sec.SecKeychainCopyDefault(C.byref(keychain))
+        if status == -25291:  # errSecNotAvailable
+            raise TransientKeychainError('User Keychain is temporarily unavailable')
+        if status or not keychain:
+            return None
+        try:
+            if self.sec.SecKeychainGetStatus(keychain, C.byref(flags)):
+                return None
+            return not bool(flags.value & 1)  # kSecUnlockStateStatus
+        finally:
+            self.cf.CFRelease(keychain)
 
     def constant(self, name):
         library = self.cf if name.startswith('kCF') else self.sec
@@ -220,10 +245,14 @@ class Vault:
         self.keychain = keychain
         self.namespace = namespace
         self.username = getpass.getuser()
+        self.writer_lock_directory = Path(pwd.getpwuid(os.getuid()).pw_dir) / '.claude'
         self.native = NativeKeychain(keychain, self.username)
 
     def read_active(self):
         return self.native.read()
+
+    def require_unlocked(self):
+        self.native.require_unlocked()
 
     def write_active(self, value):
         self.native.write(value)
@@ -267,13 +296,20 @@ class NativeKeychain:
         self.keychain, self.username = keychain, username
         self.runner = subprocess.run if runner is None else runner
 
+    def require_unlocked(self):
+        if (self.keychain is not None and not self.keychain.allow_interaction
+                and self.keychain.locked() is True):
+            raise TransientKeychainError('Default user Keychain is locked; retry after unlock')
+
     def read(self):
         try:
+            self.require_unlocked()
             result = self.runner([SECURITY, 'find-generic-password',
                                   '-s', self.service, '-a', self.username, '-w'],
                                  stdin=subprocess.DEVNULL, capture_output=True, timeout=5,
                                  check=False)
             if result.returncode:
+                self.require_unlocked()
                 raise KeychainError(f'Native Claude credential read failed: status={result.returncode}')
             if len(result.stdout) > MAX_CREDENTIAL_BYTES:
                 raise KeychainError('Native Claude credential data exceeds the reader limit')
@@ -291,6 +327,7 @@ class NativeKeychain:
 
     def write_item(self, value):
         try:
+            self.require_unlocked()
             raw = json.dumps(value, separators=(',', ':'), allow_nan=False).encode()
             if len(raw) > MAX_CREDENTIAL_BYTES:
                 raise KeychainError('Native Claude credential data exceeds the writer limit')
@@ -307,6 +344,7 @@ class NativeKeychain:
                                      stdin=subprocess.DEVNULL, capture_output=True, timeout=5,
                                      check=False)
             if result.returncode:
+                self.require_unlocked()
                 raise KeychainError('Native Claude credential update failed')
             if self.read() != value:
                 raise KeychainError('Native Claude credential read-back verification failed')

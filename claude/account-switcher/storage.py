@@ -29,6 +29,13 @@ def fingerprint(oauth):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def email_key(value):
+    if not isinstance(value, str):
+        return None
+    local, at, domain = value.rpartition('@')
+    return local + at + domain.lower()
+
+
 def read_json(path):
     with open(path, encoding='utf-8') as stream:
         data = json.load(stream)
@@ -99,8 +106,8 @@ class State:
                 os.close(fd)
 
     @contextmanager
-    def lock(self, name='operation', *, blocking=False):
-        path = self.root / f'{name}.lock'
+    def lock(self, name='operation', *, blocking=False, directory=None):
+        path = (self.root if directory is None else Path(directory)) / f'{name}.lock'
         transient = name.startswith('restart-')
         while True:
             fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -118,7 +125,7 @@ class State:
                     except FileNotFoundError:
                         continue
                 try:
-                    yield
+                    yield fd
                 finally:
                     if transient:
                         path.unlink()
@@ -147,8 +154,11 @@ def directory_lock(path, timeout=5):
             recorded = json.loads(os.read(fd, 1024))
         except (ValueError, UnicodeDecodeError):
             recorded = None
-        if path.exists() and recorded == directory_identity(path):
-            path.rmdir()
+        try:
+            if recorded == directory_identity(path):
+                path.rmdir()
+        except FileNotFoundError:
+            pass
         with owned_directory_lock(path, max(0, deadline - time.monotonic()), fd):
             yield
     finally:

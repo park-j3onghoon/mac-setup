@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import refresh_hook
+from refresh import SelfRestart
 from refresh import SessionEnded
 from storage import State, SwitcherError
 
@@ -17,6 +18,8 @@ def restart_stub(limited=False, needed=False):
     """A SelfRestart class whose checks answer as given; an exception given for needed is raised
     as a slow ps raises it."""
     checks = Mock(limited=Mock(return_value=limited), needed=Mock(side_effect=[needed]))
+    checks.pending.return_value = {}
+    checks.receipt = 'handoff-test'
     return Mock(return_value=checks)
 
 
@@ -43,17 +46,23 @@ class HookTests(unittest.TestCase):
 
         try:
             with patch.object(State, 'lock', first_lock), patch.object(refresh_hook, 'SelfRestart') as restart:
+                receipt = SelfRestart(None, self.state_dir, 'fixture', 'surface').receipt
+                restart.return_value.receipt = receipt
                 restart.return_value.run.return_value = 'restarted'
                 refresh_hook.helper('fixture', 'surface')
 
             with self.assertRaises(SwitcherError):
-                with original(State(self.state_dir), 'restart-fixture'):
+                with original(State(self.state_dir), 'restart-' + receipt.removeprefix('handoff-')):
                     pass
         finally:
             for holder in holders:
                 holder.__exit__(None, None, None)
 
     def setUp(self):
+        for name, value in [('hook_ancestors', [11]), ('switch_pending', 123)]:
+            mocked = patch.object(refresh_hook, name, return_value=value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.state_dir = Path(self.tmp.name) / 'state'

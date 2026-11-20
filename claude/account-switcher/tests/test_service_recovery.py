@@ -30,6 +30,7 @@ class ServiceRecoveryTests(unittest.TestCase):
                 self.app.refresh_inactive(account, self.app.vault.read(account), NOW)
         self.assertEqual(self.app.api.refresh.call_count, 1)
         bundle['oauth']['refreshToken'] = 'new-grant'
+        self.app.vault.write(account, bundle)
         self.app.api.refresh.side_effect = None
         self.app.api.refresh.return_value = bundle['oauth']
         self.assertNotIn('rejected_refresh', self.app.refresh_inactive(account, bundle, NOW))
@@ -80,7 +81,7 @@ class ServiceRecoveryTests(unittest.TestCase):
 
     def test_timeout_after_bootstrap_can_be_retried(self):
         with patch('switcher.Path.home', return_value=self.root), \
-                patch.object(self.app, 'tick', return_value={'errors': {}, 'target': 'active'}), \
+                patch.object(self.app, 'tick', return_value={'errors': {}, 'usage': dict.fromkeys(self.app.accounts)}), \
                 patch('switcher.subprocess.run', side_effect=[
                     subprocess.TimeoutExpired('bootstrap', 10), Mock(returncode=1),
                     Mock(returncode=0)]) as run:

@@ -20,7 +20,7 @@ class EnrollmentTests(unittest.TestCase):
 
     def browser_signs_in(self, email):
         """공식 로그인이 브라우저에서 email 계정으로 끝나 live 로그인이 그 계정으로 바뀐 것처럼 꾸민다."""
-        def official_login(*_args):
+        def official_login(*_args, **_kwargs):
             signed_in = self.app.vault.read(email)
             self.app.vault.active['claudeAiOauth'] = signed_in['oauth']
             self.app.live.write_account(signed_in['account'])

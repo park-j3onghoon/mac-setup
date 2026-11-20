@@ -1,26 +1,11 @@
-"""Restart a live Claude Code session after an account switch so it uses the new login.
+"""Guide existing, unmanaged Claude sessions through an account change on their own cmux surface.
 
-Claude Code 2.1.323 keeps the access token it holds until the token expires, a request gets
-401, or a usage-limit error occurs (2026-11-13: sessions still used the old account seven
-minutes after a switch). The switcher service records each switch time (record_switch).
-cmux lets only processes started inside cmux type into its tabs ("socketControlMode":
-"cmuxOnly"), so the restart runs from each session's own Stop/StopFailure hook
-(refresh_hook.py), which runs inside cmux; a detached helper keeps that access.
-
-When a session that started before the latest switch, or that stopped at a usage limit, ends
-a turn, the hook starts a helper (SelfRestart). The helper first waits for a switch newer than
-the session (a limit can come before the service notices and switches), then until the
-session is idle, its input box is empty and no background work runs, and types the built-in
-`/restart`. `/restart` re-executes in the same pid and resumes the same session id with a new
-registry startedAt (measured 2026-11-13). After a turn that ended with a usage-limit error,
-the helper types CONTINUE_PROMPT once the session is back.
-
-Background work means a child shell (Bash or Monitor tasks) under the session's process, or
-a subagent transcript written in the last SUBAGENT_QUIET_SECONDS. The footer's "← N agents"
-is the agent-view hint, also shown by a fresh session, and Claude Code's own
-`caffeinate -i -t 300` outlives a turn by up to five minutes, so neither is used.
+The terminal offers no conditional empty-input submission. A local notification lets the user
+finish their draft and run /restart. Keep the handoff until Claude publishes its new startedAt,
+then offer continuation if the original limit stop is still the last real conversation event.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -43,23 +28,17 @@ REFRESH_WINDOW_SECONDS = 8 * 3600
 # Longer than the service's longest usage lookup interval, 9 minutes (policy.POLL_TIERS).
 SWITCH_TIMEOUT_SECONDS = 900
 READY_TIMEOUT_SECONDS = 600
-RESTART_TIMEOUT_SECONDS = 120
 WAIT_STEP_SECONDS = 3
 # A session stopped at a limit ends no later turn to retry from (Claude Code waits for the reset
 # itself), so past READY_TIMEOUT_SECONDS its helper waits out background work, such as a
 # 14-minute timer on 2026-11-16 15:06~15:13, for the restart window, checking less often.
 LIMIT_WAIT_STEP_SECONDS = 30
-SUBAGENT_QUIET_SECONDS = 120
 WORKING_CHILDREN = frozenset({'zsh', 'bash', 'sh'})
 MCP_NAME = re.compile(r'(?:^|[/@._-])mcp(?:$|[/._-])', re.I)
 LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
 # User entries Claude Code writes itself. Background task notifications keep arriving after a
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
 GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
-# Claude Code 2.1.325 titles its usage-limit and billing choices this way. They covered the input
-# box of a session restarted while still limited (2026-11-16 11:35); Esc cancels them, the same
-# as "Stop and wait for limit to reset".
-LIMIT_CHOICES_TITLE = 'What do you want to do?'
 RULE_MIN_DASHES = 10
 TAIL_BYTES = 262144
 
@@ -96,14 +75,23 @@ def input_ready(screen):
     i = prompts[-1]
     if lines[i].strip() != '❯' or not 0 < i < len(lines) - 1:
         return False
-    return is_rule(lines[i - 1]) and is_rule(lines[i + 1])
+    if not (is_rule(lines[i - 1]) and is_rule(lines[i + 1])):
+        return False
+    footer = [line.strip() for line in lines[i + 2:] if line.strip()]
+    # The optional first status line names the workspace. A visible dialog below the
+    # recognized mode line means the input border belongs to an older screen.
+    return not footer or (len(footer) <= 2 and bool(re.fullmatch(
+        r'(?:⏵⏵ |⏸ )?(?:auto mode on|accept edits on|plan mode on|bypass permissions on)'
+        r'(?: \(shift\+tab to cycle\))?(?: · ← \d+ agents?)?', footer[-1], re.I)))
 
 
 def notification_text(entry):
-    content = (entry.get('message') or {}).get('content')
+    message = entry.get('message')
+    content = message.get('content') if isinstance(message, dict) else None
     if isinstance(content, str):
         return content
-    if isinstance(content, list) and ((entry.get('origin') or {}).get('kind') == 'task-notification'
+    origin = entry.get('origin')
+    if isinstance(content, list) and (isinstance(origin, dict) and origin.get('kind') == 'task-notification'
                                       or entry.get('promptSource') == 'system'):
         return ''.join(block['text'] for block in content if isinstance(block, dict)
                        and block.get('type') == 'text' and isinstance(block.get('text'), str))
@@ -111,7 +99,10 @@ def notification_text(entry):
 
 
 def is_generated(entry):
-    return entry.get('isMeta') or notification_text(entry).lstrip().startswith(GENERATED_PREFIXES)
+    origin = entry.get('origin')
+    system = (entry.get('promptSource') == 'system' or
+              isinstance(origin, dict) and origin.get('kind') == 'task-notification')
+    return bool(entry.get('isMeta') or system and notification_text(entry).lstrip().startswith(GENERATED_PREFIXES))
 
 
 def latest_message(projects_dir, session_id):
@@ -259,24 +250,29 @@ def compact_record(stream, start, end):
     return result
 
 
-def live_session(config_home, session_id, runner=subprocess.run, prior=None):
+def live_session(config_home, session_id, runner=subprocess.run, prior=None, ancestors=None):
     """This interactive session's registry entry while its pid still belongs to the same process.
 
     `ps -p` gets one pid: with all 15 registered pids it took 0.16 s of system time, with one
     under 0.01 s (2026-11-16)."""
     unreadable = False
     registry = Path(config_home) / 'sessions'
-    paths = (registry / f"{prior['pid']}.json",) if prior else registry.glob('*.json')
+    pids = [prior['pid']] if prior else ancestors
+    paths = (registry / f'{pid}.json' for pid in pids) if pids is not None else registry.glob('*.json')
+    matches = []
     for path in paths:
         try:
             entry = json.loads(path.read_text())
         except FileNotFoundError:
             continue
         except (OSError, ValueError):
-            unreadable |= prior is not None
+            unreadable = True
+            continue
+        if not isinstance(entry, dict):
+            unreadable = True
             continue
         if (entry.get('sessionId') != session_id or entry.get('kind') != 'interactive'
-                or not isinstance(entry.get('pid'), int)):
+                or type(entry.get('pid')) is not int or str(entry['pid']) != path.stem):
             continue
         result = runner(['/bin/ps', '-o', 'lstart=', '-p', str(entry['pid'])], capture_output=True,
                         text=True, timeout=5, check=False, env={'LC_ALL': 'C', 'TZ': 'UTC'})
@@ -289,10 +285,32 @@ def live_session(config_home, session_id, runner=subprocess.run, prior=None):
                 pass
             raise subprocess.CalledProcessError(result.returncode, '/bin/ps')
         if result.stdout.strip() == entry.get('procStart'):
-            return entry
+            if prior and prior.get('procStart', entry['procStart']) != entry['procStart']:
+                continue
+            if pids is not None and not unreadable:
+                return entry
+            matches.append(entry)
     if unreadable:
         raise SessionUnavailable("Session registry temporarily unreadable")
-    return None
+    if len(matches) > 1:
+        raise SessionUnavailable('More than one process has this conversation open')
+    return matches[0] if matches else None
+
+
+def hook_ancestors():
+    result = subprocess.run(['/bin/ps', '-ax', '-o', 'pid=,ppid='], capture_output=True,
+                            text=True, timeout=3, check=True)
+    parents = {}
+    for line in result.stdout.splitlines():
+        pair = line.split()
+        if len(pair) == 2 and all(value.isdecimal() for value in pair):
+            parents[int(pair[0])] = int(pair[1])
+    chain = []
+    pid = os.getppid()
+    while pid > 1 and pid not in chain:
+        chain.append(pid)
+        pid = parents.get(pid, 0)
+    return chain
 
 
 def process_children(runner):
@@ -328,8 +346,8 @@ def wraps_mcp(descendants, runner):
 
 
 def background_work(session, children, projects_dir, now, runner=subprocess.run, *, check_completion=False):
-    """True while a shell or a subagent of this session is still working."""
-    candidates, wrappers, stack = [], set(), [session['pid']]
+    """Treat unclassified children and unfinished subagent transcripts as active work."""
+    candidates, wrappers, mcp_servers, stack = [], set(), set(), [session['pid']]
     while stack:
         for child, name in children.get(stack.pop(), []):
             if name in WORKING_CHILDREN:
@@ -339,6 +357,12 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
                 if not wraps_mcp(descendants, runner):
                     return True
                 wrappers.add(str(child))
+                mcp_servers.add(descendants[0][0])
+            elif child not in mcp_servers and name != 'caffeinate':
+                if not wraps_mcp([(child, name)], runner):
+                    return True
+                wrappers.add(str(child))
+                mcp_servers.add(child)
             if name != 'caffeinate':
                 candidates.append(str(child))
             stack.append(child)
@@ -374,10 +398,7 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
     unfinished = set()
     transcripts = set()
     for path in Path(projects_dir).glob(pattern):
-        if not check_completion:
-            if now - path.stat().st_mtime < SUBAGENT_QUIET_SECONDS:
-                return True
-        elif not completed(last_entry(path)):
+        if not completed(last_entry(path)):
             unfinished.add(path.stem.removeprefix('agent-'))
             transcripts.add(path.parent.parent.with_suffix('.jsonl'))
     for path in transcripts:
@@ -393,7 +414,7 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
             if not isinstance(entry, dict) or entry.get('type') != 'user':
                 continue
             content = notification_text(entry)
-            if content.lstrip().startswith('<task-notification>'):
+            if is_generated(entry) and content.lstrip().startswith('<task-notification>'):
                 task = re.search(r'<task-id>([\w-]+)</task-id>', content)
                 if task and re.search(r'<status>(completed|failed|killed|stopped)</status>', content):
                     unfinished.discard(task[1].removeprefix('agent-'))
@@ -411,7 +432,7 @@ class SessionEnded(Exception):
 
 
 class SelfRestart:
-    """Restart one session through its own cmux surface after an account switch."""
+    """Observe one terminal and offer a handoff through local cmux notifications."""
 
     def __init__(self, state, config_home, session_id, surface, runner=subprocess.run,
                  sleep=time.sleep, clock=time.time, cmux=None, monotonic=None):
@@ -424,15 +445,19 @@ class SelfRestart:
         self.transcript = None
         self.last_session = None
         self.registry_hint = None
-        self.watch_exit = True
+        self.ancestors = None
+        self.first_lookup = self.monotonic()
+        self.receipt = 'handoff-' + hashlib.sha256(f'{session_id}/{surface}'.encode()).hexdigest()[:32]
 
     def session(self):
         session = live_session(self.config_home, self.session_id, self.runner,
-                               self.last_session or self.registry_hint)
+                               self.last_session or self.registry_hint, self.ancestors)
         if session:
             self.last_session = session
-        elif self.watch_exit:
+        else:
             if self.last_session is None:
+                if self.ancestors is not None and self.monotonic() - self.first_lookup < 15:
+                    raise SessionUnavailable('Waiting for the source process registration')
                 raise SessionEnded
             pid = self.last_session['pid']
             try:
@@ -470,6 +495,12 @@ class SelfRestart:
             result = self.wait(replacement, 10)
             return bool(result and result[0])
 
+    def pending(self):
+        receipt = self.state.load(self.receipt)
+        since = receipt.get('since')
+        return receipt if (receipt.get('phase') == 'waiting' and type(since) in (int, float)
+                           and 0 <= self.clock() - since <= REFRESH_WINDOW_SECONDS) else {}
+
     def needed(self):
         """True when the latest switch happened after this session's process started."""
         since = switch_pending(self.state, self.clock())
@@ -486,6 +517,9 @@ class SelfRestart:
             return 'session_ended'
 
     def _run(self):
+        pending = self.pending()
+        if pending:
+            return self.confirm(pending)
         was_limited = self.limited()
 
         def awaiting_switch():
@@ -517,24 +551,38 @@ class SelfRestart:
         since = switch_pending(self.state, self.clock())
         if not since or session['startedAt'] / 1000 >= since:
             return 'already_restarted'
-        limited = self.limited()
-        # 직접 요청한 재시작 중에는 registry와 프로세스가 잠시 사라질 수 있다.
-        def still_needs_restart():
-            current = self.quiet_session(None)
-            since = switch_pending(self.state, self.clock())
-            return (current and since and current['startedAt'] == session['startedAt']
-                    and current['startedAt'] / 1000 < since)
+        pending = {'phase': 'waiting', 'pid': session['pid'], 'procStart': session['procStart'],
+                   'startedAt': session['startedAt'], 'since': since, 'limited': self.limited()}
+        self.state.save(self.receipt, pending)
+        return self.confirm(pending)
 
-        if not self.type('/restart', only_if=still_needs_restart):
-            return 'not_ready'
-        self.watch_exit = False
-        if self.wait(lambda: self.ready(session.get('startedAt')), RESTART_TIMEOUT_SECONDS) is None:
-            return 'restart_unconfirmed'
-        if not limited or not self.limited():
-            return 'restarted'
-        if not self.type(CONTINUE_PROMPT, only_if=self.limited):
-            return 'restarted_continuation_deferred'
-        return 'restarted_and_continued'
+    def confirm(self, pending):
+        self.last_session = {key: pending[key] for key in ('pid', 'procStart', 'startedAt')}
+        if not pending.get('notified'):
+            current = self.wait(self.session, 15)
+            if not current:
+                return 'not_ready'
+            if current['startedAt'] == pending['startedAt']:
+                self.cmux('notify', '--surface', self.surface, '--title', 'Claude 계정 전환',
+                          '--body', '초안과 실행 중인 작업을 마친 뒤 이 창에서 /restart 를 입력하세요.')
+            pending['notified'] = True
+            self.state.save(self.receipt, pending)
+
+        def restarted():
+            current = self.session()
+            return (current and current['startedAt'] > pending['startedAt']
+                    and current['startedAt'] >= pending['since'] * 1000)
+
+        if not self.wait(restarted, max(0, pending['since'] + REFRESH_WINDOW_SECONDS - self.clock())):
+            return 'awaiting_user_restart'
+        if pending['limited'] and self.limited():
+            self.cmux('notify', '--surface', self.surface, '--title', 'Claude 이어하기',
+                      '--body', '새 계정이 적용되었습니다. 한도에서 멈춘 작업을 계속하려면 이 대화에 이어서 해 달라고 입력하세요.')
+            outcome = 'continuation_offered'
+        else:
+            outcome = 'restarted'
+        self.state.save(self.receipt, {'phase': outcome, 'since': pending['since']})
+        return outcome
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
         """Check immediately, then back off to 30 seconds; every check reads fresh state."""
@@ -554,17 +602,13 @@ class SelfRestart:
             step = min(step * 2, LIMIT_WAIT_STEP_SECONDS)
 
     def ready(self, old_started):
-        """This session once it is quiet with an empty input box, else None; usage-limit choices
-        covering the box are closed for the next check. While the registry still shows
-        old_started (its startedAt before `/restart`), the session has not come back yet."""
+        """Return the quiet session only when its own current prompt is visible and empty."""
         session = self.quiet_session(old_started)
         if not session:
             return None
         screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
         if input_ready(screen):
             return session
-        if LIMIT_CHOICES_TITLE in screen and 'Stop and wait for limit to reset' in screen:
-            self.cmux('send-key', '--surface', self.surface, 'escape')
         return None
 
     def quiet_session(self, old_started):
@@ -585,21 +629,3 @@ class SelfRestart:
                 raise SessionUnavailable('Could not read the terminal screen')
             raise OSError(f'cmux {args[0]} failed: status={result.returncode}')
         return result.stdout
-
-    def type(self, text, only_if=None):
-        def inspect_input():
-            if only_if and not only_if():
-                return 'occupied'
-            screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
-            return 'empty' if input_ready(screen) else 'occupied'
-
-        if self.wait(inspect_input, 10) != 'empty':
-            return False
-        # cmux 0.64.22 dispatches paste and submit together on its main actor. It does not
-        # provide an atomic empty-input precondition, so the final screen check is still needed.
-        response = json.loads(self.cmux('rpc', 'terminal.paste', json.dumps({
-            'surface_id': self.surface, 'text': text, 'submit_key': 'enter',
-        })))
-        if response.get('submitted') is not True:
-            raise OSError('cmux accepted the paste without confirming submission')
-        return True

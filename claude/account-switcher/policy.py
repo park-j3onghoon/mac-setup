@@ -81,7 +81,10 @@ def choose_account(active: str, primary: str, fallback: str,
     every minute or two (36 switches, 2026-11-13 16:47~17:38).
     """
     reading = readings.get(primary)
-    if reading is None or not reading.verified(now, max_age):
+    known_block = (reading is not None and 0 <= now - reading.checked_at <= max_age and
+                   any((w.blocked or (w.percent is not None and w.percent >= threshold))
+                       and (w.resets_at is None or w.resets_at > now) for w in reading.windows))
+    if reading is None or (not reading.verified(now, max_age) and not known_block):
         return Decision(active, 'primary_unverified')
     if reading.available(now, threshold, max_age):
         return Decision(primary, 'primary_available')

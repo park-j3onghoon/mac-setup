@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from storage import SwitcherError
+from storage import SwitcherError, email_key
 
 
 MARKERS = (b'.oauth_refresh.lock', b'claudeAiOauth', b'mcpOAuth',
@@ -44,7 +44,7 @@ def check(executable, config_home, accounts, previous=None, runner=None):
         status = json.loads(runner([executable, 'auth', 'status', '--json'], capture_output=True,
                                    text=True, timeout=5, check=True).stdout)
         if (status.get('loggedIn') is not True or status.get('authMethod') != 'claude.ai'
-                or status.get('email') not in accounts):
+                or email_key(status.get('email')) not in {email_key(email) for email in accounts}):
             raise SwitcherError('Installed Claude CLI cannot read the configured subscription login')
         return {'version': version, 'binary_identity': identity, 'credential_contract': 'verified',
                 'native_login_read': 'ok', 'active': status['email']}

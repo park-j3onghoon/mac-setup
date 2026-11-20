@@ -41,73 +41,85 @@ def review_if_due(state, now=None):
         plan = state.load('monitoring')
         if not plan or plan.get('status') != 'active':
             return plan
-        if now < min(plan['next_review_at'], plan['ends_at']):
-            return plan
-        final = now >= plan['ends_at']
-        until = min(now, plan['ends_at'])
-        summary = summarize(state, since=plan['starts_at'], until=until)
-        summary.pop('latest', None)
-        config = state.load('config')
-        primary = config.get('primary')
-        threshold = config.get('threshold', 90)
-        primary_window = next((w for w in summary['windows']
-                               if w['account'] == primary and w['window'] == 'five_hour'), None)
-        enough_to_compare = bool(primary_window and primary_window['positive_opus55_intervals'])
-        finding = ('observed_margin_exceeded' if enough_to_compare
-                   and primary_window['max_delta_pp'] >= 100 - threshold else
-                   'no_exceedance_observed' if enough_to_compare else 'insufficient_active_primary_data')
-        report = {'schema': 1, 'generated_at': now, 'period_start': plan['starts_at'],
-                  'period_end': until, 'planned_end': plan['ends_at'], 'final': final,
-                  'switch_threshold': threshold, 'margin_pp': 100 - threshold,
-                  'finding': finding, 'primary_five_hour': primary_window,
-                  'switcher_health': state.load('switcher_health'),
-                  'summary': summary,
-                  'limitation': 'Observed 45-90s intervals and approximate token pairing; '
-                                'no future safety guarantee and no automatic threshold change.'}
-        name = datetime.fromtimestamp(plan['starts_at'], timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-        root = state.root / 'monitoring'
-        if root.is_symlink():
-            raise SwitcherError('Monitoring directory must not be a symlink')
-        root.mkdir(mode=0o700, exist_ok=True)
-        directory = root / name
-        if directory.is_symlink():
-            raise SwitcherError('Monitoring report directory must not be a symlink')
-        directory.mkdir(mode=0o700, exist_ok=True)
-        basename = 'final' if final else datetime.fromtimestamp(plan['next_review_at'], KST).strftime('%Y-%m-%d')
-        json_path = directory / f'{basename}.json'
-        write_json(json_path, report)
-        text_path = directory / f'{basename}.md'
-        text = render(report)
-        write_text(text_path, text)
-        write_json(directory / 'latest.json', report)
-        write_text(directory / 'latest.md', text)
-        plan.update(last_review_at=now, last_report=str(text_path),
-                    next_review_at=min(plan['ends_at'], plan['starts_at'] +
-                                       (int((now - plan['starts_at']) // DAY) + 1) * DAY))
-        if final:
-            plan['status'] = 'complete'
-        state.save('monitoring', plan)
+        while plan['status'] == 'active':
+            cutoff = min(plan['next_review_at'], plan['ends_at'])
+            if cutoff > now:
+                break
+            final = cutoff == plan['ends_at']
+            path = write_review(state, plan, now, cutoff, final)
+            plan.update(last_review_at=now, last_report=str(path),
+                        next_review_at=min(cutoff + DAY, plan['ends_at']))
+            if final:
+                plan['status'] = 'complete'
+            state.save('monitoring', plan)
         return plan
 
 
+def write_review(state, plan, now, until, final):
+    summary = summarize(state, since=plan['starts_at'], until=until)
+    summary.pop('latest', None)
+    config = state.load('config')
+    primary = config.get('primary')
+    settings = state.load('service_settings')
+    thresholds = summary['switch_thresholds']
+    if not thresholds and settings.get('loaded_at', float('inf')) <= until:
+        thresholds = [settings.get('threshold', 90)]
+    threshold = thresholds[0] if thresholds else config.get('threshold', 90)
+    primary_window = next((w for w in summary['windows']
+                           if w['account'] == primary and w['window'] == 'five_hour'), None)
+    enough_to_compare = bool(primary_window and primary_window['positive_opus55_intervals'])
+    finding = ('threshold_changed' if len(thresholds) > 1 else
+               'observed_margin_exceeded' if enough_to_compare
+               and primary_window['max_delta_pp'] >= 100 - threshold else
+               'no_exceedance_observed' if enough_to_compare else 'insufficient_active_primary_data')
+    report = {'schema': 1, 'generated_at': now, 'period_start': plan['starts_at'],
+              'period_end': until, 'planned_end': plan['ends_at'], 'final': final,
+              'switch_threshold': threshold, 'switch_thresholds': thresholds, 'margin_pp': 100 - threshold,
+              'finding': finding, 'primary_five_hour': primary_window,
+              'switcher_health': state.load('switcher_health'),
+              'summary': summary,
+              'limitation': 'Observed 45-90s intervals and approximate token pairing; '
+                            'no future safety guarantee and no automatic threshold change.'}
+    name = datetime.fromtimestamp(plan['starts_at'], timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    root = state.root / 'monitoring'
+    if root.is_symlink():
+        raise SwitcherError('Monitoring directory must not be a symlink')
+    root.mkdir(mode=0o700, exist_ok=True)
+    directory = root / name
+    if directory.is_symlink():
+        raise SwitcherError('Monitoring report directory must not be a symlink')
+    directory.mkdir(mode=0o700, exist_ok=True)
+    basename = 'final' if final else datetime.fromtimestamp(plan['next_review_at'], KST).strftime('%Y-%m-%d')
+    json_path = directory / f'{basename}.json'
+    write_json(json_path, report)
+    text_path = directory / f'{basename}.md'
+    text = render(report)
+    write_text(text_path, text)
+    write_json(directory / 'latest.json', report)
+    write_text(directory / 'latest.md', text)
+    return text_path
+
+
 def render(report):
-    finding = {'insufficient_active_primary_data': '개인 계정의 실제 사용 구간이 부족해 여유 한도 판정은 미확인이다.',
+    finding = {'threshold_changed': '관측 기간에 전환 임계값이 바뀌어 단일 여유 한도로 판정할 수 없다.',
+               'insufficient_active_primary_data': '개인 계정의 실제 사용 구간이 부족해 여유 한도 판정은 미확인이다.',
                'observed_margin_exceeded': '관측 구간에서 남겨 둔 여유 이상의 사용률 증가가 있었다.',
                'no_exceedance_observed': '관측 구간에서 현재 여유를 넘는 증가는 찾지 못했다. 향후 안전을 보장하지는 않는다.'}[report['finding']]
     s = report['summary']
+    settings = ', '.join(f'{value:g}%' for value in report.get('switch_thresholds', []))
+    if not settings:
+        settings = f"{report['switch_threshold']:g}% (설정 파일 기준 추정)"
     lines = ['# Claude 사용률 관측' if not report['final'] else '# Claude 사용률 최종 관측',
              '', finding, '', f"- 관측 범위: {stamp(report['period_start'])} ~ {stamp(report['period_end'])}",
              f"- 예정 종료: {stamp(report['planned_end'])}",
              f"- 생성 시각: {stamp(report['generated_at'])}",
-             f"- 전환 설정: {report['switch_threshold']:g}% (여유 {report['margin_pp']:g}%포인트)",
+             f"- 전환 설정: {settings}",
              f"- 수집 스냅샷: {s['samples']}개",
              f"- 자동 전환 상태: {report['switcher_health'].get('state', '미확인')}",
              f"- 조회 실패가 포함된 스냅샷: {s['quality']['failed_samples']}개",
              f"- 사용률이 전부 누락된 스냅샷: {s['quality']['empty_usage_samples']}개",
              f"- 180초 초과 관측 공백: {s['quality']['gaps_over_180_seconds']}개", '', '## 한도별 관측', '']
     for window in s['windows']:
-        if window['window'] not in ('five_hour', 'seven_day'):
-            continue
         w = window['max_interval']
         lines.append(f"- {window['account']} / {window['window']}: 유효 구간 {window['intervals']}개, "
                      f"토큰 대응 구간 {window['active_token_intervals']}개, "

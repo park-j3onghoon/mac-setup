@@ -61,15 +61,17 @@ class BoundaryTests(unittest.TestCase):
 
     def test_wrong_browser_login_restores_verified_backup_and_keeps_other_fields(self):
         """예상 밖 브라우저 로그인을 되돌릴 때 연결 설정과 제3 계정의 독립성을 보존한다."""
-        def other_login(*args):
+        def other_login(*args, **kwargs):
             self.app.live.write_account({'emailAddress': 'other@example.com'})
             self.app.vault.active.update(claudeAiOauth={'accessToken': 'other'}, separate='keep')
             return SimpleNamespace(returncode=0)
 
         with patch('switcher.subprocess.run', side_effect=other_login):
-            with self.assertRaisesRegex(SwitcherError, 'restored'):
+            with self.assertRaisesRegex(SwitcherError, 'restore-enrollment'):
                 enroll(self.app, 'fallback')
 
+        self.assertEqual(self.app.live.read()[1]['emailAddress'], 'other@example.com')
+        run_app_command(SimpleNamespace(command='restore-enrollment'), self.state, self.app)
         blob, account = self.app.live.read()
         self.assertEqual(account['emailAddress'], self.primary)
         self.assertEqual(blob['claudeAiOauth'], self.app.vault.read(self.primary)['oauth'])
@@ -98,7 +100,7 @@ class BoundaryTests(unittest.TestCase):
     def test_poll_during_browser_login_defers_and_enrollment_completes(self):
         """브라우저가 B를 선택한 직후의 데몬 점검은 등록이 끝날 때까지 교체하지 않는다."""
         self.app.api.percent['token-personal'] = 10
-        def login(*args):
+        def login(*args, **kwargs):
             self.select_login(self.fallback)
             result = self.app.tick(apply=True, now=NOW)
             self.assertEqual(result['reason'], 'waiting_for_operation')
@@ -340,7 +342,8 @@ class BoundaryTests(unittest.TestCase):
         """상태 오류는 결과를 남기고 실제 중복 실행은 별도의 오류 결과를 남기지 않는다."""
         self.state.save('session_refresh', [])
         with patch('refresh_hook.state_dir', return_value=self.state.root), patch('refresh_hook.Path.home', return_value=self.root), patch('refresh.find_cmux', return_value='/fixture'):
-            with self.state.lock('restart-session'):
+            target = refresh.SelfRestart(self.state, self.root, 'session', 'surface')
+            with self.state.lock('restart-' + target.receipt.removeprefix('handoff-')):
                 refresh_hook.helper('session', 'surface')
             log = self.state.root / refresh_hook.LOG
             self.assertFalse(log.exists())

@@ -173,12 +173,12 @@ class ServiceTests(unittest.TestCase):
     def test_profile_backoff_survives_the_next_tick(self):
         from api import ApiError
         self.app.api.profile = Mock(side_effect=ApiError('profile', 429, 1800))
-        with self.assertRaises(ApiError):
-            self.app.tick(apply=True, now=NOW)
+        self.app.tick(apply=True, now=NOW)
         report = self.app.tick(apply=True, now=NOW + 60)
-        self.assertEqual(report['reason'], 'waiting_for_retry_after')
-        self.assertEqual(self.app.state.load('runtime')['retry_after'], NOW + 1800)
-        self.assertEqual(self.app.api.profile.call_count, 1)
+        self.assertEqual(report['reason'], 'active_authentication_unverified')
+        for email in self.app.accounts:
+            self.assertAlmostEqual(self.app.state.load('api_backoff')[email]['profile'], NOW + 1800, delta=1)
+        self.assertEqual(self.app.api.profile.call_count, 2)
         self.assertEqual(self.app.vault.active_writes, 0)
 
     def test_dry_run_does_not_write_live_credentials(self):

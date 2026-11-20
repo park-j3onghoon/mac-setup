@@ -17,7 +17,7 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from refresh import SelfRestart, SessionEnded, SessionUnavailable  # noqa: E402
+from refresh import SelfRestart, SessionEnded, SessionUnavailable, hook_ancestors, switch_pending  # noqa: E402
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
@@ -41,7 +41,7 @@ def hook():
     try:
         payload = json.load(sys.stdin)
         session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
-        if not session_id or not surface:
+        if not isinstance(session_id, str) or not session_id.replace('-', '').isalnum() or not surface:
             return 0
         if session_id == os.environ.get('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID'):
             return 0
@@ -56,15 +56,24 @@ def hook():
         restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
         hint = transcript_hint(session_id, payload.get('transcript_path'))
         restart.transcript = hint
+        pending = restart.pending()
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).
         try:
-            needed = restart.limited(retry_replacement=False) or restart.needed()
+            limited = restart.limited(retry_replacement=False)
+            if not limited and not pending and not switch_pending(restart.state, time.time()):
+                return 0
+            restart.ancestors = hook_ancestors()
+            needed = limited or bool(pending) or restart.needed()
         except SessionUnavailable:
             # The Stop hook must return while a temporarily missing transcript is republished.
             needed = True
         if needed:
             environment = os.environ.copy()
+            environment.pop('CLAUDE_SWITCHER_REGISTRY_PID', None)
+            environment.pop('CLAUDE_SWITCHER_TRANSCRIPT', None)
+            chain = restart.ancestors if isinstance(restart.ancestors, (list, tuple)) else hook_ancestors()
+            environment['CLAUDE_SWITCHER_ANCESTORS'] = ','.join(str(pid) for pid in chain)
             if hint:
                 environment['CLAUDE_SWITCHER_TRANSCRIPT'] = str(hint)
             if isinstance(restart.last_session, dict):
@@ -79,10 +88,13 @@ def hook():
 
 def helper(session_id, surface):
     state = State(state_dir())
-    lock = f'restart-{session_id}'
+    restart = SelfRestart(state, Path.home() / '.claude', session_id, surface)
+    lock = 'restart-' + restart.receipt.removeprefix('handoff-')
     try:
         with state.lock(lock):
-            restart = SelfRestart(state, Path.home() / '.claude', session_id, surface)
+            chain = os.environ.get('CLAUDE_SWITCHER_ANCESTORS')
+            if chain is not None:
+                restart.ancestors = [int(pid) for pid in chain.split(',') if pid.isdecimal()]
             restart.transcript = transcript_hint(session_id, os.environ.get('CLAUDE_SWITCHER_TRANSCRIPT'))
             pid = os.environ.get('CLAUDE_SWITCHER_REGISTRY_PID', '')
             if pid.isdecimal():

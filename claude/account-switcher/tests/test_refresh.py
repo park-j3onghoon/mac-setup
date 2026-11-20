@@ -103,6 +103,7 @@ class FakeRunner:
         self.ps_timeouts, self.choices = ps_timeouts, choices
         self.screen_text = screen()
         self.typed = []
+        self.notices = []
 
     def __call__(self, argv, **kwargs):
         if argv[0] == '/bin/ps' and self.ps_timeouts:
@@ -110,54 +111,35 @@ class FakeRunner:
             raise subprocess.TimeoutExpired(argv, kwargs.get('timeout'))
         if argv[0] == '/bin/ps':
             return Mock(returncode=0, stdout=self.children if '-ax' in argv else f'{STARTED}\n')
-        if argv[1:3] == ['rpc', 'terminal.paste']:
-            params = json.loads(argv[3])
-            self.typed.extend([params['text'], 'enter'])
-            if params['text'] == '/restart' and self.restarts:
+        if argv[1] in ('rpc', 'send', 'send-key'):
+            self.typed.append(argv)
+            raise AssertionError('Unmanaged sessions must never receive terminal input')
+        if argv[1] == 'notify':
+            title = argv[argv.index('--title') + 1]
+            self.notices.append(title)
+            if self.restarts and title == 'Claude 계정 전환':
+                # Simulate the user accepting the local notice, in their own terminal.
                 self.fixture.register('idle', self.fixture.clock() + 1)
                 if self.choices:
                     self.screen_text = limit_choices()
-            return Mock(returncode=0, stdout=json.dumps({'submitted': True, 'surface_id': SURFACE}))
-        if argv[1] in ('send', 'send-key'):
-            self.typed.append(argv[-1])
-            if argv[-1] == '/restart' and self.restarts:
-                self.fixture.register('idle', self.fixture.clock() + 1)
-                if self.choices:
-                    self.screen_text = limit_choices()
-            if argv[-1] == 'escape':
-                self.screen_text = screen()
         return Mock(returncode=0, stdout=self.screen_text if argv[1] == 'read-screen' else '')
 
 
 class InputReadyTests(unittest.TestCase):
-    def test_paste_and_submit_use_one_rpc_without_a_timed_input_gap(self):
-        """문자 입력과 Enter 사이 대기 없이 한 번의 cmux 요청으로 제출한다."""
-        runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
-                                  Mock(returncode=0, stdout='{"submitted":true}')])
-        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner,
-                              cmux='/fixture/cmux', sleep=Mock())
-        self.assertTrue(restart.type('/restart'))
-        restart.sleep.assert_not_called()
-        mutation = runner.call_args_list[-1].args[0]
-        self.assertEqual(mutation[1:3], ['rpc', 'terminal.paste'])
-        self.assertEqual(json.loads(mutation[3]), {
-            'surface_id': SURFACE, 'text': '/restart', 'submit_key': 'enter'})
-
-    def test_last_screen_check_keeps_a_new_user_draft(self):
-        """준비 확인 뒤 생긴 사용자 초안은 마지막 확인에서 보존한다."""
-        runner = Mock(return_value=Mock(returncode=0, stdout=screen('❯ new draft')))
-        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner, cmux='/fixture')
-        self.assertFalse(restart.type('/restart'))
-        self.assertEqual(runner.call_count, 1)
-
-    def test_partial_paste_does_not_retry_or_send_a_separate_enter(self):
-        """붙여넣기만 수락됐으면 명령이나 Enter를 재전송하지 않는다."""
-        runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
-                                  Mock(returncode=0, stdout='{"submitted":false}')])
-        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner, cmux='/fixture')
-        with self.assertRaises(OSError):
-            restart.type('/restart')
-        self.assertEqual(runner.call_count, 2)
+    def test_new_draft_after_screen_read_survives_handoff_notice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SessionFixture(tmp)
+            record_switch(fixture.state, SWITCHED_AT)
+            runner = FakeRunner(fixture, restarts=False)
+            def input_race(args, **kwargs):
+                result = runner(args, **kwargs)
+                if args[1] == 'read-screen':
+                    runner.screen_text = screen(prompt_line='❯ my draft')
+                return result
+            outcome = fixture.restart(input_race).run()
+            self.assertEqual(outcome, 'awaiting_user_restart')
+            self.assertEqual(runner.typed, [])
+            self.assertIn('❯ my draft', runner.screen_text)
 
     def test_empty_input_box_is_ready(self):
         """입력창(❯)이 비어 있으면 명령을 넣어도 된다."""
@@ -287,7 +269,7 @@ class SelfRestartTests(unittest.TestCase):
         with patch('refresh.os.kill'):
             outcome = fixture.restart(runner).run()
         self.assertEqual(outcome, 'restarted')
-        self.assertEqual(normal.typed, ['/restart', 'enter'])
+        self.assertEqual(normal.notices, ['Claude 계정 전환'])
 
     def test_exited_session_stops_helper_without_waiting_eight_hours(self):
         """한도 오류 기록이 남아 있어도 세션 프로세스가 종료되면 도우미도 끝난다."""
@@ -340,15 +322,15 @@ class SelfRestartTests(unittest.TestCase):
         # then
         self.assertFalse(needed)
 
-    def test_idle_session_is_restarted_with_the_builtin_command(self):
-        """쉬는 세션에는 자기 cmux 탭으로 `/restart`와 Enter를 넣는다."""
+    def test_idle_session_receives_a_local_restart_notice(self):
+        """쉬는 세션의 소유자에게 같은 cmux 창에서 재시작을 안내한다."""
         # given
         fixture = self.fixture()
         runner = FakeRunner(fixture)
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.notices), ('restarted', ['Claude 계정 전환']))
 
     def test_busy_session_is_not_restarted(self):
         """작업 중인 세션은 기다리다가 시간이 지나도 끝나지 않으면 아무것도 넣지 않고 포기한다."""
@@ -392,7 +374,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.notices, ['Claude 계정 전환', 'Claude 이어하기'])
         self.assertGreater(fixture.started_at(), shell_ends)
 
     def test_limit_stopped_session_with_endless_background_work_is_left_alone(self):
@@ -447,10 +429,10 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.notices, ['Claude 계정 전환', 'Claude 이어하기'])
 
-    def test_limit_choices_over_the_restarted_session_are_closed(self):
-        """다시 뜬 세션의 입력창을 한도 선택창이 가리면 Esc(「Stop and wait for limit to reset」과 같다)로 닫고 이어서 넣는다."""
+    def test_limit_choices_over_the_restarted_session_remain_with_the_user(self):
+        """한도 선택창이 있으면 그대로 두고 이어하기를 알림으로 제안한다."""
         # given
         fixture = self.fixture(status='waiting')
         fixture.transcript(user_text('작업해 줘'), limit_error())
@@ -458,7 +440,8 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', 'escape', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.notices, ['Claude 계정 전환', 'Claude 이어하기'])
+        self.assertEqual(runner.screen_text, limit_choices())
 
     def test_session_stopped_at_a_limit_before_the_switch_waits_for_it(self):
         """다음 전환보다 먼저 한도에 멈춘 세션은 전환기가 다음 조회(최대 9분 뒤)에서 계정을 바꿀 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
@@ -471,7 +454,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.notices, ['Claude 계정 전환', 'Claude 이어하기'])
         self.assertGreater(fixture.started_at(), next_switch)
 
     def test_limit_stopped_session_without_a_switch_is_left_alone(self):
@@ -493,7 +476,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restart_unconfirmed', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.typed), ('awaiting_user_restart', []))
 
     def test_slow_process_list_is_retried(self):
         """여러 세션이 한도에 함께 멈춰 ps가 시간 안에 끝나지 않아도 포기하지 않고 다음 확인에서 다시 띄운다."""
@@ -503,7 +486,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.notices), ('restarted', ['Claude 계정 전환']))
 
 
 if __name__ == '__main__':
