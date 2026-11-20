@@ -132,3 +132,6 @@ class DirectSelectionTests(unittest.TestCase):
             launcher.direct_usages({})
         read.assert_not_called()
 
+
+if __name__ == '__main__':
+    unittest.main()
