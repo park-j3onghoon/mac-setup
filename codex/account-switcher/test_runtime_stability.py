@@ -138,6 +138,31 @@ class RuntimeStabilityTest(unittest.TestCase):
         self.rt.continue_thread('work', client)
         self.assertIn('turn/start', [c.args[0] for c in client.request.call_args_list])
 
+    def test_incomplete_acceptance_keeps_the_receipt_across_restart(self):
+        client = self.limited_client()
+        call = client.request.side_effect
+        client.request.side_effect = lambda method, params: {} if method == 'turn/start' else call(method, params)
+        with self.assertRaises(UsageUnavailable):
+            self.rt.continue_thread('work', client)
+        self.assertEqual(state.read_checkpoint(self.rt.continuation_path)['work']['turn_id'], 'failed')
+        self.rt.load_continuations()
+        client.request.reset_mock()
+        self.rt.continue_thread('work', client)
+        self.assertNotIn('turn/start', [c.args[0] for c in client.request.call_args_list])
+
+    def test_disabled_goal_feature_returns_no_goal_but_other_rejections_propagate(self):
+        client, wire = connect()
+        self.addCleanup(client.close)
+        for message in ['goals feature is disabled', 'unknown error']:
+            def send(raw, deadline=None):
+                wire.incoming.put(json.dumps({'id': json.loads(raw)['id'], 'error': {'message': message}}))
+            wire.send = send
+            if message == 'goals feature is disabled':
+                self.assertEqual(client.request('thread/goal/get', {'threadId': 'work'}), {'goal': None})
+            else:
+                with self.assertRaises(rpc.RpcRejected):
+                    client.request('thread/goal/get', {'threadId': 'work'})
+
     def test_new_user_activity_at_transport_write_cancels_continuation(self):
         client = self.limited_client()
         normal = client.request.side_effect

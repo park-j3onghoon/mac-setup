@@ -838,7 +838,7 @@ class Runtime:
             return
         if client.request('thread/queue/list', {'threadId': thread_id})['data'] or self.continuation_changed:
             return
-        goal = client.request('thread/goal/get', {'threadId': thread_id}).get('goal')
+        goal = client.request('thread/goal/get', {'threadId': thread_id})['goal']
         if goal and goal.get('status') not in ('active', 'usageLimited'):
             return
         self.uncertain_continuations[thread_id] = turn['id']
@@ -868,9 +868,10 @@ class Runtime:
             raise
         else:
             started = (result.get('turn') or {}).get('id') if isinstance(result, dict) else None
-            if isinstance(started, str):
-                self.followups[thread_id] = [started, *period]
-                self.store_followups()
+            if not isinstance(started, str) or not started:
+                raise UsageUnavailable('Continuation acknowledgement did not identify the new turn')
+            self.followups[thread_id] = [started, *period]
+            self.store_followups()
             self.uncertain_continuations.pop(thread_id, None)
             self.store_continuations()
 

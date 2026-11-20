@@ -207,6 +207,8 @@ class Rpc:
             with self.lock:
                 self.timeouts = 0
             if "error" in message:
+                if method == 'thread/goal/get' and message['error'].get('message') == 'goals feature is disabled':
+                    return {'goal': None}
                 rejected = RpcRejected(f"Codex {method} failed")
                 if method == 'thread/read':
                     thread_id = (params or {}).get('threadId')

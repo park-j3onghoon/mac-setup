@@ -487,6 +487,10 @@ class ContinueTest(unittest.TestCase):
             if method == "thread/loaded/list":
                 return {"data": list(threads)}
             status, turns = threads.get(params.get("threadId"), (None, None))
+            if method == 'thread/goal/get':
+                return {'goal': None}
+            if method == 'turn/start':
+                return {'turn': {'id': 'continued-' + params['threadId']}}
             if method == 'thread/queue/list':
                 return {'data': []}
             if method == "thread/read":
