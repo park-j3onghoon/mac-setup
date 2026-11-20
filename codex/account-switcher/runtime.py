@@ -4,7 +4,7 @@ import os
 import hashlib
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 import resource
 import select
@@ -19,8 +19,8 @@ import time
 
 from policy import THRESHOLD, UsageUnavailable
 from profiles import BINARY, PROFILES
-from rpc import Rpc, RpcNotSent, RpcRejected
-from state import RUNTIME, load, save
+from rpc import Rpc, RpcNotSent, RpcRejected, guard_request
+from state import RUNTIME, load, read_checkpoint, save
 
 
 SOCKET = RUNTIME / "auto.sock"
@@ -29,6 +29,10 @@ CONTINUE_PROMPT = "이어서 해줘"
 # from blocking every later switch.
 QUIET = ("idle", "notLoaded", "systemError")
 SCAN_COMPLETE = object()
+
+
+class ActivityChanged(RpcNotSent):
+    """New local activity invalidated the check before the write."""
 
 
 def process_start(pid):
@@ -71,11 +75,17 @@ def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
     # Company comes first, so the shared server opens with the company setup (MCP servers,
     # model); earlier versions linked the personal config here.
     target = home / "config.toml"
-    if target.is_symlink() and target.readlink() != config:
+    if (target.is_file() and not target.is_symlink()
+            or target.is_symlink() and target.readlink() != config):
         with tempfile.TemporaryDirectory(dir=home) as directory:
             replacement = Path(directory) / 'config.toml'
             replacement.symlink_to(config)
+            if not target.is_symlink():
+                backup = Path(tempfile.mkdtemp(prefix='previous-config-', dir=home))
+                os.link(target, backup / 'config.toml')
             os.replace(replacement, target)
+    elif target.exists() and not target.is_symlink():
+        raise UsageUnavailable(f'Cannot link shared configuration over {target}')
     else:
         link_missing(target, config)
     for profile_config in Path(config).parent.glob('*.config.toml'):
@@ -112,36 +122,43 @@ def preserve_server_package(binary, home):
     packages.mkdir(mode=0o700, exist_ok=True)
     current = packages / release.name
     executables = ('codex', 'codex-code-mode-host', 'codex-exec-server')
+    manifest = '.switcher-checksums.json'
+
     def identity(package):
-        result = []
+        result = {}
         for name in executables:
             path = package / 'bin' / name
-            if not path.is_file() or not os.access(path, os.X_OK):
+            if not path.is_file() or not os.access(path, os.X_OK) or not path.stat().st_size:
                 return None
+        for path in sorted(package.rglob('*')):
+            if path == package / manifest or not path.is_file():
+                continue
             info = path.stat()
-            if not info.st_size:
-                return None
-            result.append([info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns])
+            result[str(path.relative_to(package))] = [
+                info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode]
         return result
 
-    def digests(package):
-        result = []
-        for name in executables:
+    def digests(package, files):
+        result = {}
+        for name in files:
             digest = hashlib.sha256()
-            with (package / 'bin' / name).open('rb') as stream:
+            with (package / name).open('rb') as stream:
                 for block in iter(lambda: stream.read(1 << 20), b''):
                     digest.update(block)
-            result.append(digest.hexdigest())
+            result[name] = [digest.hexdigest(), (package / name).stat().st_mode]
         return result
 
     cached, original = identity(current), identity(release)
-    manifest = '.switcher-checksums.json'
     recorded = load(current / manifest)
     expected = recorded.get('sha256')
+    if not isinstance(expected, dict):
+        expected = None
+    if original and expected and expected.keys() - original.keys():
+        original = None
     if original and (not expected or original != recorded.get('source')):
-        expected = digests(release)
+        expected = digests(release, original)
     matches = cached and expected and (cached == recorded.get('cache') and expected == recorded.get('sha256')
-                                       or digests(current) == expected)
+                                       or digests(current, cached) == expected)
     if not matches:
         if original is None:
             raise UsageUnavailable(f"Codex package {release.name} has incomplete executables")
@@ -149,7 +166,8 @@ def preserve_server_package(binary, home):
             staging = Path(temporary)
             staged = staging / "package"
             shutil.copytree(release, staged)
-            if identity(staged) is None or digests(staged) != expected or identity(release) != original:
+            copied = identity(staged)
+            if copied is None or digests(staged, copied) != expected or identity(release) != original:
                 raise UsageUnavailable(f"Codex package {release.name} changed during staging")
             save({'sha256': expected, 'source': original, 'cache': identity(staged)}, staged / manifest)
             if current.exists() or current.is_symlink():
@@ -243,6 +261,7 @@ class Runtime:
         self.pid_start = None
         self.exit_watch = None
         self.active = None
+        self.must_observe_account = False
         self.continued = {}
         self.followups = {}
         self.quota_periods = {}
@@ -250,6 +269,10 @@ class Runtime:
         self.continuation_seen = set()
         self.continuation_missing = None
         self.uncertain_continuations = {}
+        self.uncertain_periods = {}
+        self.continuation_error = None
+        self.restore_error = None
+        self.before_drain = None
         self.continuation_future = None
         self.continuation_ids = deque()
         self.continuation_cursor = None
@@ -268,14 +291,16 @@ class Runtime:
         self.continuation_path = None
         self.next_subscription_scan = 0
         self.new_subscriptions = set()
+        self.release_retries = {}
         self.settled_threads = {}
 
     def start(self, *, restore_account=None):
         prepare_home(self.home)
         self.continuation_path = self.home / 'continuation-receipts.json'
-        self.uncertain_continuations = load(self.continuation_path)
-        self.continued.update(self.uncertain_continuations)
-        self.followups = load(self.home / 'continuation-followups.json')
+        try:
+            self.load_continuations()
+        except UsageUnavailable as error:
+            self.continuation_error = str(error)
         if self.socket.exists():
             probe = socket.socket(socket.AF_UNIX)
             try:
@@ -287,7 +312,7 @@ class Runtime:
                 self.pid, self.pid_start = peer_process(probe)
                 self.observe_account()
                 if restore_account and self.active is None:
-                    self.restore_account(restore_account)
+                    self.try_restore_account(restore_account)
                 return
             finally:
                 probe.close()
@@ -321,7 +346,7 @@ class Runtime:
                         pass
                 time.sleep(0.1)
             if restore_account:
-                self.restore_account(restore_account)
+                self.try_restore_account(restore_account)
             prune_server_packages(server_binary, self.home)
         except BaseException:
             self.stop()
@@ -452,7 +477,7 @@ class Runtime:
             yield not client.request("thread/backgroundTerminals/list", params)["data"]
             yield not client.request("thread/queue/list", params)["data"]
             goal = client.request("thread/goal/get", params)["goal"]
-            yield not goal or goal["status"] in ("complete", "paused")
+            yield not goal or goal["status"] in ("complete", "paused", "blocked", "usageLimited", "budgetLimited")
 
     def finish_upgrade(self, serial):
         self.observe_account()
@@ -465,6 +490,8 @@ class Runtime:
         with self.activity_lock:
             if serial != self.activity_serial:
                 return False
+            if self.before_drain:
+                self.before_drain(self.active)
             os.kill(self.pid, signal.SIGHUP)
         return True
 
@@ -480,6 +507,12 @@ class Runtime:
             self.observe_account()
         if self.active != name:
             raise UsageUnavailable("Updated runtime account did not match the previous account")
+
+    def try_restore_account(self, name):
+        try:
+            self.restore_account(name)
+        except (UsageUnavailable, OSError) as error:
+            self.restore_error = type(error).__name__
 
     def refresh(self, method, params, *, cancel=None):
         if method != "account/chatgptAuthTokens/refresh":
@@ -509,15 +542,18 @@ class Runtime:
             return self.client.request(method, params, timeout=remaining)
 
         if not self.release_ids:
-            with self.activity_lock:
-                self.release_ids.extend(self.new_subscriptions)
-                self.new_subscriptions.clear()
-            if not self.release_ids and (self.release_cursor or time.monotonic() >= self.next_subscription_scan):
+            if self.release_cursor or time.monotonic() >= self.next_subscription_scan:
                 page = request('thread/loaded/list', {'cursor': self.release_cursor})
                 self.release_ids.extend(page.get('data', []))
                 self.release_cursor = page.get('nextCursor')
                 if not self.release_cursor:
                     self.next_subscription_scan = time.monotonic() + 600
+            with self.activity_lock:
+                self.release_ids.extend(self.new_subscriptions)
+                self.new_subscriptions.clear()
+            now = time.monotonic()
+            self.release_ids.extend(key for key, retry in self.release_retries.items() if now >= retry)
+            self.release_ids = deque(dict.fromkeys(self.release_ids))
         if self.release_ids:
             thread_id = self.release_ids[0]
             params = {'threadId': thread_id}
@@ -527,9 +563,19 @@ class Runtime:
                     goal = request('thread/goal/get', params)['goal']
                     if (not goal or goal.get('status') == 'complete') and not request('thread/queue/list', params)['data']:
                         request('thread/unsubscribe', params)
+            except RpcRejected as error:
+                if not error.thread_missing:
+                    self.release_retries[thread_id] = time.monotonic() + 5
+                    raise
+                self.release_retries.pop(thread_id, None)
+            except (UsageUnavailable, OSError):
+                self.release_retries[thread_id] = time.monotonic() + 5
+                raise
+            else:
+                self.release_retries.pop(thread_id, None)
             finally:
                 self.release_ids.popleft()
-        return not self.release_ids and not self.release_cursor
+        return not self.release_ids and not self.release_cursor and not self.release_retries
 
     def take_limit_failure(self):
         with self.activity_lock:
@@ -582,7 +628,6 @@ class Runtime:
             valid = (time.monotonic() < job['deadline'] and job['name'] == name and job['tokens'] == tokens
                      and job['client'] is self.client and job['serial'] == self.activity_serial)
             if valid and idle is None:
-                job['deadline'] = time.monotonic() + 300
                 job['future'] = self.worker_pool().submit(all_idle, self.client,
                     deadline=time.monotonic() + 30, progress=job['progress'])
                 self.idle_job = job
@@ -594,8 +639,9 @@ class Runtime:
         return self.idle_pool
 
     def select(self, name, *, force=False):
-        if self.client.closed:
+        if self.client.closed or self.must_observe_account:
             self.observe_account()
+            self.must_observe_account = False
         if name == self.active:
             if self.idle_job is not None and not self.idle_pending:
                 self.idle_job = None
@@ -611,13 +657,25 @@ class Runtime:
         if profile.usage()['used_percent'] >= THRESHOLD:
             raise UsageUnavailable('Target account no longer has available quota')
         tokens = profile.tokens()
-        if not force and serial != self.activity_serial:
-            return False
+        with self.activity_lock:
+            if not force and serial != self.activity_serial:
+                return False
+            self.activity_serial += 1
+            serial = self.activity_serial
+            self.settled_threads.clear()
+            if self.continuing_thread:
+                self.continuation_changed = True
+        @contextmanager
+        def idle_at_send():
+            with self.activity_lock:
+                if not force and serial != self.activity_serial:
+                    raise ActivityChanged('New activity before account switch')
+                yield
         old = self.active
-        self.activity('turn/started', {})
         login_sent = False
         try:
-            self.login(tokens)
+            with guard_request('account/login/start', idle_at_send):
+                self.login(tokens)
             login_sent = True
             verified = self.client.request("account/rateLimits/read")
             if verified.get("accountId") != profile.account_id:
@@ -625,17 +683,23 @@ class Runtime:
             self.active = name
             return True
         except Exception as error:
-            if isinstance(error, RpcNotSent) and not login_sent:
+            if isinstance(error, ActivityChanged):
+                return False
+            if isinstance(error, (RpcNotSent, RpcRejected)) and not login_sent:
                 raise
             self.active = None
+            self.must_observe_account = True
             if old is not None:
                 try:
-                    self.login(self.profiles[old].tokens())
-                    restored = self.client.request("account/rateLimits/read")
-                    if restored.get("accountId") == self.profiles[old].account_id:
-                        self.active = old
-                except Exception:
-                    pass
+                    self.observe_account()
+                    if self.active == name:
+                        rollback_tokens = self.profiles[old].tokens()
+                        self.observe_account()
+                        if self.active == name:
+                            self.login(rollback_tokens)
+                            self.observe_account()
+                except (UsageUnavailable, OSError):
+                    self.active = None
             raise
 
     def continue_limited(self):
@@ -644,6 +708,9 @@ class Runtime:
         A turn started from this connection still sends its approval requests to the terminal
         that opened the thread (measured on 0.168.0, 2026-11-13).
         """
+        if self.continuation_error:
+            self.load_continuations()
+            self.continuation_error = None
         if self.continuation_future is None:
             self.continuation_future = self.worker_pool().submit(self.continue_batch, self.client)
         try:
@@ -711,7 +778,7 @@ class Runtime:
                 # Finish one thread with the per-RPC timeout; restarting its metadata phases
                 # at every batch boundary would starve both slow and later threads.
                 self.continue_thread(thread_id, client)
-            except UsageUnavailable:
+            except (UsageUnavailable, KeyError, AttributeError, IndexError, TypeError):
                 self.continuation_failed = True
             self.continuation_ids.popleft()
         return False
@@ -734,9 +801,6 @@ class Runtime:
         }).get('thread', {})
         # A parent drives its sub-agents; direct turn/start on a child is rejected.
         if thread.get('parentThreadId') or not quiet(thread):
-            if thread.get('status', {}).get('type') == 'active':
-                if self.uncertain_continuations.pop(thread_id, None):
-                    self.store_continuations()
             return
         turn = newest_turn(client, thread_id)
         workspace = getattr(self.profiles.get(self.active), 'account_id', None)
@@ -750,8 +814,14 @@ class Runtime:
                 self.store_followups()
         uncertain = self.uncertain_continuations.get(thread_id)
         if uncertain and turn and turn['id'] != uncertain:
+            submitted_period = self.uncertain_periods.get(thread_id)
+            if turn['status'] == 'failed' and (submitted_period is None or submitted_period == period):
+                self.followups[thread_id] = [turn['id'], *period]
+                self.store_followups()
             self.uncertain_continuations.pop(thread_id, None)
             self.store_continuations()
+            if self.followups.get(thread_id) == [turn['id'], *period]:
+                return
         if (not turn or self.continued.get(thread_id) == turn['id'] or turn['status'] != 'failed'
                 or (turn.get('error') or {}).get('codexErrorInfo') != 'usageLimitExceeded'):
             if turn and turn['status'] == 'completed' and not self.continuation_changed:
@@ -768,21 +838,30 @@ class Runtime:
             return
         if client.request('thread/queue/list', {'threadId': thread_id})['data'] or self.continuation_changed:
             return
-        self.uncertain_continuations[thread_id] = turn['id']
-        self.store_continuations()
-        if self.continuation_changed:
-            self.uncertain_continuations.pop(thread_id, None)
-            self.store_continuations()
+        goal = client.request('thread/goal/get', {'threadId': thread_id}).get('goal')
+        if goal and goal.get('status') not in ('active', 'usageLimited'):
             return
+        self.uncertain_continuations[thread_id] = turn['id']
+        self.uncertain_periods[thread_id] = period
+        self.store_continuations()
         self.continued[thread_id] = turn['id']
+        @contextmanager
+        def unchanged_at_send():
+            with self.activity_lock:
+                if self.continuation_changed:
+                    raise ActivityChanged('Conversation changed before continuation')
+                yield
         try:
-            result = client.request('turn/start', {
-                "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
-            })
-        except (RpcRejected, RpcNotSent):
+            with guard_request('turn/start', unchanged_at_send):
+                result = client.request('turn/start', {
+                    "threadId": thread_id, "input": [{"type": "text", "text": CONTINUE_PROMPT}],
+                })
+        except (RpcRejected, RpcNotSent) as error:
             self.continued.pop(thread_id, None)
             self.uncertain_continuations.pop(thread_id, None)
             self.store_continuations()
+            if isinstance(error, ActivityChanged):
+                return
             raise
         except UsageUnavailable:
             self.uncertain_continuations[thread_id] = turn['id']
@@ -797,11 +876,33 @@ class Runtime:
 
     def store_followups(self):
         if self.continuation_path:
-            save(self.followups, self.home / 'continuation-followups.json')
+            save(self.followups, self.home / 'continuation-followups.json', durable=True)
 
     def store_continuations(self):
+        self.uncertain_periods = {key: value for key, value in self.uncertain_periods.items()
+                                  if key in self.uncertain_continuations}
         if self.continuation_path:
-            save(self.uncertain_continuations, self.continuation_path)
+            save({key: {'turn_id': turn, 'period': self.uncertain_periods[key]}
+                  if key in self.uncertain_periods else turn
+                  for key, turn in self.uncertain_continuations.items()}, self.continuation_path, durable=True)
+
+    def load_continuations(self):
+        receipts = read_checkpoint(self.continuation_path)
+        followups = read_checkpoint(self.home / 'continuation-followups.json')
+        turns, periods = {}, {}
+        for key, value in receipts.items():
+            if isinstance(value, str) and value:
+                turns[key] = value
+            elif (isinstance(value, dict) and isinstance(value.get('turn_id'), str)
+                  and isinstance(value.get('period'), list) and len(value['period']) == 2):
+                turns[key], periods[key] = value['turn_id'], value['period']
+            else:
+                raise UsageUnavailable('Invalid continuation receipt')
+        if any(not isinstance(value, list) or len(value) != 3 or not isinstance(value[0], str)
+               for value in followups.values()):
+            raise UsageUnavailable('Invalid continuation followup')
+        self.uncertain_continuations, self.uncertain_periods, self.followups = turns, periods, followups
+        self.continued.update(turns)
 
     def close(self):
         if self.exit_watch is not None:

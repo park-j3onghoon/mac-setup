@@ -5,12 +5,13 @@ import inspect
 import os
 import queue
 import re
-import select
+import selectors
 import socket
 import subprocess
 import threading
 import time
 import weakref
+from contextlib import contextmanager, nullcontext
 
 from policy import UsageUnavailable
 from unix_ws import UnixWebSocket, WRITE_TIMEOUT, write_all
@@ -65,6 +66,21 @@ class RpcRejected(UsageUnavailable):
 
 class RpcNotSent(UsageUnavailable):
     """The transport failed before writing any of this request."""
+
+
+_sending = threading.local()
+
+
+@contextmanager
+def guard_request(method, guard):
+    previous = getattr(_sending, 'guard', None)
+    _sending.guard = (method, guard)
+    try:
+        with guard():
+            pass
+        yield
+    finally:
+        _sending.guard = previous
 
 
 def version_from_initialize(result):
@@ -133,10 +149,14 @@ class Rpc:
                 raise RpcNotSent("Codex connection is closed")
             try:
                 payload = json.dumps(message).encode()
-                if self.websocket:
-                    self.websocket.send(payload, deadline=deadline)
-                else:
-                    write_all(self.process.stdin.fileno(), (payload + b'\n',), deadline, cancel)
+                fenced = getattr(_sending, 'guard', None)
+                with fenced[1]() if fenced and fenced[0] == message.get('method') else nullcontext():
+                    if self.websocket:
+                        self.websocket.send(payload, deadline=deadline)
+                    else:
+                        write_all(self.process.stdin.fileno(), (payload + b'\n',), deadline, cancel)
+            except RpcNotSent:
+                raise
             except (ValueError, OSError) as error:
                 self.closed = True
                 self.wake_reader()
@@ -191,10 +211,7 @@ class Rpc:
                 if method == 'thread/read':
                     thread_id = (params or {}).get('threadId')
                     detail = message['error'].get('message')
-                    rejected.thread_missing = (detail in (f'no rollout found for thread id {thread_id}',
-                                                          f'thread not found: {thread_id}')
-                                               or not (params or {}).get('includeTurns')
-                                               and detail == f'thread not loaded: {thread_id}')
+                    rejected.thread_missing = detail == f'thread not found: {thread_id}'
                 if method == 'thread/turns/list':
                     thread_id = (params or {}).get('threadId')
                     rejected.no_history = message['error'].get('message') == (
@@ -276,19 +293,22 @@ class Rpc:
     def stdio_lines(self):
         fd = self.process.stdout.fileno()
         buffered = bytearray()
-        while not self.closing.is_set():
-            ready, _, _ = select.select([fd, self.reader_wakeup[0]], [], [])
-            if self.reader_wakeup[0] in ready:
-                return
-            chunk = os.read(fd, 65536)
-            if not chunk:
-                return
-            buffered.extend(chunk)
-            start = 0
-            while (end := buffered.find(b'\n', start)) != -1:
-                yield buffered[start:end]
-                start = end + 1
-            del buffered[:start]
+        with selectors.DefaultSelector() as selector:
+            selector.register(fd, selectors.EVENT_READ)
+            selector.register(self.reader_wakeup[0], selectors.EVENT_READ)
+            while not self.closing.is_set():
+                ready = selector.select()
+                if self.closing.is_set() or any(key.fileobj is self.reader_wakeup[0] for key, _ in ready):
+                    return
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    return
+                buffered.extend(chunk)
+                start = 0
+                while (end := buffered.find(b'\n', start)) != -1:
+                    yield buffered[start:end]
+                    start = end + 1
+                del buffered[:start]
 
     @staticmethod
     def respond(owner, handler, cancelled, slots, message):

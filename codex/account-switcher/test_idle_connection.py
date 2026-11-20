@@ -1,6 +1,7 @@
 """실제 Unix WebSocket으로 중계기 단절·재접속·종료를 검증한다."""
 
 import json
+import errno
 import os
 from pathlib import Path
 import select
@@ -11,8 +12,9 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import Mock, patch
 
-from idle import ClientSocket
+from idle import ClientSocket, serve
 from unix_ws import UnixWebSocket
 
 
@@ -145,6 +147,61 @@ class ProxyConnectionTest(unittest.TestCase):
 
         self.assert_endpoint_removed()
 
+    def test_owner_exit_with_half_finished_upgrade_removes_endpoint(self):
+        with socket.socket(socket.AF_UNIX) as partial:
+            partial.connect(str(self.endpoint))
+            partial.sendall(b'GET / HTTP/1.1\r\n')
+            self.stop_owner()
+            self.assert_endpoint_removed()
+
+    def test_owner_exit_while_upstream_upgrade_is_pending(self):
+        client = UnixWebSocket(self.endpoint)
+        self.addCleanup(client.close)
+        with self.listener.accept()[0] as waiting:
+            self.assertTrue(waiting.recv(4096).startswith(b'GET '))
+            self.stop_owner()
+            self.assert_endpoint_removed()
+
+    def test_failed_replacement_preserves_original_listener_and_status(self):
+        original = self.endpoint.with_suffix('.json').read_bytes()
+        attempt = subprocess.run([sys.executable, str(Path(__file__).with_name('idle.py')),
+                                  str(self.upstream), str(self.endpoint), '900', str(self.owner.pid)],
+                                 capture_output=True, timeout=5)
+        self.assertNotEqual(attempt.returncode, 0)
+        self.assertEqual(self.endpoint.with_suffix('.json').read_bytes(), original)
+        client, server = self.connect()
+        self.exchange(client, server, {'id': 7, 'method': 'initialize', 'params': {}}, {})
+
+    def test_long_tmpdir_uses_short_private_socket(self):
+        long_directory = Path(self.directory.name) / ('x' * 100)
+        long_directory.mkdir()
+        with subprocess.Popen(
+            [sys.executable, '-u', '-c', 'from idle import start_proxy; import sys; '
+             'print(start_proxy(sys.argv[1],900),flush=True); sys.stdin.read()', str(self.upstream)],
+            cwd=Path(__file__).parent, env=dict(os.environ, TMPDIR=str(long_directory)),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        ) as owner:
+            self.assertTrue(select.select([owner.stdout], [], [], 10)[0])
+            endpoint = Path(owner.stdout.readline().strip())
+            self.assertTrue(endpoint.is_socket())
+            self.assertLess(len(os.fsencode(endpoint)), 104)
+            self.assertEqual(endpoint.parent.stat().st_mode & 0o777, 0o700)
+            owner.stdin.close()
+            owner.wait(timeout=5)
+
+    def test_temporary_descriptor_exhaustion_retries_accept(self):
+        endpoint = Path(self.directory.name) / 'recover' / 'tui.sock'
+        endpoint.parent.mkdir()
+        listener, owner, connection = Mock(), Mock(), Mock()
+        listener.bind.side_effect = lambda name: Path(name).touch()
+        listener.accept.side_effect = [OSError(errno.ENFILE, 'temporary'), (connection, None)]
+        owner.control.side_effect = [[], [], [], [object()]]
+        with (patch('idle.socket.socket', return_value=listener), patch('idle.select.kqueue', return_value=owner),
+              patch('idle.time.sleep'), patch('idle.ClientSocket'), patch('idle.UnixWebSocket'), patch('idle.Proxy') as proxy):
+            serve(self.upstream, endpoint, 900, os.getpid())
+        self.assertEqual(listener.accept.call_count, 2)
+        proxy.return_value.run.assert_called_once()
+
     def test_replacement_follows_existing_terminal_instead_of_its_spawner(self):
         """별도 프로세스에서 띄운 교체용 proxy도 지정한 terminal의 생존 기간을 따른다."""
         directory = Path(self.directory.name) / 'replacement'
@@ -167,12 +224,12 @@ class ProxyConnectionTest(unittest.TestCase):
             status = json.loads(endpoint.with_suffix('.json').read_text())
             self.assertTrue(status['connected'])
             self.assertEqual(status['connections'], 1)
-            client.close()
             self.stop_owner()
 
             replacement.wait(timeout=4)
 
             self.assertFalse(endpoint.exists())
+            self.assert_disconnected(client)
         finally:
             if replacement.poll() is None:
                 replacement.terminate()

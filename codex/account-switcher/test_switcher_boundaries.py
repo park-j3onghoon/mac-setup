@@ -160,6 +160,8 @@ class SwitcherBoundaryTest(unittest.TestCase):
                 if queue_failure and queues[0] == 2:
                     raise UsageUnavailable('queue unavailable')
                 return {'data': []}
+            if method == 'thread/goal/get':
+                return {'goal': None}
             self.assertEqual(method, 'turn/start')
             turn[0] += '-next'
             return {'turn': {'id': turn[0]}}
@@ -215,7 +217,7 @@ class SwitcherBoundaryTest(unittest.TestCase):
             patch.object(launcher, 'RUNTIME', self.home),
             patch.object(launcher, 'raise_file_limit'),
             patch.object(launcher, 'load', side_effect=read),
-            patch.object(launcher, 'read_usage', return_value=5) as fallback,
+            patch.object(launcher, 'direct_usages', return_value={'company': 5}) as fallback,
             patch.object(
                 launcher, 'time', Mock(time=lambda: self.now, monotonic=lambda: self.now, sleep=sleep)
             ),
@@ -233,6 +235,12 @@ class SwitcherBoundaryTest(unittest.TestCase):
     def test_exec_stops_waiting_as_soon_as_supervisor_exits(self):
         self.assertEqual(self.exec_case([{'status': 'ready'}, {'status': 'stopped'}]), (1, 'company'))
         self.assertLess(self.now, 1001)
+
+    def test_exec_accepts_fresh_approval_after_two_slow_polls(self):
+        states = [{'status': 'ready'}] * 225 + [{'status': 'ready', 'fresh': True, 'accounts': self.accounts}]
+        self.assertEqual(self.exec_case(states), (0, 'company'))
+        self.assertGreater(self.now, 1030)
+        self.assertLess(self.now, 1150)
 
     def test_clock_rollback_requires_new_acknowledgement(self):
         self.assertEqual(
@@ -349,14 +357,14 @@ class SwitcherBoundaryTest(unittest.TestCase):
         self.addCleanup(os.close, writer)
         client.process.stdout.fileno.return_value = fd
         entered = threading.Event()
-        original = rpc.select.select
+        original = rpc.selectors.DefaultSelector.select
 
-        def waiting(read, write, error, *timeout):
+        def waiting(selector, *timeout):
             self.assertEqual(timeout, ())
             entered.set()
-            return original(read, write, error, *timeout)
+            return original(selector, *timeout)
 
-        with patch.object(rpc.select, 'select', side_effect=waiting) as read:
+        with patch.object(rpc.selectors.DefaultSelector, 'select', autospec=True, side_effect=waiting) as read:
             thread = threading.Thread(target=lambda: list(client.stdio_lines()))
             thread.start()
             self.assertTrue(entered.wait(1))

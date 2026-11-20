@@ -125,7 +125,8 @@ class LauncherTest(unittest.TestCase):
              redirect_stdout(output):
             launcher.show_status()
 
-        self.assertIn("selected: personal", output.getvalue())
+        self.assertIn("selected: unknown", output.getvalue())
+        self.assertIn("next selection: personal", output.getvalue())
 
     def test_explicit_home_is_preserved(self):
         with patch.dict(launcher.os.environ, {"CODEX_HOME": "/chosen"}), \
@@ -137,7 +138,7 @@ class LauncherTest(unittest.TestCase):
     def test_company_management_does_not_query_or_select_personal(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(Path, "is_file", return_value=True), \
-             patch.object(launcher, "read_usage") as query, \
+             patch.object(launcher, "direct_usages") as query, \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
             with self.assertRaises(SystemExit):
                 launcher.main(["login", "status"])
@@ -155,7 +156,7 @@ class LauncherTest(unittest.TestCase):
              patch.object(launcher, "load", return_value={}), \
              patch("service.running", return_value=False), \
              patch.object(Path, "is_file", return_value=True), \
-             patch.object(launcher, "read_usage", side_effect=[90, 5]), \
+             patch.object(launcher, "direct_usages", return_value={'company': 90, 'personal': 5}), \
              patch.object(launcher.os, "execve", side_effect=SystemExit) as run:
             with self.assertRaises(SystemExit):
                 launcher.main(["--cd", "/project", "exec", "do work"])

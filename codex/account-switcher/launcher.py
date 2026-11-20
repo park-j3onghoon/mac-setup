@@ -15,8 +15,9 @@ import time
 from policy import UsageUnavailable, choose
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
-from usage import read_usage, read_snapshot
-from state import RUNTIME, load, record, save
+from profiles import credentials, registered_accounts
+from usage import read_snapshot
+from state import RUNTIME, load, read_checkpoint, record, save, usage_history
 from unix_ws import UnixWebSocket
 
 
@@ -71,10 +72,11 @@ def show_status():
     selected = state.get("active") or "unknown"
     if not is_running:
         try:
-            selected = choose({name: value['used_percent'] for name, value in state.get('accounts', {}).items()
+            forecast = choose({name: value['used_percent'] for name, value in state.get('accounts', {}).items()
                                if name not in state['errors']}, preferred=state.get('preferred', 'company'))
         except UsageUnavailable:
-            selected = 'unknown'
+            forecast = 'unknown'
+        print(f'next selection: {forecast}')
     status = state.get('status', 'not started')
     if not is_running and status not in ('failed', 'not started'):
         status = 'stopped'
@@ -89,6 +91,10 @@ def show_status():
         print("Some checks failed; recorded usage may be stale.")
     if state.get('uncertain_continuation_count'):
         print(f"Continuations awaiting confirmation: {state['uncertain_continuation_count']}")
+    if state.get('continuation_error'):
+        print(f"Continuations suspended: {state['continuation_error']}")
+    if state.get('restore_error'):
+        print(f"Previous account recovery: {state['restore_error']}")
     if state.get('registration_error'):
         print(f"Profile registration: {state['registration_error']}")
     if state.get('release_error'):
@@ -96,22 +102,36 @@ def show_status():
     return 0
 
 
-def command_name(arguments):
-    value_options = {"-c", "--config", "-m", "--model", "-p", "--profile",
+VALUE_OPTIONS = {"-c", "--config", "-m", "--model", "-p", "--profile",
                      "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd",
                      "--add-dir", "-i", "--image", "--remote-auth-token-env",
                      "--local-provider", "--enable", "--disable"}
+
+
+def command_name(arguments):
     skip = False
     for argument in arguments:
         if skip:
             skip = False
         elif argument == "--":
             return None
-        elif argument in value_options:
+        elif argument in VALUE_OPTIONS:
             skip = True
         elif not argument.startswith("-"):
             return argument
     return None
+
+
+def has_directory_option(arguments):
+    tokens = iter(arguments)
+    for token in tokens:
+        if token == '--':
+            break
+        if token == '--cd' or token.startswith(('--cd=', '-C')):
+            return True
+        if token in VALUE_OPTIONS:
+            next(tokens, None)
+    return False
 
 
 def interactive(arguments):
@@ -173,7 +193,7 @@ def launch_automatic(arguments):
     environment = dict(os.environ, CODEX_HOME=str(RUNTIME))
     # A remote terminal sends no directory unless told, and the thread then runs in the
     # server's own directory (measured on 0.168.0, 2026-11-13).
-    directory = [] if any(arg.startswith(("-C", "--cd")) for arg in arguments) else ["-C", os.getcwd()]
+    directory = [] if has_directory_option(arguments) else ["-C", os.getcwd()]
     try:
         idle_seconds = float(os.environ.get("CODEX_IDLE_SECONDS", "900"))
     except ValueError as error:
@@ -211,6 +231,14 @@ def report_runtime_update(started_at=0):
             print("[codex] Shared server update failed. Check codex --account-status.", file=sys.stderr)
             return False
         if not running(state):
+            from runtime import SOCKET
+            if SOCKET.exists():
+                try:
+                    current = server_version(SOCKET)
+                except (OSError, EOFError, ValueError):
+                    current = None
+                print(f'[codex] Shared server version: {current or "unconfirmed"}; installed: {installed}.')
+                return current == installed
             print(f"[codex] Next automatic server will start from the installed release ({installed}).")
             return True
         if state.get("runtime_version") == installed and state.get("active"):
@@ -231,8 +259,8 @@ def update_clis():
     failed = False
     for binary in (BINARY, Path.home() / ".local/bin/claude"):
         try:
-            result = subprocess.run([str(binary), "update"])
-        except OSError as error:
+            result = subprocess.run([str(binary), "update"], timeout=600)
+        except (OSError, subprocess.TimeoutExpired) as error:
             print(f"[update] {binary}: {error}", file=sys.stderr)
             failed = True
         else:
@@ -241,6 +269,37 @@ def update_clis():
                 failed = True
     confirmed = report_runtime_update(started_at)
     return int(failed or not confirmed)
+
+
+def direct_usages(state):
+    bindings = registered_accounts(PROFILES, RUNTIME, state)
+    current = {}
+    for name, home in PROFILES.items():
+        try:
+            current[name] = credentials(home)['chatgptAccountId']
+        except UsageUnavailable:
+            continue
+    if len(set(current.values())) != len(current):
+        raise UsageUnavailable('Saved workspaces are duplicated')
+    usages = {}
+    for name in ('company', 'personal'):
+        if name not in current:
+            raise UsageUnavailable(f'Saved {name} login is unavailable')
+        if bindings.get(name) != current[name]:
+            raise UsageUnavailable(f'The saved {name} workspace needs registration')
+        path = RUNTIME / f'direct-usage-{name}.json'
+        with path.with_suffix('.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            saved = usage_history(current[name], state.get('accounts', {}).get(name), read_checkpoint(path))
+            sample = read_snapshot(BINARY, PROFILES[name])
+            if credentials(PROFILES[name])['chatgptAccountId'] != current[name]:
+                raise UsageUnavailable('Workspace changed during direct quota lookup')
+            fresh = record(saved, sample)
+            save(dict(fresh, account_id=current[name]), path)
+        usages[name] = fresh['used_percent']
+        if usages[name] < 90:
+            break
+    return usages
 
 
 def main(arguments):
@@ -294,7 +353,8 @@ def main(arguments):
                 previous = max(state.get('usage_request_at', 0), load(request_path).get('requested_at', 0))
                 requested = max(time.time(), math.nextafter(previous, math.inf))
                 save({'requested_at': requested}, request_path)
-            deadline = time.monotonic() + 30
+            # A request can arrive during an existing poll. Budget for both polls.
+            deadline = time.monotonic() + 150
             while state.get('usage_request_at', 0) < requested:
                 if state.get('status') in ('stopped', 'failed') or state.get('upgrade_status') == 'draining':
                     break
@@ -311,14 +371,11 @@ def main(arguments):
                 if not usages:
                     raise UsageUnavailable('Fresh profile usage is unavailable')
         if not usages:
-            for name in ("company", "personal"):
-                usages[name] = read_usage(BINARY, PROFILES[name])
-                if usages[name] < 90:
-                    break
+            usages = direct_usages(state)
         summary = ", ".join(f"{name} {used:g}% used" for name, used in usages.items())
         selected = choose(usages)
         print(f"[codex] {summary}; selected {selected}", file=sys.stderr)
-    if command_name(arguments) not in ('login', 'help', 'completion') and not (PROFILES[selected] / "auth.json").is_file():
+    if command_name(arguments) not in ('doctor', 'login', 'help', 'completion') and not (PROFILES[selected] / "auth.json").is_file():
         raise UsageUnavailable(f"Saved {selected} login is missing")
     environment = dict(os.environ, CODEX_HOME=str(PROFILES[selected]))
     os.execve(str(BINARY), [str(BINARY), *arguments], environment)

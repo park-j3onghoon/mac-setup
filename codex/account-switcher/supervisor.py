@@ -9,10 +9,11 @@ import threading
 import time
 
 from policy import THRESHOLD, UsageUnavailable, choose
-from profiles import PROFILES, Profile, RegistrationMismatch
+from profiles import PROFILES, Profile, RegistrationMismatch, registered_accounts
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
-from state import RUNTIME, STATE_FILE, changed_file, load, poll_delay, preference, record, save
+from state import (RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_delay, preference,
+                   record, save, usage_history)
 
 
 def collect(profiles):
@@ -33,8 +34,23 @@ def collect(profiles):
 def check_upgrade(runtime, state):
     installed = runtime.binary.resolve(strict=True)
     if server_package_cache(installed, runtime.home) and installed.parent.parent.name != state["runtime_version"]:
+        if (state.get('upgrade_status') == 'drain_timeout'
+                and state.get('upgrade_target') == installed.parent.parent.name):
+            return
         state["upgrade_target"] = installed.parent.parent.name
-        state["upgrade_status"] = "draining" if runtime.drain_for_upgrade(installed) else "waiting_for_idle"
+        def checkpoint(active):
+            state.update(restore_account=active, upgrade_status='draining', drain_started_at=time.time(),
+                         updated_at=time.time())
+            save(state, runtime.home / STATE_FILE.name, durable=True)
+        runtime.before_drain = checkpoint
+        try:
+            state["upgrade_status"] = "draining" if runtime.drain_for_upgrade(installed) else "waiting_for_idle"
+        except (OSError, ValueError):
+            if state.get('upgrade_status') == 'draining':
+                state['upgrade_status'] = 'waiting_for_idle'
+                state.pop('restore_account', None)
+                save(state, runtime.home / STATE_FILE.name)
+            raise
     else:
         state.pop("upgrade_target", None)
         state.pop("upgrade_status", None)
@@ -56,10 +72,12 @@ def monitor(runtime, profiles, stop, state):
     next_limit_check = 0
     while not stop.is_set():
         if not runtime.running():
-            if state.get("upgrade_status") == "draining":
+            if state.get("upgrade_status") in ("draining", "drain_timeout"):
                 return True
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
+        if state.get('pid') == os.getpid() and not state.get('pid_start'):
+            state['pid_start'] = process_start(os.getpid())
         if now < previous_wall:
             next_poll = next_release = next_upgrade = retry_switch_at = saved_at = next_limit_check = 0
             retry_registration.clear()
@@ -68,11 +86,18 @@ def monitor(runtime, profiles, stop, state):
         if state.get("runtime_version") and state.get("upgrade_status") != "draining" and now >= next_upgrade:
             try:
                 check_upgrade(runtime, state)
-                state.pop("upgrade_error", None)
+                if state.get('upgrade_status') != 'drain_timeout':
+                    state.pop("upgrade_error", None)
             except (OSError, KeyError, ValueError) as error:
                 state["upgrade_error"] = type(error).__name__
                 state['upgrade_checked_at'] = now
             next_upgrade = time.time() + 15
+        if state.get("upgrade_status") == "draining":
+            started = state.setdefault('drain_started_at', now)
+            if now < started or now - started >= 120:
+                state['upgrade_status'] = 'drain_timeout'
+                state['upgrade_error'] = 'Server did not exit within 120 seconds'
+                next_poll = 0
         if state.get("upgrade_status") == "draining":
             if state.get('active') or state.get('restore_account') != runtime.active or now - saved_at >= 30:
                 state.update(updated_at=now, active=None, restore_account=runtime.active)
@@ -132,7 +157,7 @@ def monitor(runtime, profiles, stop, state):
                 state.pop("release_error", None)
             except Exception as error:
                 state["release_error"] = type(error).__name__
-                complete = not (runtime.release_ids or runtime.release_cursor)
+                complete = not (runtime.release_ids or runtime.release_cursor or runtime.release_retries)
             next_release = time.time() + (2 if complete is False else 60)
         if now >= next_limit_check and runtime.take_limit_failure() is True:
             next_poll = 0
@@ -143,8 +168,14 @@ def monitor(runtime, profiles, stop, state):
             state["errors"] = errors
             state["last_attempt_at"] = time.time()
             existing = state.get('accounts', {})
-            state['accounts'] = {**existing, **{name: record(existing.get(name), value)
-                                                for name, value in fresh.items()}}
+            history = dict(existing)
+            for name, value in fresh.items():
+                account = value.get('account_id')
+                prior = existing.get(name)
+                if account:
+                    prior = usage_history(account, prior, changed_file(RUNTIME / f'direct-usage-{name}.json'))
+                history[name] = record(prior, value)
+            state['accounts'] = history
             if manual > state.get('usage_request_at', 0):
                 state['usage_request_at'] = manual
                 state['updated_at'] = time.time()
@@ -167,14 +198,21 @@ def monitor(runtime, profiles, stop, state):
                     }
             except Exception as error:
                 state["account_error"] = type(error).__name__
+            if isinstance(runtime.restore_error, str) and runtime.active is None and 'account_error' not in state:
+                for name in (state['preferred'], *profiles):
+                    if fresh.get(name, {}).get('used_percent', THRESHOLD) < THRESHOLD:
+                        desired = name
+                        break
             if runtime.active and len(fresh) == 2 and all(v['used_percent'] >= THRESHOLD for v in fresh.values()):
                 desired = runtime.active
+            if fresh.get(state['preferred'], {}).get('used_percent', 0) >= THRESHOLD:
+                state.pop('preference_immediate', None)
             if desired != previous_desired:
                 retry_switch_at, idle_retry_delay = 0, 2
             next_poll = time.time() + poll_delay(fresh, runtime.active, history=state.get('accounts', {}))
             state["next_check_at"] = next_poll
             runtime.quota_periods = {name: max((window.get('last_reset_confirmed_at', 0)
-                                      for window in value.get('windows', {}).values()), default=0)
+                                      for window in known_windows(value)), default=0)
                                      for name, value in state['accounts'].items()}
             check_limited = True
         state["desired"] = desired
@@ -187,6 +225,8 @@ def monitor(runtime, profiles, stop, state):
                 if changed and runtime.active == state['preferred']:
                     state.pop('preference_immediate', None)
                 if changed and old != runtime.active:
+                    runtime.restore_error = None
+                    state.pop('restore_error', None)
                     next_poll = time.time() + poll_delay(state['accounts'], runtime.active)
                     state['next_check_at'] = next_poll
                     state['last_observed_active'] = runtime.active
@@ -210,6 +250,12 @@ def monitor(runtime, profiles, stop, state):
         elif desired is None or 'account_error' in state:
             state["status"] = "degraded"
         state['active'] = runtime.active
+        if state.get('upgrade_status') == 'drain_timeout' and runtime.active is not None:
+            state['restore_account'] = runtime.active
+        if isinstance(runtime.continuation_error, str):
+            state['continuation_error'] = runtime.continuation_error
+        else:
+            state.pop('continuation_error', None)
         uncertain = getattr(runtime, 'uncertain_continuations', {})
         if isinstance(uncertain, dict) and uncertain:
             state['uncertain_continuation_count'] = len(uncertain)
@@ -228,8 +274,10 @@ def run_runtimes(profiles, stop, state):
         runtime = Runtime(profiles)
         try:
             runtime.start(restore_account=state.get("restore_account"))
+            if isinstance(runtime.restore_error, str):
+                state['restore_error'] = runtime.restore_error
             same_runtime = (runtime.pid, runtime.pid_start) == (state.get("runtime_pid"), state.get("runtime_pid_start"))
-            if not same_runtime or state.get("upgrade_status") != "draining":
+            if not same_runtime or state.get("upgrade_status") not in ("draining", "drain_timeout"):
                 state.pop("upgrade_status", None)
                 state.pop("upgrade_target", None)
                 state.pop("restore_account", None)
@@ -292,7 +340,9 @@ def main():
         signal.signal(signal.SIGINT, lambda *_: stop.set())
         profiles = {}
         try:
-            profiles = {name: Profile(name, home) for name, home in PROFILES.items()}
+            bindings = registered_accounts(PROFILES, RUNTIME, state)
+            profiles = {name: Profile(name, home, bindings_dir=RUNTIME, account_id=bindings.get(name))
+                        for name, home in PROFILES.items()}
             run_runtimes(profiles, stop, state)
         except Exception as error:
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())

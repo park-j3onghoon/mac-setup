@@ -752,15 +752,17 @@ class SwitchingTest(unittest.TestCase):
         self.assertEqual(self.runtime.active, "personal")
 
     def test_failed_manual_switch_restores_the_previous_account(self):
-        """수동 전환에서도 다른 계정이 확인되면 이전 인증으로 복구한다."""
+        """수동 전환이 실패해도 서버 확인값이 이미 원래 계정이면 다시 로그인하지 않는다."""
         self.runtime.client.request.side_effect = [
-            {}, {"accountId": "unexpected"}, {}, {"accountId": "company"},
+            {}, {"accountId": "unexpected"},
+            {"account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": "company"}},
         ]
 
         with self.assertRaises(UsageUnavailable):
             self.runtime.select("personal", force=True)
 
         self.assertEqual(self.runtime.active, "company")
+        self.profiles['company'].tokens.assert_not_called()
 
     def test_closed_connection_is_replaced_without_logging_in_again(self):
         """감독 연결이 끊기면 같은 서버에 새로 붙는다. 계정이 그대로면 다시 로그인하지 않는다(로그인하면 모든 스레드의 MCP가 재시작된다)."""
@@ -779,8 +781,10 @@ class SwitchingTest(unittest.TestCase):
                          ["account/read"])
 
     def test_wrong_identity_rolls_back(self):
+        account = lambda name: {"account": {"type": "chatgpt"}, "workspaceRouting": {"chatgptAccountId": name}}
         self.runtime.client.request.side_effect = [
-            {"data": []}, {}, {"accountId": "unexpected"}, {}, {"accountId": "company"},
+            {"data": []}, {}, {"accountId": "unexpected"}, account('personal'), account('personal'),
+            {}, account('company'),
         ]
         with self.assertRaises(UsageUnavailable):
             self.runtime.select("personal")
@@ -1012,6 +1016,7 @@ class MonitorTest(unittest.TestCase):
         written = []
         with patch('supervisor.time.time', side_effect=lambda: clock[0]), \
              patch('supervisor.collect', return_value=(fresh, {})), \
+             patch('supervisor.changed_file', return_value={}), \
              patch('supervisor.save', side_effect=lambda state: written.append(state['updated_at'])), \
              patch('supervisor.preference', side_effect=lambda: (
                  {'preferred': 'personal', 'requested_at': 1010} if clock[0] >= 1010 else {})):

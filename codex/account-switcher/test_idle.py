@@ -95,6 +95,13 @@ class IdleTest(unittest.TestCase):
         self.assertEqual(methods.count('thread/loaded/list'), 1)
         self.assertLessEqual(methods.count('thread/read'), 100)
 
+    def test_activity_moves_cleanup_to_the_actual_deadline(self):
+        self.idle.touch('thread', 4)
+        self.idle.park(10)
+        self.assertFalse(self.idle.sleeping)
+        self.idle.park(14)
+        self.assertEqual(self.idle.sleeping, {'thread'})
+
     def test_child_on_later_loaded_page_preserves_parent(self):
         """loaded 목록 다음 페이지의 ephemeral 자식도 parent 회수를 막는다."""
         request = self.server.request
@@ -340,13 +347,125 @@ class ProxyTest(unittest.TestCase):
             self.proxy.pending[request['id']].put({'result': server.request(request['method'], request['params'])})
         self.fail('unsubscribe was not requested')
 
-    def test_timed_out_unsubscribe_forwards_unconfirmed_closure(self):
+    def test_late_unsubscribe_success_suppresses_the_park_notification(self):
         self.reach_unsubscribe()
+        request_id = self.proxy.check_id
         self.proxy.check_deadline = 0
         self.proxy.inspect_idle()
         payload = b'{"method":"thread/closed","params":{"threadId":"thread"}}'
         self.proxy.receive('server', payload)
+        self.assertTrue(self.proxy.events.empty())
+        self.proxy.receive('server', json.dumps({'id': request_id, 'result': {}}).encode())
+        self.assertTrue(self.proxy.events.empty())
+        self.assertIn('thread', self.proxy.idle.sleeping)
+
+    def test_close_before_timeout_is_released_only_after_unsubscribe_rejection(self):
+        self.reach_unsubscribe()
+        request_id = self.proxy.check_id
+        payload = b'{"method":"thread/closed","params":{"threadId":"thread"}}'
+        self.proxy.receive('server', payload)
+        self.proxy.check_deadline = 0
+        self.proxy.inspect_idle()
+        self.assertTrue(self.proxy.events.empty())
+        self.proxy.receive('server', json.dumps({'id': request_id, 'error': {'message': 'rejected'}}).encode())
         self.assertEqual(self.proxy.events.get_nowait()[1], payload)
+        self.assertNotIn('thread', self.proxy.idle.sleeping)
+
+    def test_cold_resume_leaves_persisted_model_and_effort_in_charge(self):
+        config = {'model': 'old', 'model_provider': 'old-provider', 'model_reasoning_effort': 'low',
+                  'shell_environment_policy.set.TAB': 'original'}
+        self.proxy.idle.track({'thread': {'id': 'thread', 'ephemeral': False}}, {
+            'model': 'old', 'modelProvider': 'old-provider', 'config': config}, 0)
+        self.proxy.idle.sleeping.add('thread')
+        self.send_client({'id': 1, 'method': 'turn/start', 'params': {'threadId': 'thread'}})
+        self.proxy.inspect_idle()
+        request = json.loads(self.server.send.call_args.args[0])
+        self.assertEqual(request['params'], {'threadId': 'thread', 'excludeTurns': True,
+                                             'config': {'shell_environment_policy.set.TAB': 'original'}})
+
+    def test_only_disabled_goals_are_treated_as_empty(self):
+        for detail, expected in [('goals feature is disabled', True), ('storage error', False)]:
+            with self.subTest(detail=detail):
+                proxy = Proxy(Mock(), Mock(), 1)
+                proxy.initialized = True
+                proxy.idle.track({'thread': {'id': 'thread', 'ephemeral': False}}, {}, 0)
+                server = Server()
+                for _ in range(15):
+                    proxy.inspect_idle()
+                    if not proxy.check_id:
+                        break
+                    method = proxy.check_method
+                    reply = ({'error': {'message': detail}} if method == 'thread/goal/get' else
+                             {'result': server.request(method, proxy.check_params)})
+                    proxy.pending[proxy.check_id].put(reply)
+                self.assertEqual('thread' in proxy.idle.sleeping, expected)
+
+    def test_parked_background_terminals_are_empty_only_for_an_unloaded_thread(self):
+        self.proxy.idle.sleeping.add('thread')
+        for request_id, detail in [(1, 'thread not found: thread'), (2, 'service unavailable')]:
+            self.send_client({'id': request_id, 'method': 'thread/backgroundTerminals/list',
+                              'params': {'threadId': 'thread'}})
+            self.proxy.receive('server', json.dumps({'id': request_id, 'error': {'message': detail}}).encode())
+            _, raw, route = self.proxy.events.get_nowait()
+            self.proxy.forward_server(route, raw)
+            reply = json.loads(self.client.send.call_args.args[0])
+            if request_id == 1:
+                self.assertEqual(reply['result'], {'data': [], 'nextCursor': None})
+            else:
+                self.assertEqual(reply['error']['message'], detail)
+        self.assertFalse(self.proxy.wakeups)
+
+    def test_slow_explicit_resume_forwards_response_and_releases_submission(self):
+        self.proxy.idle.sleeping.add('thread')
+        with patch('idle.time.monotonic', return_value=1):
+            self.send_client({'id': 7, 'method': 'thread/resume', 'params': {'threadId': 'thread'}})
+            self.send_client({'id': 8, 'method': 'turn/start', 'params': {'threadId': 'thread'}})
+        with patch('idle.time.monotonic', return_value=42):
+            self.proxy.inspect_idle()
+            self.assertFalse(self.client.send.called)
+            self.send_server({'id': 7, 'result': {'thread': {'id': 'thread', 'ephemeral': False}}})
+        self.assertEqual(json.loads(self.client.send.call_args.args[0])['id'], 7)
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['id'], 8)
+
+    def test_permanent_resume_error_waits_for_new_input(self):
+        self.proxy.idle.sleeping.add('thread')
+        self.send_client({'id': 7, 'method': 'turn/start', 'params': {'threadId': 'thread'}})
+        self.proxy.advance_wakes(1)
+        request_id = self.proxy.wake_requests['thread'][0]
+        self.proxy.pending[request_id].put({'error': {'message': 'invalid rollout'}})
+        self.proxy.advance_wakes(2)
+        self.proxy.advance_wakes(100)
+        self.assertEqual(self.server.send.call_count, 1)
+        self.assertEqual(json.loads(self.client.send.call_args.args[0])['id'], 7)
+        self.assertFalse(self.proxy.wakeups)
+
+    def test_pending_global_read_allows_unrelated_idle_cleanup(self):
+        self.send_client({'id': 7, 'method': 'account/read', 'params': {}})
+        self.assertIsNotNone(self.reach_unsubscribe())
+        self.assertIn(7, self.proxy.client_requests)
+
+    def test_unarchive_reaches_storage_even_after_external_archival(self):
+        self.proxy.idle.sleeping.add('thread')
+        self.send_server({'method': 'thread/archived', 'params': {'threadId': 'thread'}})
+        self.send_client({'id': 10, 'method': 'thread/unarchive', 'params': {'threadId': 'thread'}})
+        self.assertFalse(self.proxy.idle.sleeping)
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['method'], 'thread/unarchive')
+
+    def test_external_root_activity_reaches_terminal_and_restores_subscription(self):
+        self.proxy.idle.sleeping.add('thread')
+        notice = {'method': 'thread/status/changed', 'params': {'threadId': 'thread', 'status': {'type': 'active'}}}
+        self.proxy.receive('server', json.dumps(notice).encode())
+        _, raw, route = self.proxy.events.get_nowait()
+        self.proxy.forward_server(route, raw)
+        self.assertEqual(json.loads(self.client.send.call_args.args[0]), notice)
+        self.proxy.inspect_idle()
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['method'], 'thread/resume')
+
+    def test_attachment_read_does_not_resume_parked_thread(self):
+        self.proxy.idle.sleeping.add('thread')
+        self.send_client({'id': 10, 'method': 'thread/attachment/list', 'params': {'threadId': 'thread'}})
+        self.assertEqual(json.loads(self.server.send.call_args.args[0])['method'], 'thread/attachment/list')
+        self.assertFalse(self.proxy.wakeups)
 
     def test_transient_resume_retains_original_input_for_bounded_retry(self):
         self.proxy.idle.sleeping.add('thread')

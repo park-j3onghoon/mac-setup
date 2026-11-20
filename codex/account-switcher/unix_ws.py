@@ -54,12 +54,39 @@ def mask_payload(data, mask):
     return result
 
 
+def read_handshake(connection, deadline=None, owner_watch=None):
+    """An owner exit must interrupt even a partially completed upgrade."""
+    end = time.monotonic() + 10
+    if deadline is not None:
+        end = min(end, deadline)
+    buffer = b""
+    while b"\r\n\r\n" not in buffer:
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("WebSocket handshake timed out")
+        if owner_watch is not None:
+            ready, _, _ = select.select([connection, owner_watch], [], [], remaining)
+            if owner_watch in ready:
+                raise EOFError("Terminal exited during WebSocket handshake")
+            if not ready:
+                raise TimeoutError("WebSocket handshake timed out")
+        connection.settimeout(remaining)
+        block = connection.recv(4096)
+        if not block or len(buffer) > 16384:
+            raise OSError("Invalid WebSocket handshake")
+        buffer += block
+    header, rest = buffer.split(b"\r\n\r\n", 1)
+    if len(header) > 16384:
+        raise OSError("Invalid WebSocket handshake")
+    return header, rest
+
+
 class UnixWebSocket:
     message_limit = 16 * 1024 * 1024
     fragment_limit = 4096
     deadline = None
 
-    def __init__(self, path, *, deadline=None):
+    def __init__(self, path, *, deadline=None, owner_watch=None):
         self.deadline = deadline
         self.socket = socket.socket(socket.AF_UNIX)
         self.lock = threading.Lock()
@@ -74,13 +101,7 @@ class UnixWebSocket:
                        f"Sec-WebSocket-Key: {key}\r\n\r\n")
             self._apply_deadline()
             self.socket.sendall(request.encode())
-            while b"\r\n\r\n" not in self.buffer:
-                self._apply_deadline()
-                chunk = self.socket.recv(4096)
-                if not chunk or len(self.buffer) > 16384:
-                    raise OSError("Invalid Codex socket handshake")
-                self.buffer += chunk
-            header, self.buffer = self.buffer.split(b"\r\n\r\n", 1)
+            header, self.buffer = read_handshake(self.socket, deadline, owner_watch)
             lines = header.decode("ascii").split("\r\n")
             headers = {name.strip().lower(): value.strip()
                        for name, value in (line.split(":", 1) for line in lines[1:] if ":" in line)}

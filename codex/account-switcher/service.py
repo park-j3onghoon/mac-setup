@@ -15,7 +15,7 @@ import tempfile
 import time
 
 from policy import UsageUnavailable
-from runtime import SOCKET, prepare_home, process_start
+from runtime import SOCKET, peer_process, prepare_home, process_start
 from state import RUNTIME, load
 
 
@@ -42,8 +42,22 @@ def service_plist():
     return Path.home() / f'Library/LaunchAgents/{LABEL}.plist'
 
 
+def launchctl(*args):
+    try:
+        return subprocess.run(['/bin/launchctl', *args], capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired as error:
+        raise UsageUnavailable(f'launchctl {args[0]} timed out') from error
+
+
 def job_status(target):
-    return subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True, timeout=10)
+    return launchctl('print', target)
+
+
+def matches_runtime(connection, state):
+    try:
+        return peer_process(connection) == (state.get('runtime_pid'), state.get('runtime_pid_start'))
+    except UsageUnavailable:
+        return False
 
 
 def job_pid(output):
@@ -139,7 +153,7 @@ def install_registration(destination, watch):
                 return
         else:
             already_loaded = False
-            result = subprocess.run(['/bin/launchctl', 'bootout', target], capture_output=True, timeout=10)
+            result = launchctl('bootout', target)
             if result.returncode:
                 raise UsageUnavailable("Could not replace the obsolete supervisor registration")
     descriptor, temporary = tempfile.mkstemp(prefix=f'.{LABEL}-', dir=destination.parent)
@@ -151,10 +165,8 @@ def install_registration(destination, watch):
         Path(temporary).unlink(missing_ok=True)
     if already_loaded:
         return
-    result = subprocess.run(['/bin/launchctl', 'bootstrap', domain, str(destination)],
-                            capture_output=True, timeout=10)
-    if result.returncode and subprocess.run(['/bin/launchctl', 'print', target],
-                                           capture_output=True, timeout=10).returncode:
+    result = launchctl('bootstrap', domain, str(destination))
+    if result.returncode and job_status(target).returncode:
         raise UsageUnavailable(f'Automatic supervisor registration failed: status={result.returncode}')
     pending.unlink(missing_ok=True)
 
@@ -171,7 +183,8 @@ def ensure():
                 with socket.socket(socket.AF_UNIX) as probe:
                     probe.settimeout(.3)
                     probe.connect(str(SOCKET))
-                return state
+                    if matches_runtime(probe, state):
+                        return state
             except OSError as error:
                 if not isinstance(error, TimeoutError) and error.errno not in (
                         errno.ECONNREFUSED, errno.ENOENT, errno.ENOTSOCK):

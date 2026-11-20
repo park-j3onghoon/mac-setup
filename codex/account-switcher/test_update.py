@@ -79,6 +79,7 @@ class UpdateTest(unittest.TestCase):
 
     def test_bare_update_runs_both_native_updaters_even_if_one_fails(self):
         with patch("launcher.subprocess.run") as run, patch("launcher.load", return_value={}), \
+                patch("runtime.SOCKET", self.runtime.home / 'fixture-update.sock'), \
                 patch.object(launcher, "RUNTIME", self.runtime.home):
             run.side_effect = [Mock(returncode=1), Mock(returncode=0)]
             self.assertNotEqual(launcher.main(["update"]), 0)

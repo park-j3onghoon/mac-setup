@@ -112,9 +112,11 @@ class RecoveryContract(unittest.TestCase):
                                       'error': {'codexErrorInfo': 'usageLimitExceeded'}}]}
                 if method == 'thread/queue/list':
                     return {'data': []}
-                self.assertEqual(load(runtime.continuation_path), {'one': 'failed'})
+                if method == 'thread/goal/get':
+                    return {'goal': None}
+                self.assertEqual(load(runtime.continuation_path)['one']['turn_id'], 'failed')
                 raise UsageUnavailable('reply lost')
             client.request.side_effect = respond
             with self.assertRaises(UsageUnavailable):
                 runtime.continue_thread('one', client)
-            self.assertEqual(load(runtime.continuation_path), {'one': 'failed'})
+            self.assertEqual(load(runtime.continuation_path)['one']['turn_id'], 'failed')
