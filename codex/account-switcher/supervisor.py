@@ -16,6 +16,9 @@ from state import (RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_
                    record, save, usage_history)
 
 
+DRAIN_STATUSES = ("draining", "drain_timeout")
+
+
 def collect(profiles):
     snapshots, errors = {}, {}
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -72,7 +75,7 @@ def monitor(runtime, profiles, stop, state):
     next_limit_check = 0
     while not stop.is_set():
         if not runtime.running():
-            if state.get("upgrade_status") in ("draining", "drain_timeout"):
+            if state.get("upgrade_status") in DRAIN_STATUSES:
                 return True
             raise UsageUnavailable("Automatic runtime exited")
         now = time.time()
@@ -277,7 +280,7 @@ def run_runtimes(profiles, stop, state):
             if isinstance(runtime.restore_error, str):
                 state['restore_error'] = runtime.restore_error
             same_runtime = (runtime.pid, runtime.pid_start) == (state.get("runtime_pid"), state.get("runtime_pid_start"))
-            if not same_runtime or state.get("upgrade_status") not in ("draining", "drain_timeout"):
+            if not same_runtime or state.get("upgrade_status") not in DRAIN_STATUSES:
                 state.pop("upgrade_status", None)
                 state.pop("upgrade_target", None)
                 state.pop("restore_account", None)
