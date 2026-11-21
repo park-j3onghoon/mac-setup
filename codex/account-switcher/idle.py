@@ -21,7 +21,8 @@ import time
 import uuid
 
 from policy import UsageUnavailable
-from state import save
+from runtime import peer_process
+from state import DRAIN_REPORT, save
 from unix_ws import UnixWebSocket, read_handshake
 
 
@@ -478,6 +479,7 @@ class Proxy:
         self.stopped = threading.Event()
         self.idle = IdleThreads(self.request, delay, self.can_park)
         self.initialized = False
+        self.drain_reported = False
         self.prefix = "idle-" + uuid.uuid4().hex + "-"
         self.serial = 0
         self.checks = None
@@ -931,6 +933,9 @@ class Proxy:
                 self.server_requests[message["id"]] = thread_id
             else:
                 self.release_request('client', message['id'])
+                data = (message.get('error') or {}).get('data')
+                if not self.drain_reported and isinstance(data, dict) and data.get('reason') == 'serverShuttingDown':
+                    self.report_drain()
                 request = self.client_requests.pop(message["id"], None)
                 if request and request[0] in ('thread/realtime/start', 'thread/realtime/stop') and 'result' in message:
                     self.realtime_changed(request[1].get('threadId'), request[0].endswith('/start'))
@@ -974,6 +979,16 @@ class Proxy:
                 raise OSError('Too many undiscovered threads')
             self.discoveries[thread_id] = None
         self.send('client', payload)
+
+    def report_drain(self):
+        # Codex는 drain을 클라이언트에 알리지 않는다. 새 턴을 거절한 이 응답이 감독이 drain을 알 유일한 신호다.
+        try:
+            pid, started = peer_process(self.upstream.socket)
+            save({"pid": pid, "pid_start": started, "observed_at": time.time()}, DRAIN_REPORT)
+        except (OSError, UsageUnavailable):
+            # 보고하지 못해도 거절 응답은 터미널에 전달하고, 다음 거절에서 다시 보고한다.
+            return
+        self.drain_reported = True
 
     def clear_uncertain_unsubscribe(self, owner):
         with self.unsubscribe_lock:

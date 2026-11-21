@@ -13,6 +13,7 @@ from policy import UsageUnavailable, poll_seconds, utilization
 
 RUNTIME = Path.home() / ".codex-auto"
 STATE_FILE = RUNTIME / "account-switcher.json"
+DRAIN_REPORT = RUNTIME / "runtime-draining.json"
 _cache = {}
 
 

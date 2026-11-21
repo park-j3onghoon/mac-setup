@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from idle import IdleThreads, Proxy
 from policy import UsageUnavailable
+import state
 
 
 class Transport:
@@ -273,6 +274,20 @@ class ProxyTest(unittest.TestCase):
 
     def send_server(self, message):
         self.proxy.forward_server(message, json.dumps(message).encode())
+
+    def test_draining_rejection_reaches_terminal_and_reports_its_server_once(self):
+        """서버가 drain으로 새 턴을 거절하면 응답은 터미널에 그대로 전달하고, 그 서버를 감독에게 한 번만 알린다."""
+        rejection = {"error": {"code": -32600, "message": "Server is draining; retry after reconnecting",
+                               "data": {"reason": "serverShuttingDown"}}}
+
+        with (patch("idle.peer_process", return_value=(20, "fixture")), patch("idle.save") as save,
+              patch("idle.time.time", return_value=1000)):
+            for request_id in (7, 8):
+                self.send_client({"id": request_id, "method": "turn/start", "params": {"threadId": "thread"}})
+                self.send_server(dict(rejection, id=request_id))
+
+        save.assert_called_once_with({"pid": 20, "pid_start": "fixture", "observed_at": 1000}, state.DRAIN_REPORT)
+        self.assertEqual(json.loads(self.client.send.call_args.args[0]), dict(rejection, id=8))
 
     def test_user_request_is_forwarded_while_idle_query_has_no_reply(self):
         """idle RPC가 응답하지 않아도 사용자 요청은 즉시 전달한다."""

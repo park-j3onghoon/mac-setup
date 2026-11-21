@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import launcher
 from policy import UsageUnavailable
+from rpc import RpcRejected
 import supervisor
 from runtime import Runtime
 
@@ -70,6 +71,41 @@ class UpdateTest(unittest.TestCase):
         with self.assertRaises(OSError):
             supervisor.check_upgrade(self.runtime, self.state)
         self.signal.assert_not_called()
+
+    def test_ending_a_drain_interrupts_only_turns_still_running(self):
+        self.threads.return_value = [(name, {"status": {"type": status}}) for name, status in (
+            ("idle", "idle"), ("starting", "active"), ("done", "active"), ("watch", "active"), ("ended", "active"))]
+        turns = {"starting": None, "done": {"id": "d", "status": "completed"},
+                 "watch": {"id": "w", "status": "inProgress"}, "ended": {"id": "e", "status": "inProgress"}}
+
+        def request(method, params):
+            if params["threadId"] == "ended":
+                raise RpcRejected("no active turn to interrupt")
+            return {}
+        self.runtime.client.request.side_effect = request
+
+        with patch("runtime.newest_turn", side_effect=lambda _, thread_id: turns[thread_id]):
+            interrupted = self.runtime.interrupt_running_turns()
+
+        self.assertEqual(interrupted, [["watch", "w"]])
+        self.assertEqual([call.args for call in self.runtime.client.request.call_args_list],
+                         [("turn/interrupt", {"threadId": "watch", "turnId": "w"}),
+                          ("turn/interrupt", {"threadId": "ended", "turnId": "e"})])
+
+    def test_ending_a_drain_reconnects_a_closed_client_first(self):
+        self.runtime.client.closed = True
+
+        self.runtime.interrupt_running_turns()
+
+        self.runtime.observe_account.assert_called_once_with()
+
+    def test_ending_a_drain_on_another_server_interrupts_nothing(self):
+        self.peer.return_value = (999, "replacement")
+
+        with self.assertRaises(UsageUnavailable):
+            self.runtime.interrupt_running_turns()
+
+        self.runtime.client.request.assert_not_called()
 
     def test_unavailable_previous_login_defers_the_restart(self):
         self.runtime.profiles["company"].tokens.side_effect = UsageUnavailable("unavailable")

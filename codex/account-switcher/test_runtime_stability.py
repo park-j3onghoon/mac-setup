@@ -293,7 +293,7 @@ class RuntimeStabilityTest(unittest.TestCase):
         self.assertEqual((shared / 'config.toml').readlink(), fixed)
         self.assertEqual(next(shared.glob('previous-config-*/config.toml')).read_text(), 'old')
 
-    def monitor(self, saved, batches, request=None):
+    def monitor(self, saved, batches, request=None, files=None):
         stop, clock = Mock(), [1000]
         stop.is_set.side_effect = [False] * len(batches) + [True]
         stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 61)
@@ -308,7 +308,7 @@ class RuntimeStabilityTest(unittest.TestCase):
         samples = [({n: {'used_percent': pct, 'windows': {}, 'observed_at': 1000}
                      for n, pct in batch.items()}, {}) for batch in batches]
         with (patch.object(supervisor.time, 'time', side_effect=lambda: clock[0]),
-              patch.object(supervisor, 'changed_file', return_value={}),
+              patch.object(supervisor, 'changed_file', side_effect=lambda path: (files or {}).get(path, {})),
               patch.object(supervisor, 'poll_delay', return_value=60),
               patch.object(supervisor, 'preference', return_value=request or {}),
               patch.object(supervisor, 'collect', side_effect=samples), patch.object(supervisor, 'save')):
@@ -316,10 +316,35 @@ class RuntimeStabilityTest(unittest.TestCase):
 
     def test_stuck_draining_still_polls_accounts(self):
         saved = {'upgrade_status': 'draining', 'drain_started_at': 850}
+        self.rt.interrupt_running_turns = Mock(return_value=[])
         self.monitor(saved, [{'company': 98, 'personal': 2}])
         self.assertEqual(saved['upgrade_status'], 'drain_timeout')
+        self.rt.interrupt_running_turns.assert_called_once_with()
         self.assertEqual(saved['active'], 'personal')
         self.assertEqual(saved['restore_account'], 'personal')
+
+    def test_outside_drain_reported_by_relay_ends_with_turn_interrupts_after_grace(self):
+        self.rt.pid, self.rt.pid_start = 20, 'fixture'
+        self.rt.interrupt_running_turns = Mock(return_value=[['watch', 'turn']])
+        report = {'pid': 20, 'pid_start': 'fixture', 'observed_at': 1000}
+        saved = {}
+
+        self.monitor(saved, [{'company': 2}] * 3, files={state.DRAIN_REPORT: report})
+
+        self.assertEqual(saved['upgrade_status'], 'drain_timeout')
+        self.rt.interrupt_running_turns.assert_called_once_with()
+        self.assertEqual(saved['last_drain_interrupt'], {'at': 1122, 'turns': [['watch', 'turn']]})
+
+    def test_drain_report_of_an_earlier_process_with_the_same_pid_is_ignored(self):
+        self.rt.pid, self.rt.pid_start = 20, 'fixture'
+        self.rt.interrupt_running_turns = Mock()
+        report = {'pid': 20, 'pid_start': 'earlier process', 'observed_at': 0}
+        saved = {}
+
+        self.monitor(saved, [{'company': 2}], files={state.DRAIN_REPORT: report})
+
+        self.assertNotIn('upgrade_status', saved)
+        self.rt.interrupt_running_turns.assert_not_called()
 
     def test_replacement_checkpoint_is_durable_when_exit_is_requested(self):
         installed = self.home / 'Caskroom/codex/2/bin/codex'

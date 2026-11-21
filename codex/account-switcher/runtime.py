@@ -495,6 +495,30 @@ class Runtime:
             os.kill(self.pid, signal.SIGHUP)
         return True
 
+    def interrupt_running_turns(self):
+        """drain 중인 서버는 새 턴 접수를 다시 열지 않고, 실행 중인 턴이 모두 끝나야 종료한다.
+
+        app-server/src/lib.rs ShutdownState::update, turn_admission.rs begin_drain (0.170.0).
+        """
+        if self.client.closed:
+            self.observe_account()
+        if peer_process(self.client.websocket.socket) != (self.pid, self.pid_start):
+            raise UsageUnavailable("The shared socket no longer belongs to the recorded runtime")
+        interrupted = []
+        for thread_id, thread in loaded_threads(self.client):
+            if quiet(thread):
+                continue
+            turn = newest_turn(self.client, thread_id)
+            if not turn or turn["status"] != "inProgress":
+                continue
+            try:
+                self.client.request("turn/interrupt", {"threadId": thread_id, "turnId": turn["id"]})
+            except RpcRejected:
+                # 목록을 읽은 뒤 끝난 턴은 서버가 "no active turn to interrupt"로 거절한다.
+                continue
+            interrupted.append([thread_id, turn["id"]])
+        return interrupted
+
     def login(self, tokens):
         self.client.request("account/login/start", {
             "type": "chatgptAuthTokens", **tokens,

@@ -12,8 +12,8 @@ from policy import THRESHOLD, UsageUnavailable, choose
 from profiles import PROFILES, Profile, RegistrationMismatch, registered_accounts
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
-from state import (RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_delay, preference,
-                   record, save, usage_history)
+from state import (DRAIN_REPORT, RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_delay,
+                   preference, record, save, usage_history)
 
 
 DRAIN_STATUSES = ("draining", "drain_timeout")
@@ -37,9 +37,6 @@ def collect(profiles):
 def check_upgrade(runtime, state):
     installed = runtime.binary.resolve(strict=True)
     if server_package_cache(installed, runtime.home) and installed.parent.parent.name != state["runtime_version"]:
-        if (state.get('upgrade_status') == 'drain_timeout'
-                and state.get('upgrade_target') == installed.parent.parent.name):
-            return
         state["upgrade_target"] = installed.parent.parent.name
         def checkpoint(active):
             state.update(restore_account=active, upgrade_status='draining', drain_started_at=time.time(),
@@ -64,6 +61,7 @@ def monitor(runtime, profiles, stop, state):
     next_poll = 0
     next_release = 0
     next_upgrade = 0
+    next_interrupt = 0
     retry_switch_at = 0
     idle_retry_delay = 2
     desired = None
@@ -82,15 +80,19 @@ def monitor(runtime, profiles, stop, state):
         if state.get('pid') == os.getpid() and not state.get('pid_start'):
             state['pid_start'] = process_start(os.getpid())
         if now < previous_wall:
-            next_poll = next_release = next_upgrade = retry_switch_at = saved_at = next_limit_check = 0
+            next_poll = next_release = next_upgrade = next_interrupt = retry_switch_at = saved_at = next_limit_check = 0
             retry_registration.clear()
             saved_content = None
         previous_wall = now
-        if state.get("runtime_version") and state.get("upgrade_status") != "draining" and now >= next_upgrade:
+        report = changed_file(DRAIN_REPORT)
+        if (report and state.get("upgrade_status") not in DRAIN_STATUSES
+                and (report['pid'], report['pid_start']) == (runtime.pid, runtime.pid_start)):
+            # 감독 밖에서 보낸 SIGHUP도 Codex의 같은 drain이라 이 서버가 종료돼야 터미널이 새 턴을 보낼 수 있다.
+            state.update(upgrade_status='draining', drain_started_at=report['observed_at'])
+        if state.get("runtime_version") and state.get("upgrade_status") not in DRAIN_STATUSES and now >= next_upgrade:
             try:
                 check_upgrade(runtime, state)
-                if state.get('upgrade_status') != 'drain_timeout':
-                    state.pop("upgrade_error", None)
+                state.pop("upgrade_error", None)
             except (OSError, KeyError, ValueError) as error:
                 state["upgrade_error"] = type(error).__name__
                 state['upgrade_checked_at'] = now
@@ -101,6 +103,16 @@ def monitor(runtime, profiles, stop, state):
                 state['upgrade_status'] = 'drain_timeout'
                 state['upgrade_error'] = 'Server did not exit within 120 seconds'
                 next_poll = 0
+        if state.get("upgrade_status") == "drain_timeout" and now >= next_interrupt:
+            # 기다리는 동안 모든 터미널의 새 턴이 거절되므로 남은 턴을 끝내 서버를 교체한다.
+            next_interrupt = now + 15
+            try:
+                interrupted = runtime.interrupt_running_turns()
+            except Exception as error:
+                state['upgrade_error'] = type(error).__name__
+            else:
+                if interrupted:
+                    state['last_drain_interrupt'] = {'at': now, 'turns': interrupted}
         if state.get("upgrade_status") == "draining":
             if state.get('active') or state.get('restore_account') != runtime.active or now - saved_at >= 30:
                 state.update(updated_at=now, active=None, restore_account=runtime.active)
@@ -303,7 +315,8 @@ def main():
             return
         for prefix in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-', '.usage-request.json-',
                        '.profile-registration.json-', '.profile-registration-company.json-',
-                       '.profile-registration-personal.json-', '.continuation-followups.json-', '.usage-'):
+                       '.profile-registration-personal.json-', '.continuation-followups.json-', '.usage-',
+                       f'.{DRAIN_REPORT.name}-'):
             for orphan in STATE_FILE.parent.glob(prefix + '*'):
                 try:
                     if not orphan.is_file() or orphan.is_symlink():
