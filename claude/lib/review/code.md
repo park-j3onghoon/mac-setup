@@ -31,6 +31,7 @@
 ## 6. 아키텍처
 
 - 타입·규칙 소유권과 위치: `~/.claude/lib/coding/architecture.md`(Layers 절, What a use case holds, Business rules in the domain)와 `~/.claude/lib/coding/domain.md`를 Read하고 그 기준으로 판정하며, 순환 참조가 생기지 않는지 본다.
+- 포트와 응집도: `~/.claude/lib/coding/architecture.md`의 Ports와 `~/.claude/lib/coding/design.md`의 Cohesion을 Read하고 판정한다. 도메인 요구가 그대로인데 구현 방식이 바뀌면 호출자의 코드나 계약도 바뀌어야 하는지, 타입의 이름과 위치가 실제 사용하는 도메인 책임을 드러내는지 확인한다.
 - API 설계: boolean 필드 과다 시 filter 구조체 통합, 중복 API.
 
 ## 7. 에러 핸들링

@@ -6,6 +6,7 @@
 ## 컴포넌트 경계
 
 - 새 서비스·모듈을 만들기 전에 같은 일을 하는 기존 모듈을 찾고, 있으면 거기에 더한다.
+- 포트와 타입의 경계를 계획하면 `~/.claude/lib/coding/architecture.md`의 Ports와 `~/.claude/lib/coding/design.md`의 Cohesion을 Read하고 그 기준으로 판정한다.
 
 ## API 계약 설계
 

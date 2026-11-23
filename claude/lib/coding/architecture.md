@@ -23,7 +23,7 @@ For Python code, also Read `~/.claude/lib/coding/architecture-python.md`; for fr
 ## Domain
 
 - Business rules in the domain: put business calculations, eligibility and invariants in the domain, including those checked by only one operation. Classify by the meaning and owner of the decision, not by purity, reuse, the number of objects read, domain terms in a type's name, or a type's form or base class. Constants and exceptions live with their rule; changing ownership moves the owned check too, without a domain → application import. Handling or wrapping a domain exception in a use case does not move its domain check.
-- Ports: each outside resource (the ORM, an HTTP client, email rendering) has a port; place its contract in the owning layer (domain/application, or an isolated interface module next to its adapter).
+- Ports: define a domain/application port by the role and contract its consuming domain needs; keep the contract in its owning layer. Keep provider service names, transport details and provider-specific lookup sequences in adapters unless they are part of the consumer's required semantics. Apply this boundary to interface and method names, input/output types, errors and comments. Group methods by a cohesive consumer role, not by the external system they call; do not split mechanically into one interface per method.
 
 ## Infrastructure
 
