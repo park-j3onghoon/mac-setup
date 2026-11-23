@@ -445,6 +445,22 @@ class SelfRestartTests(unittest.TestCase):
         self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
         self.assertGreater(fixture.started_at(), shell_ends)
 
+    def test_receipt_of_a_limit_stopped_session_waits_out_long_background_work(self):
+        """앞선 도우미의 대기 기록을 이어받은 한도 멈춤 세션도 백그라운드 셸이 10분 넘게 돌면 끝날 때까지 기다렸다가 다시 띄우고 이어서 넣는다."""
+        fixture = self.fixture(status='waiting')
+        fixture.transcript(user_text('작업해 줘'), limit_error())
+        runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        restart = fixture.restart(runner)
+        fixture.state.save(restart.receipt, {'phase': 'waiting', 'pid': 101, 'procStart': STARTED,
+                                             'startedAt': int(fixture.started_at() * 1000), 'since': SWITCHED_AT})
+        shell_ends = fixture.clock() + 20 * 60
+        fixture.clock.at(shell_ends, lambda: setattr(runner, 'children', ''))
+
+        outcome = restart.run()
+
+        self.assertEqual((outcome, runner.typed),
+                         ('restarted_and_continued', ['/restart', 'enter', CONTINUE_PROMPT, 'enter']))
+
     def test_limit_stopped_session_with_endless_background_work_is_left_alone(self):
         """한도에 멈춘 세션이라도 백그라운드 셸이 재시작 기간(8시간) 내내 돌면 아무것도 넣지 않고 포기한다."""
         # given

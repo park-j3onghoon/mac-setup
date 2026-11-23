@@ -224,7 +224,7 @@ Claude에게 이전 결과를 확인하고 살아 있는 프로세스는 기다�
 도우미는 전환 시각부터 최대 8시간 동안 같은 프로세스의 재시작을 확인한다.
 창별 진행 상태를 디스크에 기록해 도우미가 다시 떠도 확인을 계속한다.
 `session-restarts.log`에서 `restarted`, `restarted_and_continued`, `restarted_continuation_deferred`,
-`restart_unconfirmed`, `not_ready`, `no_switch`, `already_restarted`, `session_ended` 결과를 확인할 수 있다.
+`restart_unconfirmed`, `not_ready`, `no_switch`, `session_ended` 결과를 확인할 수 있다.
 
 각 대화 맥락은 그대로 남는다. 별도 `CLAUDE_CONFIG_DIR`,
 환경변수 토큰, API 키, 외부 모델 제공자 설정이 있는 실행은 지원하지 않는다.

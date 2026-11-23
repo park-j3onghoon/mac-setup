@@ -534,23 +534,8 @@ class SelfRestart:
         since = switch_pending(self.state, self.clock())
         if since is None:
             return 'no_switch'
-        def ready_before_expiry():
-            if switch_pending(self.state, self.clock()) is None:
-                raise SessionEnded
-            return self.ready(None)
-        expires = since + REFRESH_WINDOW_SECONDS
-        session = self.wait(ready_before_expiry, min(READY_TIMEOUT_SECONDS,
-                                                     max(0, expires - self.clock())))
-        if session is None and self.limited():
-            session = self.wait(ready_before_expiry, max(0, expires - self.clock()),
-                                LIMIT_WAIT_STEP_SECONDS)
-        if session is None:
-            return 'not_ready'
-        since = switch_pending(self.state, self.clock())
-        if not since or session['startedAt'] / 1000 >= since:
-            return 'already_restarted'
-        pending = {'phase': 'waiting', 'pid': session['pid'], 'procStart': session['procStart'],
-                   'startedAt': session['startedAt'], 'since': since, 'limited': self.limited()}
+        pending = {key: self.last_session[key] for key in ('pid', 'procStart', 'startedAt')}
+        pending.update(phase='waiting', since=since)
         self.state.save(self.receipt, pending)
         return self.confirm(pending)
 
@@ -565,12 +550,13 @@ class SelfRestart:
                     and current['startedAt'] >= pending['since'] * 1000)
 
         if not restarted():
-            if not (self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
-                    and self.type('/restart', only_if=lambda: not restarted())):
+            if not self.ready_before(pending['since']):
                 return 'not_ready'
-            if not self.wait(restarted, RESTART_TIMEOUT_SECONDS):
-                return 'restart_unconfirmed'
-        if not pending['limited'] or not self.limited():
+            # The user may restart meanwhile or start a draft after the last look.
+            typed = self.type('/restart', only_if=lambda: not restarted())
+            if not self.wait(restarted, RESTART_TIMEOUT_SECONDS if typed else 0):
+                return 'restart_unconfirmed' if typed else 'not_ready'
+        if not self.limited():
             outcome = 'restarted'
         elif (self.wait(lambda: self.ready(None), RESTART_TIMEOUT_SECONDS)
               and self.type(CONTINUE_PROMPT, only_if=self.limited)):
@@ -579,6 +565,18 @@ class SelfRestart:
             outcome = 'restarted_continuation_deferred'
         self.state.save(self.receipt, {'phase': outcome, 'since': pending['since']})
         return outcome
+
+    def ready_before(self, since):
+        """The quiet session with an empty input box while the switch is pending, else None."""
+        def ready_while_pending():
+            if switch_pending(self.state, self.clock()) is None:
+                raise SessionEnded
+            return self.ready(None)
+        expires = since + REFRESH_WINDOW_SECONDS
+        session = self.wait(ready_while_pending, min(READY_TIMEOUT_SECONDS, max(0, expires - self.clock())))
+        if session is None and self.limited():
+            session = self.wait(ready_while_pending, max(0, expires - self.clock()), LIMIT_WAIT_STEP_SECONDS)
+        return session
 
     def type(self, text, only_if=None):
         """Paste text with Enter in one cmux request when a last look finds the input box empty."""
