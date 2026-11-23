@@ -7,6 +7,7 @@ For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
   - architecture decision + the alternatives rejected after review
   - non-obvious algorithm tricks (limit+1 hasNext, microsecond-precision cursor, base64url format)
   - hidden constraints/invariants (DB column type alignment such as `MAX_*=65535  # MySQL unsigned smallint 최대`, external API nullability assumption), external-system contracts, circular-import avoidance (a type-only import for an annotation-only cycle)
+  - the source of a rule the code reproduces from another system, named by that system: the query, job or file it mirrors
 - Delete:
   - a description the name or signature already gives (`"X 토큰을 생성한다"` over `generate_x_token()`); "X용 VO/DTO" labels on data classes
   - change history ("이전에는 Map이었으나...") → git log/PR body
