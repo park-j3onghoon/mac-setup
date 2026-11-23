@@ -271,7 +271,8 @@ python3 codex/account-switcher/probe_transport.py --proxy --trace --mib 32
 ### 불필요한 로컬 MCP 줄이기
 
 데이터 조회나 Chrome 도구가 필요 없는 독립 코딩 세션에서만 다음처럼 끈다.
-전역 설정과 다른 대화에는 영향을 주지 않는다.
+전역 설정과 다른 대화에는 영향을 주지 않는다. `<data-plugin>@<marketplace>`에는
+데이터 플러그인의 실제 이름을 넣는다. 실제 이름은 아래 회사별 특이사항 파일에 있다.
 
 ```sh
 codex --no-daemon \
@@ -303,3 +304,8 @@ FD·프로세스 측정 결과는 [자원 회수 검증 보고서](RESOURCE_REPO
 
 공식 문서: [인증](https://learn.chatgpt.com/docs/auth),
 [app-server 인증·사용량·대화 상태](https://learn.chatgpt.com/docs/app-server).
+
+## 회사별 특이사항
+
+회사 계정에만 있는 값(데이터 플러그인의 실제 이름, 검증 복구 디렉터리 경로)은
+git이 추적하지 않는 `private/codex/account-switcher/company-notes.md`에 둔다.

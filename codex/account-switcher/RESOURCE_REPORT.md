@@ -102,6 +102,8 @@ codex --no-daemon \
   -c 'mcp_servers.chrome-devtools.enabled=false'
 ```
 
+데이터 플러그인의 실제 이름은 git이 추적하지 않는 `private/codex/account-switcher/company-notes.md`에 있다.
+
 전역 설정이나 다른 활성 세션을 바꾸지 않는다. 공유 Chrome 데몬을 종료하지 않는다.
 원격 앱 도구가 많다는 이유만으로 같은 수의 로컬 프로세스가 생기는 것도 아니다.
 
@@ -136,9 +138,8 @@ python3 codex/account-switcher/probe_subscriptions.py --proxy --child --child-re
 
 probe는 macOS의 `/opt/homebrew/bin/codex`, `/opt/homebrew/bin/python3`, `lsof`, `ps`를
 사용한다. 출력 JSON·로그는 `/private/tmp/codex-*.json`·로그 파일에 남는다.
-최종 검증 출력과 red→green 증거 사본은 아래 복구 디렉터리의 `validation/`에 보존한다.
-
-`~/<작업 폴더>/.codex-recovery/<thread-id>/`
+최종 검증 출력과 red→green 증거 사본은 복구 디렉터리의 `validation/`에 보존한다.
+복구 디렉터리의 실제 경로는 git이 추적하지 않는 `private/codex/account-switcher/company-notes.md`에 있다.
 
 기존 백업 rollout 9개, **211,566,984 bytes**의 SHA-256이 원래 manifest와 모두 일치했다
 (14:16:47 KST). 원래 handoff·manifest·rollout을 수정하지 않았다.
