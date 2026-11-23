@@ -38,9 +38,6 @@ LIMIT_WAIT_STEP_SECONDS = 30
 WORKING_CHILDREN = frozenset({'zsh', 'bash', 'sh'})
 MCP_NAME = re.compile(r'(?:^|[/@._-])mcp(?:$|[/._-])', re.I)
 LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
-# The notice under the input box of a session stopped at a limit (Claude Code 2.1.330,
-# 2026-11-23: `⚠ Usage limit reached · limit resets 3pm`, `Continuing automatically at 3pm · …`).
-LIMIT_FOOTER = re.compile(r'⚠ usage limit reached|continuing automatically at ', re.I)
 # User entries Claude Code writes itself. Background task notifications keep arriving after a
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
 GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
@@ -82,13 +79,13 @@ def input_ready(screen):
         return False
     if not (is_rule(lines[i - 1]) and is_rule(lines[i + 1])):
         return False
-    footer = [line.strip() for line in lines[i + 2:]]
-    footer = [line for line in footer if line and not LIMIT_FOOTER.match(line)]
-    # The optional first status line names the workspace. A visible dialog below the
-    # recognized mode line means the input border belongs to an older screen.
-    return not footer or (len(footer) <= 2 and bool(re.fullmatch(
+    footer = [line.strip() for line in lines[i + 2:] if line.strip()]
+    # The current input box ends the screen with its mode line, below notices such as a usage-limit
+    # wait in varying words (2026-11-23) and the workspace name. A dialog below the mode line means
+    # the input border belongs to an older screen.
+    return not footer or bool(re.fullmatch(
         r'(?:⏵⏵ |⏸ )?(?:auto mode on|accept edits on|plan mode on|bypass permissions on)'
-        r'(?: \(shift\+tab to cycle\))?(?: · ← \d+ agents?)?', footer[-1], re.I)))
+        r'(?: \(shift\+tab to cycle\))?(?: · ← \d+ agents?)?', footer[-1], re.I))
 
 
 def notification_text(entry):

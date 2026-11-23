@@ -211,15 +211,15 @@ class InputReadyTests(unittest.TestCase):
 
     def test_usage_limit_notice_under_the_input_box_does_not_block(self):
         """한도에 멈춘 세션은 입력창 아래에 한도 안내 두 줄이 더 붙어도 빈 입력창으로 본다(4723a670 화면)."""
-        limited = '\n'.join(['⏺ Usage limit reached · continuing automatically at 3pm · esc to cancel',
-                             RULE, '❯ ', RULE,
-                             '  ⚠ Usage limit reached · limit resets 3pm',
-                             '    Continuing automatically at 3pm · Esc to cancel · /usage-credits to continue now',
-                             '  project', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents'])
+        for wait in ('Continuing automatically at 3pm · Esc to cancel · /usage-credits to continue now',
+                     'Set to continue automatically at 3pm · Esc or type to cancel'):
+            limited = '\n'.join(['⏺ Usage limit reached · continuing automatically at 3pm · esc to cancel',
+                                 RULE, '❯ ', RULE, '  ⚠ Usage limit reached · limit resets 3pm', f'    {wait}',
+                                 '  project', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents'])
 
-        ready = input_ready(limited)
+            ready = input_ready(limited)
 
-        self.assertTrue(ready)
+            self.assertTrue(ready, wait)
 
     def test_agent_view_hint_in_the_footer_does_not_block(self):
         """상태줄의 「← 2 agents」는 새 세션에도 뜨는 안내라서 입력창 판정에 쓰지 않는다."""
