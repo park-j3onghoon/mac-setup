@@ -166,6 +166,7 @@ class ManagedSessionTests(unittest.TestCase):
             log = project / (sid + '.jsonl')
             end = {'type': 'assistant', 'message': {'stop_reason': 'end_turn', 'content': []}}
             (agents / 'finished.jsonl').write_text(json.dumps(end))
+            (agents / 'finished.meta.json').write_text(json.dumps({'finished': True}))
             with patch('managed_session.process_children', return_value={}):
                 for entry, need in [(end, False), (dict(end, isApiErrorMessage=True), True),
                                     ({'type': 'assistant', 'message': {'stop_reason':'tool_use'}}, True),

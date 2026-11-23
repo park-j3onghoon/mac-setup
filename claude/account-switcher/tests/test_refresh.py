@@ -98,6 +98,16 @@ class SessionFixture:
         path = self.home / 'projects' / '-Users-test' / f'{SESSION}.jsonl'
         path.write_text(''.join(json.dumps(entry) + '\n' for entry in entries))
 
+    def subagent(self, meta, written=None):
+        """Subagent agent-abc's transcript and meta file, last written at written when given."""
+        folder = self.home / 'projects' / '-Users-test' / SESSION / 'subagents'
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'agent-abc.meta.json').write_text(json.dumps(meta))
+        path = folder / 'agent-abc.jsonl'
+        path.write_text(json.dumps(user_text('리뷰해 줘')) + '\n')
+        if written is not None:
+            os.utime(path, (written, written))
+
     def restart(self, runner):
         return SelfRestart(self.state, self.home, SESSION, SURFACE, runner,
                            sleep=self.clock.sleep, clock=self.clock, cmux='/usr/local/bin/cmux')
@@ -467,11 +477,7 @@ class SelfRestartTests(unittest.TestCase):
         """서브에이전트 기록이 계속 갱신되면 백그라운드 에이전트가 도는 것으로 보고 넣지 않는다."""
         # given
         fixture = self.fixture()
-        subagents = fixture.home / 'projects' / '-Users-test' / SESSION / 'subagents'
-        subagents.mkdir(parents=True)
-        (subagents / 'agent-a1.jsonl').write_text('{}\n')
-        late = SWITCHED_AT + 60 + READY_TIMEOUT_SECONDS
-        os.utime(subagents / 'agent-a1.jsonl', (late, late))
+        fixture.subagent({}, written=SWITCHED_AT + 60 + READY_TIMEOUT_SECONDS)
         runner = FakeRunner(fixture)
         # when
         fixture.restart(runner).run()
