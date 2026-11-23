@@ -145,9 +145,18 @@ def last_entry(path):
             continue
         if not isinstance(entry, dict):
             continue
-        if entry.get('type') == 'assistant' or entry.get('type') == 'user' and not is_generated(entry):
+        if (entry.get('type') == 'assistant' or entry.get('type') == 'user' and not is_generated(entry)
+                or limit_notice(entry)):
             return entry
     return None
+
+
+def limit_notice(entry):
+    """Claude Code 2.1.330 records a limit stop after a wrap-up answer only as a system note
+    (2026-11-23: 「Usage limit reached · continuing automatically at 3pm · esc to cancel」)."""
+    content = entry.get('content')
+    return (entry.get('type') == 'system' and entry.get('subtype') == 'informational'
+            and isinstance(content, str) and bool(LIMIT_ERROR.search(content)))
 
 
 def completed(entry):
@@ -180,7 +189,11 @@ def ended_with_limit_error(projects_dir, session_id, transcript=None):
 
 
 def is_limit_error(entry):
-    if not entry or entry['type'] != 'assistant' or not entry.get('isApiErrorMessage'):
+    if not entry:
+        return False
+    if limit_notice(entry):
+        return True
+    if entry['type'] != 'assistant' or not entry.get('isApiErrorMessage'):
         return False
     content = (entry.get('message') or {}).get('content') or []
     text = ''.join(c.get('text', '') for c in content if isinstance(c, dict))

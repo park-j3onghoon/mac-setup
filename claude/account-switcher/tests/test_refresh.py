@@ -37,6 +37,16 @@ def limit_error(text="You've hit your 5-hour limit · resets 7:30pm (Asia/Seoul)
             'message': {'model': '<synthetic>', 'content': [{'type': 'text', 'text': text}]}}
 
 
+def limit_notice(text='Usage limit reached · continuing automatically at 3pm · esc to cancel'):
+    """The system note Claude Code 2.1.330 writes when a turn stops at a limit after a wrap-up answer."""
+    return {'type': 'system', 'subtype': 'informational', 'isMeta': False, 'content': text}
+
+
+def assistant_text(text):
+    return {'type': 'assistant', 'message': {'role': 'assistant', 'stop_reason': 'end_turn',
+                                             'content': [{'type': 'text', 'text': text}]}}
+
+
 def user_text(text):
     return {'type': 'user', 'message': {'role': 'user', 'content': text}}
 
@@ -182,6 +192,17 @@ class LimitErrorTests(unittest.TestCase):
             # when
             limited = ended_with_limit_error(fixture.home / 'projects', SESSION)
             # then
+            self.assertTrue(limited)
+
+    def test_limit_notice_after_a_wrap_up_answer_is_a_limit_stop(self):
+        """모델이 한도 유예 안에 정리 답을 끝내면 그 뒤의 「Usage limit reached」 시스템 안내로 한도에 걸려 멈춘 세션으로 본다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SessionFixture(tmp)
+            fixture.transcript(user_text('작업해 줘'), assistant_text('사용량 한도에 도달해 여기서 멈춥니다.'),
+                               limit_notice(), {'type': 'system', 'subtype': 'turn_duration'})
+
+            limited = ended_with_limit_error(fixture.home / 'projects', SESSION)
+
             self.assertTrue(limited)
 
     def test_user_message_after_limit_error_is_not_a_limit_stop(self):
