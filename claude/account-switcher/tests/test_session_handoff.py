@@ -74,4 +74,4 @@ class HandoffTests(unittest.TestCase):
         outcomes = [self.fixture.restart(self.runner).run() for _ in range(2)]
 
         self.assertEqual(outcomes, ['restarted_and_continued', 'no_switch'])
-        self.assertEqual(self.runner.typed, ['/restart', 'enter', refresh.CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(self.runner.typed, ['/restart', refresh.CONTINUE_PROMPT])

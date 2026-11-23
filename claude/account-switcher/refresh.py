@@ -42,7 +42,6 @@ LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
 GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
 RULE_MIN_DASHES = 10
-TAIL_BYTES = 262144
 
 
 def find_cmux():
@@ -362,7 +361,7 @@ def wraps_mcp(descendants, runner):
 
 
 def background_work(session, children, projects_dir, now, runner=subprocess.run, *, check_completion=False):
-    """Treat task shells, children without stdio streams, task output and running subagents as
+    """Treat task shells, children without stdio streams on fds 0 and 1, and running subagents as
     active work."""
     servers, stack = [], [session['pid']]
     while stack:
@@ -377,31 +376,21 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
             servers.append(str(child))
             stack.append(child)
     if servers:
-        # A shell can exec the task, which then still writes the session's task output.
-        descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(servers),
-                              '-d', '0,1,2', '-Fftn'], capture_output=True, text=True,
-                             timeout=5, check=False)
+        # A task, also one a shell execs, keeps /dev/null or its task output file on fd 0 or 1
+        # (2026-11-23: Bash and Monitor tasks).
+        descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(servers), '-d', '0,1', '-Fft'],
+                             capture_output=True, text=True, timeout=5, check=False)
         if descriptors.returncode not in (0, 1) or (descriptors.returncode and descriptors.stderr):
             raise SessionUnavailable('Could not check session task output')
-        regular = False
         streams = set()
         pid = fd = None
         for field in descriptors.stdout.splitlines():
             if field.startswith('p'):
                 pid = field[1:]
-                regular = False
             elif field.startswith('f'):
                 fd = field[1:]
-                regular = False
-            elif field.startswith('t'):
-                regular = field == 'tREG'
-                if field in ('tPIPE', 'tFIFO', 'tunix'):
-                    streams.add((pid, fd))
-            elif regular and field.startswith('n'):
-                path = Path(field[1:])
-                if (path.parent.name == 'tasks' and path.parent.parent.name == session['sessionId']
-                        and path.suffix == '.output'):
-                    return True
+            elif field in ('tPIPE', 'tFIFO', 'tunix'):
+                streams.add((pid, fd))
         if any((pid, fd) not in streams for pid in servers for fd in ('0', '1')):
             return True
     # Agents run inside the Claude process, so one last written before this process started died
@@ -430,7 +419,7 @@ class SessionEnded(Exception):
 
 
 class SelfRestart:
-    """Observe one terminal and offer a handoff through local cmux notifications."""
+    """Restart one terminal's session after an account switch and continue a limit stop."""
 
     def __init__(self, state, config_home, session_id, surface, runner=subprocess.run,
                  sleep=time.sleep, clock=time.time, cmux=None, monotonic=None):
@@ -558,7 +547,7 @@ class SelfRestart:
                 return 'restart_unconfirmed' if typed else 'not_ready'
         if not self.limited():
             outcome = 'restarted'
-        elif (self.wait(lambda: self.ready(None), RESTART_TIMEOUT_SECONDS)
+        elif (self.wait(self.ready, RESTART_TIMEOUT_SECONDS)
               and self.type(CONTINUE_PROMPT, only_if=self.limited)):
             outcome = 'restarted_and_continued'
         else:
@@ -571,7 +560,7 @@ class SelfRestart:
         def ready_while_pending():
             if switch_pending(self.state, self.clock()) is None:
                 raise SessionEnded
-            return self.ready(None)
+            return self.ready()
         expires = since + REFRESH_WINDOW_SECONDS
         session = self.wait(ready_while_pending, min(READY_TIMEOUT_SECONDS, max(0, expires - self.clock())))
         if session is None and self.limited():
@@ -582,7 +571,7 @@ class SelfRestart:
         """Paste text with Enter in one cmux request when a last look finds the input box empty."""
         if only_if and not only_if():
             return False
-        if not input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12')):
+        if not self.input_empty():
             return False
         # cmux 0.64.22 dispatches paste and submit together on its main actor. It has no
         # empty-input precondition, so only text typed after the last look can still mix in.
@@ -609,19 +598,17 @@ class SelfRestart:
             self.sleep(min(step, max(0, deadline - self.monotonic())))
             step = min(step * 2, LIMIT_WAIT_STEP_SECONDS)
 
-    def ready(self, old_started):
-        """Return the quiet session only when its own current prompt is visible and empty."""
-        session = self.quiet_session(old_started)
-        if not session:
-            return None
-        screen = self.cmux('read-screen', '--surface', self.surface, '--lines', '12')
-        if input_ready(screen):
-            return session
-        return None
+    def ready(self):
+        """The quiet session when its own current prompt is visible and empty, else None."""
+        session = self.quiet_session()
+        return session if session and self.input_empty() else None
 
-    def quiet_session(self, old_started):
+    def input_empty(self):
+        return input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12'))
+
+    def quiet_session(self):
         session = self.session()
-        if not session or session.get('startedAt') == old_started:
+        if not session:
             return None
         if session.get('status') != 'idle' and not self.limited():
             return None

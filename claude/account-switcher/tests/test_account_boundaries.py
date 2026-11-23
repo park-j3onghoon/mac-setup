@@ -23,6 +23,11 @@ from test_measurement import event, snapshot
 from test_refresh import FakeRunner, SESSION, SessionFixture, limit_error, task_notification
 
 
+def stdio(*pids, kind='PIPE'):
+    """`lsof -Fft` output for processes whose fds 0 and 1 are of the given kind."""
+    return ''.join(f'p{pid}\nf0\nt{kind}\nf1\nt{kind}\n' for pid in pids)
+
+
 class BoundaryTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -267,9 +272,8 @@ class BoundaryTests(unittest.TestCase):
         """MCP 래퍼의 양방향 파이프를 확인하고 작업 출력이나 불명확한 셸은 보호한다."""
         tree = {101: [(102, 'sh')], 102: [(103, 'fixture-mcp-stdio')]}
         session = {'pid': 101, 'sessionId': SESSION}
-        pipes = 'p102\nf0\ntPIPE\nf1\ntPIPE\np103\nf0\ntPIPE\nf1\ntPIPE\n'
-        task = f'p103\nf1\ntREG\nn/private/{SESSION}/tasks/one.output\n'
-        for descriptors, expected in ((pipes, False), (pipes + task, True), ('', True)):
+        task = stdio(102) + 'p103\nf0\ntPIPE\nf1\ntREG\n'
+        for descriptors, expected in ((stdio(102, 103), False), (task, True), ('', True)):
             with self.subTest(descriptors=descriptors):
                 result = refresh.background_work(session, tree, self.projects, NOW,
                     runner=Mock(return_value=Mock(returncode=0, stdout=descriptors)))
@@ -278,11 +282,7 @@ class BoundaryTests(unittest.TestCase):
     def test_direct_stdio_mcp_servers_are_not_session_work(self):
         """Claude가 바로 띄운 stdio MCP 서버(`uv run …/mcp_server.py`와 그 python)는 입출력이 유닉스 소켓이면 작업으로 보지 않는다."""
         tree = {101: [(102, 'uv'), (103, 'caffeinate')], 102: [(104, 'python')]}
-        streams = ''.join(f'p{pid}\nf0\ntunix\nf1\ntunix\nf2\ntunix\n' for pid in (102, 104))
-        def runner(argv, **kwargs):
-            if argv[0] == '/bin/ps':
-                return Mock(returncode=0, stdout='uv run /plugins/plugin/0.8.15/scripts/mcp_server.py\n')
-            return Mock(returncode=0, stdout=streams)
+        runner = Mock(return_value=Mock(returncode=0, stdout=stdio(102, 104, kind='unix')))
 
         busy = refresh.background_work({'pid': 101, 'sessionId': SESSION}, tree, self.projects, NOW,
                                        runner=runner)
@@ -301,7 +301,7 @@ class BoundaryTests(unittest.TestCase):
         tree = {101: [(102, 'sh')], 102: [(103, 'node')]}
         runner = Mock(side_effect=[
             Mock(returncode=0, stdout='node /fixture/node_modules/example-mcp/server.js'),
-            Mock(returncode=0, stdout='p102\nf0\ntPIPE\nf1\ntPIPE\np103\nf0\ntPIPE\nf1\ntPIPE\n')])
+            Mock(returncode=0, stdout=stdio(102, 103))])
 
         busy = refresh.background_work({'pid': 101, 'sessionId': SESSION}, tree,
                                        self.projects, NOW, runner=runner)

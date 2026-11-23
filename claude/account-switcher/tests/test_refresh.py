@@ -132,7 +132,7 @@ class FakeRunner:
             return Mock(returncode=0, stdout=self.children if '-ax' in argv else f'{STARTED}\n')
         if argv[1:3] == ['rpc', 'terminal.paste']:
             params = json.loads(argv[3])
-            self.typed.extend([params['text'], 'enter'])
+            self.typed.append(params['text'])
             if params['text'] == '/restart' and self.restarts:
                 self.fixture.register('idle', self.fixture.clock() + 1)
                 if self.choices:
@@ -337,7 +337,7 @@ class SelfRestartTests(unittest.TestCase):
         with patch('refresh.os.kill'):
             outcome = fixture.restart(runner).run()
         self.assertEqual(outcome, 'restarted')
-        self.assertEqual(normal.typed, ['/restart', 'enter'])
+        self.assertEqual(normal.typed, ['/restart'])
 
     def test_exited_session_stops_helper_without_waiting_eight_hours(self):
         """한도 오류 기록이 남아 있어도 세션 프로세스가 종료되면 도우미도 끝난다."""
@@ -398,7 +398,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart']))
 
     def test_busy_session_is_not_restarted(self):
         """작업 중인 세션은 기다리다가 시간이 지나도 끝나지 않으면 아무것도 넣지 않고 포기한다."""
@@ -442,7 +442,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.typed, ['/restart', CONTINUE_PROMPT])
         self.assertGreater(fixture.started_at(), shell_ends)
 
     def test_receipt_of_a_limit_stopped_session_waits_out_long_background_work(self):
@@ -459,7 +459,7 @@ class SelfRestartTests(unittest.TestCase):
         outcome = restart.run()
 
         self.assertEqual((outcome, runner.typed),
-                         ('restarted_and_continued', ['/restart', 'enter', CONTINUE_PROMPT, 'enter']))
+                         ('restarted_and_continued', ['/restart', CONTINUE_PROMPT]))
 
     def test_limit_stopped_session_with_endless_background_work_is_left_alone(self):
         """한도에 멈춘 세션이라도 백그라운드 셸이 재시작 기간(8시간) 내내 돌면 아무것도 넣지 않고 포기한다."""
@@ -509,7 +509,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.typed, ['/restart', CONTINUE_PROMPT])
 
     def test_limit_choices_over_the_restarted_session_remain_with_the_user(self):
         """다시 뜬 세션의 입력창을 한도 선택창이 가리면 선택창은 사용자에게 두고 이어하기를 넣지 않는다."""
@@ -519,7 +519,7 @@ class SelfRestartTests(unittest.TestCase):
 
         outcome = fixture.restart(runner).run()
 
-        self.assertEqual((outcome, runner.typed), ('restarted_continuation_deferred', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.typed), ('restarted_continuation_deferred', ['/restart']))
         self.assertEqual(runner.screen_text, limit_choices())
 
     def test_session_stopped_at_a_limit_before_the_switch_waits_for_it(self):
@@ -533,7 +533,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         fixture.restart(runner).run()
         # then
-        self.assertEqual(runner.typed, ['/restart', 'enter', CONTINUE_PROMPT, 'enter'])
+        self.assertEqual(runner.typed, ['/restart', CONTINUE_PROMPT])
         self.assertGreater(fixture.started_at(), next_switch)
 
     def test_limit_stopped_session_without_a_switch_is_left_alone(self):
@@ -555,7 +555,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restart_unconfirmed', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.typed), ('restart_unconfirmed', ['/restart']))
 
     def test_slow_process_list_is_retried(self):
         """여러 세션이 한도에 함께 멈춰 ps가 시간 안에 끝나지 않아도 포기하지 않고 다음 확인에서 다시 띄운다."""
@@ -565,7 +565,7 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart', 'enter']))
+        self.assertEqual((outcome, runner.typed), ('restarted', ['/restart']))
 
 
 if __name__ == '__main__':
