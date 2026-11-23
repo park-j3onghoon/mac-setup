@@ -170,6 +170,12 @@ python3 "$tool" init --primary personal@example.com --fallback work@example.com 
 기존 `primary`다. 처리한 요청 시각은 `runtime.json`의 `preference_at`에 기록한다.
 Keychain 문제로 중단된 서비스는 요청을 받아도 자동으로 중단 상태를 해제하지 않는다.
 
+대시보드의 「지금 확인」은 상태 디렉터리 `usage_request.json`에 `requested_at`을 기록한다.
+서비스는 같은 2초 확인에서 마지막 확인을 시작한 뒤에 온 요청을 보면 대기를 끝내고 두 계정
+한도를 바로 읽는다. 중단 상태, 서버가 정한 재시도 시각(`retry_after`), 계정별 조회 제한
+(`api_backoff.json`)은 그대로 지킨다. 대시보드는 `runtime.json`의 `sampled_at`이 요청 시각
+뒤로 바뀌기를 기다린 뒤 그 기록을 읽는다.
+
 ```sh
 python3 "$tool" status             # 저장된 상태만 확인
 python3 "$tool" measure-status     # 주기별 토큰·한도 사용률 측정 결과

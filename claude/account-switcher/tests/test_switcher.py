@@ -43,6 +43,34 @@ class PreferencePollingTests(unittest.TestCase):
 
                 self.assertEqual(ticks, [0, expected])
 
+    def test_usage_request_reads_once_soon_but_preserves_retry_after(self):
+        """대시보드의 지금 확인 요청은 대기를 깨워 한도를 바로 읽되, 서버가 정한 재시도 시각을 지키고 같은 요청으로 두 번 읽지 않는다."""
+        for retry_after, expected in ((0, [0, 2, 62]), (10, [0, 10, 70])):
+            with self.subTest(retry_after=retry_after), tempfile.TemporaryDirectory() as folder:
+                app = make_app(folder)
+                app.state.save('runtime', {'retry_after': retry_after})
+                clock, ticks = [0], []
+                stop = Mock()
+                stop.is_set.side_effect = lambda: len(ticks) >= 3
+
+                def wait(seconds):
+                    clock[0] += seconds
+                    app.state.save('usage_request', {'requested_at': 1})
+
+                def tick(*args):
+                    ticks.append(clock[0])
+                    return None, 60, None
+
+                stop.wait.side_effect = wait
+                with patch('switcher.threading.Event', return_value=stop), patch('switcher.signal.signal'), \
+                        patch('switcher.time.monotonic', side_effect=lambda: clock[0]), \
+                        patch('switcher.time.time', side_effect=lambda: clock[0]), \
+                        patch('switcher.tick_once', side_effect=tick), patch('switcher.Measurement'), \
+                        patch('switcher.measure_and_review', return_value=60):
+                    run(app, True)
+
+                self.assertEqual(ticks, expected)
+
 
 class KeychainHaltRuleTests(unittest.TestCase):
     def test_keychain_error_halts(self):

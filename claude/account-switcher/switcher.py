@@ -311,6 +311,15 @@ def writer_status(app):
                 else 'different_writer')
 
 
+def reading_requested(app, since):
+    """Whether the dashboard's 지금 확인 asked for a usage reading after `since` (usage_request.json)."""
+    try:
+        value = app.state.load('usage_request').get('requested_at')
+    except (SwitcherError, OSError, ValueError):
+        return False
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and value > since
+
+
 def run(app, apply):
     stopping = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
@@ -345,6 +354,7 @@ def run(app, apply):
                 requested = app.preference()
             except SwitcherError:
                 requested = None
+            ticked_at = time.time()
             report, delay, last_outcome = tick_once(app, apply, last_outcome)
             if apply:
                 delay = measure_and_review(app, measurement, report, delay)
@@ -354,7 +364,7 @@ def run(app, apply):
                     changed = app.preference() != requested
                 except SwitcherError:
                     changed = False
-                if changed:
+                if changed or reading_requested(app, ticked_at):
                     # A halted service must keep its backoff even when a request is pending.
                     if (not app.state.load('halt')
                             and time.time() >= app.state.load('runtime').get('retry_after', 0)):
