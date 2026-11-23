@@ -214,7 +214,8 @@ class InputReadyTests(unittest.TestCase):
         for wait in ('Continuing automatically at 3pm · Esc to cancel · /usage-credits to continue now',
                      'Set to continue automatically at 3pm · Esc or type to cancel'):
             limited = '\n'.join(['⏺ Usage limit reached · continuing automatically at 3pm · esc to cancel',
-                                 RULE, '❯ ', RULE, '  ⚠ Usage limit reached · limit resets 3pm', f'    {wait}',
+                                 RULE, '❯ ', RULE, '  ⚠ Usage limit reached · limit resets 3pm',
+                                 f'    {wait}',
                                  '  project', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents'])
 
             ready = input_ready(limited)
@@ -452,7 +453,8 @@ class SelfRestartTests(unittest.TestCase):
         runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
         restart = fixture.restart(runner)
         fixture.state.save(restart.receipt, {'phase': 'waiting', 'pid': 101, 'procStart': STARTED,
-                                             'startedAt': int(fixture.started_at() * 1000), 'since': SWITCHED_AT})
+                                             'startedAt': int(fixture.started_at() * 1000),
+                                             'since': SWITCHED_AT})
         shell_ends = fixture.clock() + 20 * 60
         fixture.clock.at(shell_ends, lambda: setattr(runner, 'children', ''))
 

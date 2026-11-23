@@ -403,7 +403,7 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
 def finished_agent(path):
     """Claude Code marks an agent that ended, failed or was stopped `finished` in its meta file and
     drops the mark when SendMessage resumes it (2026-11-23: 1,016 of 1,036 agents of two weeks; the
-    rest ran on, seven of them resumed after a completion notice, or died with their process)."""
+    other 20 were 7 resumed after a completion notice and 13 cut off with their process)."""
     try:
         return json.loads(path.with_suffix('.meta.json').read_text()).get('finished') is True
     except (FileNotFoundError, ValueError):

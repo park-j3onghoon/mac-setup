@@ -48,7 +48,7 @@ class HandoffTests(unittest.TestCase):
         self.assertFalse(self.agent_busy())
 
     def test_agent_resumed_after_an_earlier_completion_is_busy(self):
-        notice = '<task-notification>\n<task-id>abc</task-id>\n<status>completed</status>\n</task-notification>'
+        notice = '<task-notification><task-id>abc</task-id><status>completed</status></task-notification>'
         self.fixture.transcript({'type': 'queue-operation', 'operation': 'enqueue', 'content': notice})
         self.fixture.subagent({'agentType': 'general-purpose'})
         self.assertTrue(self.agent_busy())
