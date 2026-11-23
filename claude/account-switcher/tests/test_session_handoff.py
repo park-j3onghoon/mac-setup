@@ -8,6 +8,16 @@ from test_refresh import (SESSION, SWITCHED_AT, FakeRunner, SessionFixture,
                           limit_error, screen, user_text)
 
 
+def tool_call(name):
+    return {'type': 'assistant', 'message': {'role': 'assistant', 'stop_reason': 'tool_use', 'content': [
+        {'type': 'tool_use', 'id': 'toolu_1', 'name': name, 'input': {}}]}}
+
+
+def tool_result():
+    return {'type': 'user', 'message': {'role': 'user', 'content': [
+        {'type': 'tool_result', 'tool_use_id': 'toolu_1', 'content': 'done'}]}}
+
+
 class HandoffTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -40,6 +50,36 @@ class HandoffTests(unittest.TestCase):
                                                self.restart.projects, SWITCHED_AT, process))
         (folder / 'agent-abc.jsonl').write_text(json.dumps(user_text('unfinished')))
         self.assertTrue(refresh.background_work(session,{},self.restart.projects, SWITCHED_AT, process))
+
+    def agent_busy(self, *steps):
+        folder = self.fixture.home / 'projects' / '-Users-test' / SESSION / 'subagents'
+        folder.mkdir(parents=True)
+        (folder / 'agent-abc.jsonl').write_text(''.join(json.dumps(step) + '\n' for step in steps))
+        return refresh.background_work({'pid': 101, 'sessionId': SESSION}, {}, self.restart.projects,
+                                       SWITCHED_AT, Mock())
+
+    def test_agent_stopped_with_a_queued_notification_is_not_busy(self):
+        notice = '<task-notification>\n<task-id>abc</task-id>\n<status>killed</status>\n</task-notification>'
+        self.fixture.transcript(user_text('리뷰해 줘'),
+                                {'type': 'attachment', 'attachment': {'type': 'queued_command', 'prompt': notice}})
+
+        busy = self.agent_busy(tool_call('Bash'))
+
+        self.assertFalse(busy)
+
+    def test_agent_that_handed_its_report_back_is_not_busy(self):
+        self.fixture.transcript(user_text('리뷰해 줘'))
+
+        busy = self.agent_busy(tool_call('SubagentHandback'), tool_result())
+
+        self.assertFalse(busy)
+
+    def test_agent_waiting_on_a_tool_is_busy(self):
+        self.fixture.transcript(user_text('리뷰해 줘'))
+
+        busy = self.agent_busy(tool_call('Bash'), tool_result())
+
+        self.assertTrue(busy)
 
     def test_real_user_text_with_command_tag_ends_limit_stop(self):
         self.fixture.transcript(limit_error(), user_text('<task-notification> My question'))

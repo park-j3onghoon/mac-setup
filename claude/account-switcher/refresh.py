@@ -98,6 +98,17 @@ def notification_text(entry):
     return ''
 
 
+def task_notification(entry):
+    """The text of a background task notification Claude Code wrote, else ''."""
+    attachment = entry.get('attachment')
+    if entry.get('type') == 'attachment' and isinstance(attachment, dict):
+        # Claude Code 2.1.330 queues a notification that arrives during a turn as an attachment
+        # (2026-11-23: every finished agent of 10 idle sessions looked unfinished).
+        prompt = attachment.get('prompt')
+        return prompt if attachment.get('type') == 'queued_command' and isinstance(prompt, str) else ''
+    return notification_text(entry) if entry.get('type') == 'user' and is_generated(entry) else ''
+
+
 def is_generated(entry):
     origin = entry.get('origin')
     system = (entry.get('promptSource') == 'system' or
@@ -142,6 +153,25 @@ def last_entry(path):
 def completed(entry):
     return bool(entry and entry['type'] == 'assistant' and not entry.get('isApiErrorMessage')
                 and (entry.get('message') or {}).get('stop_reason') in ('end_turn', 'stop_sequence'))
+
+
+def agent_finished(path):
+    """True when a subagent's newest step ended its turn or handed its report back."""
+    for line in transcript_lines(path):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get('type') not in ('assistant', 'user') or is_generated(entry):
+            continue
+        blocks = (entry.get('message') or {}).get('content')
+        blocks = [block for block in blocks if isinstance(block, dict)] if isinstance(blocks, list) else []
+        if entry['type'] == 'user' and blocks and all(block.get('type') == 'tool_result' for block in blocks):
+            continue
+        # Claude Code 2.1.330 subagents end by calling SubagentHandback, with no end_turn
+        # (2026-11-23: all 135 agents of 7 idle sessions).
+        return completed(entry) or any(block.get('name') == 'SubagentHandback' for block in blocks)
+    return False
 
 
 def ended_with_limit_error(projects_dir, session_id, transcript=None):
@@ -392,7 +422,7 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
     unfinished = set()
     transcripts = set()
     for path in Path(projects_dir).glob(pattern):
-        if not completed(last_entry(path)):
+        if not agent_finished(path):
             unfinished.add(path.stem.removeprefix('agent-'))
             transcripts.add(path.parent.parent.with_suffix('.jsonl'))
     for path in transcripts:
@@ -405,10 +435,8 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
                 entry = json.loads(line)
             except ValueError:
                 continue
-            if not isinstance(entry, dict) or entry.get('type') != 'user':
-                continue
-            content = notification_text(entry)
-            if is_generated(entry) and content.lstrip().startswith('<task-notification>'):
+            content = task_notification(entry) if isinstance(entry, dict) else ''
+            if content.lstrip().startswith('<task-notification>'):
                 task = re.search(r'<task-id>([\w-]+)</task-id>', content)
                 if task and re.search(r'<status>(completed|failed|killed|stopped)</status>', content):
                     unfinished.discard(task[1].removeprefix('agent-'))
