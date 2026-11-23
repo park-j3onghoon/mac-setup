@@ -1,8 +1,8 @@
-"""Guide existing, unmanaged Claude sessions through an account change on their own cmux surface.
+"""Restart existing, unmanaged Claude sessions after an account change on their own cmux surface.
 
-The terminal offers no conditional empty-input submission. A local notification lets the user
-finish their draft and run /restart. Keep the handoff until Claude publishes its new startedAt,
-then offer continuation if the original limit stop is still the last real conversation event.
+The helper types `/restart` only into an empty input box and leaves a draft alone: the turn the
+user ends by sending it runs the hook again. Keep the receipt until Claude publishes its new
+startedAt, then continue if the original limit stop is still the last real conversation event.
 """
 
 import hashlib
@@ -19,7 +19,8 @@ CONTINUE_PROMPT = (
     '계정 전환 전에 하던 작업을 이어서 해줘. 먼저 마지막 요청, 실행 중인 프로세스와 남은 결과를 '
     '확인해줘. 완료된 작업은 반복하지 말고, 아직 실행 중이면 그 결과를 기다려줘. 중단되거나 실패한 '
     '작업은 이어갈 수 있는 지점부터 계속하고, 이어갈 수 없으면 그 작업만 처음부터 다시 실행해줘. '
-    '이미 반영됐을 수 있는 작업은 실제 반영 여부부터 확인하고, 사용자 승인이나 답변이 필요하면 다시 물어봐.'
+    '이미 반영됐을 수 있는 작업은 실제 반영 여부부터 확인하고, 사용자 승인이나 답변이 필요하면 다시 물어봐. '
+    '직전 프롬프트가 부족하거나 이상하면 질문하고 이어서 해.'
 )
 STATE = 'session_refresh'
 # Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
@@ -28,6 +29,7 @@ REFRESH_WINDOW_SECONDS = 8 * 3600
 # Longer than the service's longest usage lookup interval, 9 minutes (policy.POLL_TIERS).
 SWITCH_TIMEOUT_SECONDS = 900
 READY_TIMEOUT_SECONDS = 600
+RESTART_TIMEOUT_SECONDS = 120
 WAIT_STEP_SECONDS = 3
 # A session stopped at a limit ends no later turn to retry from (Claude Code waits for the reset
 # itself), so past READY_TIMEOUT_SECONDS its helper waits out background work, such as a
@@ -596,32 +598,44 @@ class SelfRestart:
         return self.confirm(pending)
 
     def confirm(self, pending):
+        """Type `/restart` once the session is quiet with an empty input box, then continue a
+        limit stop in the restarted session."""
         self.last_session = {key: pending[key] for key in ('pid', 'procStart', 'startedAt')}
-        if not pending.get('notified'):
-            current = self.wait(self.session, 15)
-            if not current:
-                return 'not_ready'
-            if current['startedAt'] == pending['startedAt']:
-                self.cmux('notify', '--surface', self.surface, '--title', 'Claude 계정 전환',
-                          '--body', '초안과 실행 중인 작업을 마친 뒤 이 창에서 /restart 를 입력하세요.')
-            pending['notified'] = True
-            self.state.save(self.receipt, pending)
 
         def restarted():
             current = self.session()
             return (current and current['startedAt'] > pending['startedAt']
                     and current['startedAt'] >= pending['since'] * 1000)
 
-        if not self.wait(restarted, max(0, pending['since'] + REFRESH_WINDOW_SECONDS - self.clock())):
-            return 'awaiting_user_restart'
-        if pending['limited'] and self.limited():
-            self.cmux('notify', '--surface', self.surface, '--title', 'Claude 이어하기',
-                      '--body', '새 계정이 적용되었습니다. 한도에서 멈춘 작업을 계속하려면 이 대화에 이어서 해 달라고 입력하세요.')
-            outcome = 'continuation_offered'
-        else:
+        if not restarted():
+            if not (self.wait(lambda: self.ready(None), READY_TIMEOUT_SECONDS)
+                    and self.type('/restart', only_if=lambda: not restarted())):
+                return 'not_ready'
+            if not self.wait(restarted, RESTART_TIMEOUT_SECONDS):
+                return 'restart_unconfirmed'
+        if not pending['limited'] or not self.limited():
             outcome = 'restarted'
+        elif (self.wait(lambda: self.ready(None), RESTART_TIMEOUT_SECONDS)
+              and self.type(CONTINUE_PROMPT, only_if=self.limited)):
+            outcome = 'restarted_and_continued'
+        else:
+            outcome = 'restarted_continuation_deferred'
         self.state.save(self.receipt, {'phase': outcome, 'since': pending['since']})
         return outcome
+
+    def type(self, text, only_if=None):
+        """Paste text with Enter in one cmux request when a last look finds the input box empty."""
+        if only_if and not only_if():
+            return False
+        if not input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12')):
+            return False
+        # cmux 0.64.22 dispatches paste and submit together on its main actor. It has no
+        # empty-input precondition, so only text typed after the last look can still mix in.
+        response = json.loads(self.cmux('rpc', 'terminal.paste', json.dumps({
+            'surface_id': self.surface, 'text': text, 'submit_key': 'enter'})))
+        if response.get('submitted') is not True:
+            raise OSError('cmux accepted the paste without confirming submission')
+        return True
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
         """Check immediately, then back off to 30 seconds; every check reads fresh state."""

@@ -88,19 +88,14 @@ class HandoffTests(unittest.TestCase):
     def test_overlay_below_form_is_not_the_current_prompt(self):
         self.assertFalse(refresh.input_ready(screen() + '\nConfirm operation? [yes/no]'))
 
-    def test_legacy_terminal_never_pastes_or_submits_even_on_an_empty_screen(self):
-        self.fixture.transcript(limit_error())
-        refresh.record_switch(self.fixture.state, SWITCHED_AT)
-        self.restart.run()
-        self.assertEqual(self.runner.typed, [])
-        self.assertTrue(self.runner.notices)
-
-    def test_manual_restart_after_two_minutes_offers_continuation_once(self):
+    def test_restart_seen_by_a_later_helper_is_continued_once(self):
         self.fixture.transcript(limit_error())
         refresh.record_switch(self.fixture.state, SWITCHED_AT)
         self.runner.restarts = False
-        self.fixture.clock.at(self.fixture.clock()+240,
-                              lambda: self.fixture.register('idle',self.fixture.clock()))
-        self.assertEqual(self.restart.run(), 'continuation_offered')
-        self.assertEqual(len(self.runner.notices),2)
-        self.assertEqual(self.runner.typed,[])
+        self.assertEqual(self.restart.run(), 'restart_unconfirmed')
+
+        self.fixture.register('idle', self.fixture.clock())
+        outcomes = [self.fixture.restart(self.runner).run() for _ in range(2)]
+
+        self.assertEqual(outcomes, ['restarted_and_continued', 'no_switch'])
+        self.assertEqual(self.runner.typed, ['/restart', 'enter', refresh.CONTINUE_PROMPT, 'enter'])
