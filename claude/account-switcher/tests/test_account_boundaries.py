@@ -267,13 +267,27 @@ class BoundaryTests(unittest.TestCase):
         """MCP 래퍼의 양방향 파이프를 확인하고 작업 출력이나 불명확한 셸은 보호한다."""
         tree = {101: [(102, 'sh')], 102: [(103, 'fixture-mcp-stdio')]}
         session = {'pid': 101, 'sessionId': SESSION}
-        pipes = 'p102\nf0\ntPIPE\nf1\ntPIPE\n'
+        pipes = 'p102\nf0\ntPIPE\nf1\ntPIPE\np103\nf0\ntPIPE\nf1\ntPIPE\n'
         task = f'p103\nf1\ntREG\nn/private/{SESSION}/tasks/one.output\n'
         for descriptors, expected in ((pipes, False), (pipes + task, True), ('', True)):
             with self.subTest(descriptors=descriptors):
                 result = refresh.background_work(session, tree, self.projects, NOW,
                     runner=Mock(return_value=Mock(returncode=0, stdout=descriptors)))
                 self.assertEqual(result, expected)
+
+    def test_direct_stdio_mcp_servers_are_not_session_work(self):
+        """Claude가 바로 띄운 stdio MCP 서버(`uv run …/mcp_server.py`와 그 python)는 입출력이 유닉스 소켓이면 작업으로 보지 않는다."""
+        tree = {101: [(102, 'uv'), (103, 'caffeinate')], 102: [(104, 'python')]}
+        streams = ''.join(f'p{pid}\nf0\ntunix\nf1\ntunix\nf2\ntunix\n' for pid in (102, 104))
+        def runner(argv, **kwargs):
+            if argv[0] == '/bin/ps':
+                return Mock(returncode=0, stdout='uv run /plugins/plugin/0.8.15/scripts/mcp_server.py\n')
+            return Mock(returncode=0, stdout=streams)
+
+        busy = refresh.background_work({'pid': 101, 'sessionId': SESSION}, tree, self.projects, NOW,
+                                       runner=runner)
+
+        self.assertFalse(busy)
 
     def test_metadata_only_copy_falls_back_to_older_transcript(self):
         """최근 사본에 시스템 메타데이터만 있으면 이전 대화 사본을 검사한다."""
@@ -287,7 +301,7 @@ class BoundaryTests(unittest.TestCase):
         tree = {101: [(102, 'sh')], 102: [(103, 'node')]}
         runner = Mock(side_effect=[
             Mock(returncode=0, stdout='node /fixture/node_modules/example-mcp/server.js'),
-            Mock(returncode=0, stdout='p102\nf0\ntPIPE\nf1\ntPIPE\n')])
+            Mock(returncode=0, stdout='p102\nf0\ntPIPE\nf1\ntPIPE\np103\nf0\ntPIPE\nf1\ntPIPE\n')])
 
         busy = refresh.background_work({'pid': 101, 'sessionId': SESSION}, tree,
                                        self.projects, NOW, runner=runner)

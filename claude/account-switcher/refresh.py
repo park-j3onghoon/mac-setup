@@ -346,35 +346,29 @@ def wraps_mcp(descendants, runner):
 
 
 def background_work(session, children, projects_dir, now, runner=subprocess.run, *, check_completion=False):
-    """Treat unclassified children and unfinished subagent transcripts as active work."""
-    candidates, wrappers, mcp_servers, stack = [], set(), set(), [session['pid']]
+    """Treat task shells, children without stdio streams, task output and unfinished subagent
+    transcripts as active work."""
+    servers, stack = [], [session['pid']]
     while stack:
         for child, name in children.get(stack.pop(), []):
-            if name in WORKING_CHILDREN:
-                descendants = children.get(child, [])
-                # Ordinary task shells remain busy. An identifiable stdio MCP wrapper can
-                # remain attached even when the conversation is idle.
-                if not wraps_mcp(descendants, runner):
-                    return True
-                wrappers.add(str(child))
-                mcp_servers.add(descendants[0][0])
-            elif child not in mcp_servers and name != 'caffeinate':
-                if not wraps_mcp([(child, name)], runner):
-                    return True
-                wrappers.add(str(child))
-                mcp_servers.add(child)
-            if name != 'caffeinate':
-                candidates.append(str(child))
+            if name == 'caffeinate':
+                continue
+            # Ordinary task shells remain busy. A shell that wraps an identifiable MCP server and
+            # every other child must talk over stdio streams like Claude Code's own MCP servers
+            # (2026-11-23: `uv run …/mcp_server.py` and its python over unix sockets).
+            if name in WORKING_CHILDREN and not wraps_mcp(children.get(child, []), runner):
+                return True
+            servers.append(str(child))
             stack.append(child)
-    if candidates:
-        # A shell can exec the foreground task. A long-lived MCP process normally has pipes.
-        descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(candidates),
-                              '-d', '0,1,2' if wrappers else '1,2', '-Fftn'], capture_output=True, text=True,
+    if servers:
+        # A shell can exec the task, which then still writes the session's task output.
+        descriptors = runner(['/usr/sbin/lsof', '-nP', '-a', '-p', ','.join(servers),
+                              '-d', '0,1,2', '-Fftn'], capture_output=True, text=True,
                              timeout=5, check=False)
         if descriptors.returncode not in (0, 1) or (descriptors.returncode and descriptors.stderr):
             raise SessionUnavailable('Could not check session task output')
         regular = False
-        pipes = set()
+        streams = set()
         pid = fd = None
         for field in descriptors.stdout.splitlines():
             if field.startswith('p'):
@@ -385,14 +379,14 @@ def background_work(session, children, projects_dir, now, runner=subprocess.run,
                 regular = False
             elif field.startswith('t'):
                 regular = field == 'tREG'
-                if pid in wrappers and field in ('tPIPE', 'tFIFO'):
-                    pipes.add((pid, fd))
+                if field in ('tPIPE', 'tFIFO', 'tunix'):
+                    streams.add((pid, fd))
             elif regular and field.startswith('n'):
                 path = Path(field[1:])
                 if (path.parent.name == 'tasks' and path.parent.parent.name == session['sessionId']
                         and path.suffix == '.output'):
                     return True
-        if any((pid, fd) not in pipes for pid in wrappers for fd in ('0', '1')):
+        if any((pid, fd) not in streams for pid in servers for fd in ('0', '1')):
             return True
     pattern = f"*/{session['sessionId']}/subagents/*.jsonl"
     unfinished = set()
