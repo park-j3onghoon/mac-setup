@@ -683,6 +683,17 @@ class ResumeTests(unittest.TestCase):
 
                 self.assertEqual((outcome, runner.typed), ('resumed', [RESUME_PROMPT]))
 
+    def test_the_error_entry_written_after_the_hook_is_still_resumed(self):
+        """실패 훅은 Claude Code가 오류 항목을 쓰기 전에 돌므로, 도우미는 30초 뒤 기록을 보고 판단한다."""
+        fixture = self.fixture(user_text('작업해 줘'))
+        runner = FakeRunner(fixture)
+        fixture.clock.at(fixture.clock() + 1, lambda: fixture.transcript(
+            user_text('작업해 줘'), interruption('connection_failed')))
+
+        outcome = fixture.restart(runner).resume()
+
+        self.assertEqual((outcome, runner.typed), ('resumed', [RESUME_PROMPT]))
+
     def test_a_session_continued_meanwhile_is_left_alone(self):
         """기다리는 동안 사용자가 직접 이어서 입력했으면 넣지 않는다."""
         fixture = self.fixture(user_text('작업해 줘'), interruption())

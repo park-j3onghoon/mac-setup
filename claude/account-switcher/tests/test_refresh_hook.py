@@ -117,6 +117,18 @@ class HookTests(unittest.TestCase):
                 refresh_hook.hook()
                 self.assertEqual([call.args[0][-3:] for call in popen.call_args_list], modes)
 
+    def test_a_failed_turn_is_judged_before_its_error_is_written(self):
+        """실패 훅이 오류 항목보다 먼저 와도, 한도 문장이면 재시작 도우미를, 다른 실패면 이어하기 도우미를 띄운다."""
+        limit = "You've hit your 5-hour limit · resets 7:30pm (Asia/Seoul)"
+        for message, modes in ((limit, ['--helper']), ('API Error: Connection refused', ['--resume'])):
+            payload = {'session_id': 'abc-123', 'hook_event_name': 'StopFailure',
+                       'error': 'server_error', 'last_assistant_message': message}
+            stdin = io.StringIO(json.dumps(payload))
+            with self.subTest(modes=modes), patch.object(refresh_hook, 'SelfRestart', restart_stub()), \
+                    patch('subprocess.Popen') as popen, patch('sys.stdin', stdin):
+                refresh_hook.hook()
+                self.assertEqual([call.args[0][-3] for call in popen.call_args_list], modes)
+
     def test_resume_helper_waits_its_turn_and_logs_what_it_did(self):
         """이어하기 도우미는 같은 세션의 앞선 이어하기 도우미가 끝나기를 기다렸다가 결과를 기록한다."""
         with patch.object(refresh_hook, 'SelfRestart') as restart, \

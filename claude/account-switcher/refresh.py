@@ -615,16 +615,18 @@ class SelfRestart:
         return outcome
 
     def resume(self):
-        """Type RESUME_PROMPT into the empty input box of a turn an interruption cut, once the Mac
-        is fully awake (a lid-closed maintenance wake wrote the 2026-11-23 19:25 sleep error two
-        seconds before sleeping again) and RESUME_GAP_SECONDS after the error."""
+        """Type RESUME_PROMPT into the empty input box of a turn an interruption cut,
+        RESUME_GAP_SECONDS after the failure and once the Mac is fully awake (a lid-closed
+        maintenance wake wrote the 2026-11-23 19:25 sleep error two seconds before sleeping again)."""
         try:
             return self._resume()
         except SessionEnded:
             return 'session_ended'
 
     def _resume(self):
-        first_seen = {}
+        # The hook starts this helper as the turn fails, before Claude Code writes the error
+        # entry (2026-11-24 11:17: the transcript still ended with the prompt), so look later.
+        self.sleep(RESUME_GAP_SECONDS)
 
         def due():
             path = self.transcript_path()
@@ -637,9 +639,6 @@ class SelfRestart:
                 return 'resume_superseded'
             if attempts >= RESUME_ATTEMPTS or total >= RESUME_TOTAL:
                 return 'resume_gave_up'
-            seen = first_seen.setdefault(entry.get('uuid'), self.clock())
-            if self.clock() - seen < RESUME_GAP_SECONDS:
-                return None
             return entry if system_awake(self.runner) and self.answerable() else None
 
         # Waiting time counts only while the Mac is awake: time.monotonic stops in sleep

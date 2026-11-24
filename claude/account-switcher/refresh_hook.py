@@ -20,7 +20,8 @@ import time
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from refresh import SelfRestart, SessionEnded, SessionUnavailable, hook_ancestors, switch_pending  # noqa: E402
+from refresh import (LIMIT_ERROR, SelfRestart, SessionEnded, SessionUnavailable,  # noqa: E402
+                     hook_ancestors, switch_pending)
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
@@ -62,10 +63,16 @@ def hook():
         pending = restart.pending()
         # limited() first: needed() runs ps, which timed out when many sessions stopped at a
         # limit at once (2026-11-16 11:08).
+        # StopFailure runs before Claude Code writes the error entry (2026-11-24 11:17: the
+        # transcript still ended with the prompt). Its own error text tells a limit stop, and any
+        # other failure starts the resume helper, which reads the transcript later.
+        failed = payload.get('hook_event_name') == 'StopFailure'
+        error = payload.get('last_assistant_message') if failed else None
         interrupted = False
         try:
-            limited = restart.limited(retry_replacement=False)
-            interrupted = not limited and restart.interrupted()
+            limited = (isinstance(error, str) and bool(LIMIT_ERROR.search(error))
+                       or restart.limited(retry_replacement=False))
+            interrupted = not limited and (failed or restart.interrupted())
             switching = pending or switch_pending(restart.state, time.time())
             if not (limited or interrupted or switching):
                 return 0
