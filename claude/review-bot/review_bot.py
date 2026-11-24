@@ -46,6 +46,7 @@ GIT_READ_VERBS = ('log', 'diff', 'show', 'rev-parse', 'merge-base', 'rev-list', 
                   'blame', 'grep', 'status', 'describe')
 # 읽기 명령에 붙어도 파일을 쓰거나(--output), 저장소 밖 파일을 읽거나(--no-index, --contents), 명령을 실행한다(-O).
 GIT_DENIED_OPTIONS = ('--output', '--no-index', '--contents', '-O', '--open-files-in-pager')
+GH_WRITE_OPTIONS = ('-X', '--method', '-f', '-F', '--field', '--raw-field', '--input')
 SECRET_FILES = ('**/.env*', '**/*.pem', '**/*.key')
 # launchd의 PATH는 짧다. -p는 마지막 턴 10분 뒤 백그라운드 서브에이전트를 멈추므로 끝까지 기다리게 하고,
 # 전체 시간은 REVIEW_TIMEOUT_SECONDS로 끊는다.
@@ -242,8 +243,9 @@ def sandbox_settings(repo, number, run_dir, codex, dry_run):
     clone = HOME / owner.lower() / name  # ai-review lib/review/prepare.md의 메인 클론 위치
     worktree = clone / '.claude/worktrees' / f'review-{number}'
     readable = [clone, run_dir, HOME / 'plans', SIMPLE_DESIGN, *instruction_paths()]
+    # 다른 레포는 로컬 클론 대신 GitHub에서 읽는다. 클론 옆에는 비밀값 파일과 개인 작업 폴더가 섞여 있다.
     commands = [
-        'gh pr view *', 'gh api user', 'gh api user --jq .login',
+        'gh pr view *', 'gh pr diff *', 'gh pr list *', 'gh search *', 'gh api repos/*', 'gh api user', 'gh api user --jq .login',
         *(f'git -C {c} fetch {args}' for c in spellings(clone) for args in ('origin', 'origin --quiet', '--quiet origin')),
         *(f'git -C {c} worktree {verb}*' for c in spellings(clone) for verb in ('list', 'prune')),
         *(f'git -C {c} worktree add --detach {w} *' for c in spellings(clone) for w in spellings(worktree)),
@@ -253,7 +255,8 @@ def sandbox_settings(repo, number, run_dir, codex, dry_run):
         *(f'git -C {p} {verb}{rest}' for p in (*spellings(clone), *spellings(worktree)) for verb in GIT_READ_VERBS
           for rest in ('', ' *')),
     ]
-    deny = [*(f'Read({pattern})' for pattern in SECRET_FILES), *(f'Bash(git * {option}*)' for option in GIT_DENIED_OPTIONS)]
+    deny = [*(f'Read({pattern})' for pattern in SECRET_FILES), *(f'Bash(git * {option}*)' for option in GIT_DENIED_OPTIONS),
+            *(f'Bash(gh api repos/* {option}*)' for option in GH_WRITE_OPTIONS)]
     if codex:
         commands.append(f'node {codex} *')
         deny += [f'Bash(node {codex} setup*)', f'Bash(node {codex} * --write*)']
