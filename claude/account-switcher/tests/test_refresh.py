@@ -157,6 +157,11 @@ class FakeRunner:
 
 
 class InputReadyTests(unittest.TestCase):
+    def test_an_error_hint_in_the_prompt_is_not_a_draft(self):
+        """API 오류 뒤 빈 입력창에 흐리게 뜨는 안내는 초안이 아니다. 실제 화면은 ❯ 뒤에 줄바꿈 없는 공백이 온다."""
+        self.assertTrue(input_ready(screen('❯\u00a0Resend your message to try again')))
+        self.assertFalse(input_ready(screen('❯\u00a0Resend your message')))
+
     def test_paste_and_submit_use_one_rpc_without_a_timed_input_gap(self):
         """문자 입력과 Enter 사이 대기 없이 한 번의 cmux 요청으로 제출한다."""
         runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
@@ -611,6 +616,7 @@ class ResumeTests(unittest.TestCase):
         """뚜껑을 닫은 채 잠깐 깬 동안(그래픽 없음)에는 넣지 않고, 완전히 깨어나 입력창이 비면 이어하기 문구를 한 번 넣는다."""
         fixture = self.fixture(user_text('작업해 줘'), tool_call(), interruption())
         normal = FakeRunner(fixture)
+        normal.screen_text = screen('❯\u00a0Resend your message to try again')
         opened = fixture.clock() + 3600
 
         def runner(argv, **kwargs):

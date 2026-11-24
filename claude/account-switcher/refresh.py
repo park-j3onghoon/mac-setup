@@ -59,6 +59,11 @@ LIMIT_ERROR = re.compile(r'hit your .*limit|usage limit reached', re.I)
 # User entries Claude Code writes itself. Background task notifications keep arriving after a
 # limit stop (2026-11-16 11:08~11:09), so they do not mean the user asked to go on.
 GENERATED_PREFIXES = ('<command-', '<local-command', '<task-notification>')
+# Dimmed hints Claude Code 2.1.331 puts in an empty prompt after an API error (`Tlo`); read-screen
+# returns them as plain text (2026-11-24: 「❯ Resend your message to try again」 after
+# connection_failed, the hint for every error in INTERRUPTIONS).
+PROMPT_HINTS = ('Resend your message to try again', 'Once fixed, resend your message',
+                'Run /rewind to go back')
 RULE_MIN_DASHES = 10
 
 
@@ -86,13 +91,14 @@ def is_rule(line):
 
 
 def input_ready(screen):
-    """True when Claude's input box (❯ between two rules) is empty."""
+    """True when Claude's input box (❯ between two rules) is empty or shows only a hint."""
     lines = screen.splitlines()
     prompts = [i for i, line in enumerate(lines) if line.strip().startswith('❯')]
     if not prompts:
         return False
     i = prompts[-1]
-    if lines[i].strip() != '❯' or not 0 < i < len(lines) - 1:
+    typed = lines[i].strip().removeprefix('❯').strip()
+    if typed and typed not in PROMPT_HINTS or not 0 < i < len(lines) - 1:
         return False
     if not (is_rule(lines[i - 1]) and is_rule(lines[i + 1])):
         return False
