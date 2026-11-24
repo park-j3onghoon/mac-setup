@@ -14,10 +14,11 @@ from refresh import SessionEnded
 from storage import State, SwitcherError
 
 
-def restart_stub(limited=False, needed=False):
+def restart_stub(limited=False, needed=False, interrupted=False):
     """A SelfRestart class whose checks answer as given; an exception given for needed is raised
     as a slow ps raises it."""
-    checks = Mock(limited=Mock(return_value=limited), needed=Mock(side_effect=[needed]))
+    checks = Mock(limited=Mock(return_value=limited), needed=Mock(side_effect=[needed]),
+                  interrupted=Mock(return_value=interrupted))
     checks.pending.return_value = {}
     checks.receipt = 'handoff-test'
     return Mock(return_value=checks)
@@ -37,7 +38,7 @@ class HookTests(unittest.TestCase):
         holders = []
 
         @contextmanager
-        def first_lock(state, name):
+        def first_lock(state, name, **options):
             with original(state, name):
                 yield
             second = original(state, name)
@@ -104,6 +105,30 @@ class HookTests(unittest.TestCase):
             refresh_hook.hook()
         # then
         self.assertEqual(popen.call_args.args[0][-3:], ['--helper', 'abc-123', 'S-1'])
+
+    def test_hook_starts_a_resume_helper_for_a_turn_an_interruption_cut(self):
+        """잠자기나 연결 끊김으로 끊긴 턴이면 이어하기 도우미를 띄우고, 전환 뒤 재시작도 필요하면 재시작 도우미도 띄운다."""
+        resume, restart = ['--resume', 'abc-123', 'S-1'], ['--helper', 'abc-123', 'S-1']
+        for needed, modes in ((False, [resume]), (True, [resume, restart])):
+            stub = restart_stub(needed=needed, interrupted=True)
+            with self.subTest(needed=needed), patch.object(refresh_hook, 'SelfRestart', stub), \
+                    patch('subprocess.Popen') as popen, \
+                    patch('sys.stdin', io.StringIO('{"session_id":"abc-123"}')):
+                refresh_hook.hook()
+                self.assertEqual([call.args[0][-3:] for call in popen.call_args_list], modes)
+
+    def test_resume_helper_waits_its_turn_and_logs_what_it_did(self):
+        """이어하기 도우미는 같은 세션의 앞선 이어하기 도우미가 끝나기를 기다렸다가 결과를 기록한다."""
+        with patch.object(refresh_hook, 'SelfRestart') as restart, \
+                patch.object(State, 'lock', wraps=State(self.state_dir).lock) as lock:
+            restart.return_value.receipt = 'handoff-0123'
+            restart.return_value.resume.return_value = 'resumed'
+            refresh_hook.helper('fixture', 'surface', '--resume')
+        self.assertEqual((lock.call_args.args[-1], lock.call_args.kwargs),
+                         ('restart-resume-0123', {'blocking': True}))
+        restart.return_value.run.assert_not_called()
+        log = (self.state_dir / refresh_hook.LOG).read_text()
+        self.assertEqual(json.loads(log)['outcome'], 'resumed')
 
     def test_hook_does_nothing_without_a_restart_or_a_limit_stop(self):
         """재시작 대상도 아니고 한도에 멈추지도 않았으면 도우미를 띄우지 않고 바로 끝낸다."""

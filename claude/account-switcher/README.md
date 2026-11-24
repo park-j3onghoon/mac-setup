@@ -176,6 +176,15 @@ Keychain 문제로 중단된 서비스는 요청을 받아도 자동으로 중�
 (`api_backoff.json`)은 그대로 지킨다. 대시보드는 `runtime.json`의 `sampled_at`이 요청 시각
 뒤로 바뀌기를 기다린 뒤 그 기록을 읽는다.
 
+잠자기나 연결 끊김으로 응답이 끊긴 턴은 이어서 하게 한다. Claude Code는 이런 턴 끝에 `apiError`가
+`computer_slept`, `connection_failed`, `no_response`, `stream_idle_timeout`인 오류 항목을 남기고,
+Stop/StopFailure 훅이 이를 보면 `--resume` 도우미를 띄운다. 도우미는 오류 30초 뒤, Mac이 완전히
+깨어 있고(뚜껑을 닫은 채 잠깐 깬 상태가 아님) 세션이 응답 중이 아니며 입력창이 비었을 때 이어하기
+문구(`RESUME_PROMPT`)를 한 번 넣는다. 마지막 정상 응답 뒤로 3번, 정상으로 끝난 턴 뒤로 모두 10번까지만
+넣고, 횟수는 기록에 남은 이어하기 문구로 센다. 재시작과 달리 문구는 백그라운드 작업을 끊지 않아 그
+작업을 기다리지 않는다. 한도 오류와 크레딧 오류에는 넣지 않는다. 결과는 `session-restarts.log`에
+`resumed`, `resume_gave_up`, `resume_superseded`, `resume_not_ready`로 남는다.
+
 ```sh
 python3 "$tool" status             # 저장된 상태만 확인
 python3 "$tool" measure-status     # 주기별 토큰·한도 사용률 측정 결과

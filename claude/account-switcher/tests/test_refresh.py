@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from refresh import (CONTINUE_PROMPT, READY_TIMEOUT_SECONDS, REFRESH_WINDOW_SECONDS,
-                     SelfRestart, ended_with_limit_error, input_ready, live_session,
-                     record_switch, switch_pending)
+                     RESUME_GAP_SECONDS, RESUME_PROMPT, SelfRestart, ended_with_limit_error,
+                     input_ready, is_interruption, live_session, record_switch, switch_pending)
 from storage import State
 
 RULE = '─' * 40
@@ -40,6 +40,21 @@ def limit_error(text="You've hit your 5-hour limit · resets 7:30pm (Asia/Seoul)
 def limit_notice(text='Usage limit reached · continuing automatically at 3pm · esc to cancel'):
     """The system note Claude Code 2.1.330 writes when a turn stops at a limit after a wrap-up answer."""
     return {'type': 'system', 'subtype': 'informational', 'isMeta': False, 'content': text}
+
+
+def interruption(kind='computer_slept', uuid='e0'):
+    """The error Claude Code 2.1.330 writes when sleep or a lost connection cuts a response
+    (2026-11-23 19:25)."""
+    text = 'API Error: Your computer went to sleep mid-response.'
+    return {'type': 'assistant', 'uuid': uuid, 'isApiErrorMessage': True, 'error': 'server_error',
+            'apiError': kind, 'message': {'model': '<synthetic>', 'stop_reason': 'stop_sequence',
+                                          'content': [{'type': 'text', 'text': text}]}}
+
+
+def tool_call(uuid='t0'):
+    return {'type': 'assistant', 'uuid': uuid, 'message': {
+        'role': 'assistant', 'stop_reason': 'tool_use',
+        'content': [{'type': 'tool_use', 'name': 'Bash'}]}}
 
 
 def assistant_text(text):
@@ -568,6 +583,128 @@ class SelfRestartTests(unittest.TestCase):
         outcome = fixture.restart(runner).run()
         # then
         self.assertEqual((outcome, runner.typed), ('restarted', ['/restart']))
+
+
+class ResumeTests(unittest.TestCase):
+    """응답이 잠자기나 연결 끊김으로 끊긴 세션에 이어하기 문구를 넣는 도우미."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.count = 0
+
+    def fixture(self, *entries):
+        self.count += 1
+        fixture = SessionFixture(Path(self.tmp.name) / str(self.count))
+        fixture.transcript(*entries)
+        return fixture
+
+    def test_only_interruptions_are_resumed_and_limits_or_credits_are_left_to_the_user(self):
+        """잠자기, 연결 실패, 무응답, 스트림 멈춤만 이어서 하고 한도나 크레딧 오류는 사람에게 둔다."""
+        for kind in ('computer_slept', 'connection_failed', 'no_response', 'stream_idle_timeout'):
+            self.assertTrue(is_interruption(interruption(kind)), kind)
+        for kind in ('usage_limit_reached', 'model_requires_usage_credits'):
+            self.assertFalse(is_interruption(interruption(kind)), kind)
+        self.assertFalse(is_interruption(tool_call()))
+
+    def test_a_turn_cut_by_sleep_is_continued_once_the_lid_opens(self):
+        """뚜껑을 닫은 채 잠깐 깬 동안(그래픽 없음)에는 넣지 않고, 완전히 깨어나 입력창이 비면 이어하기 문구를 한 번 넣는다."""
+        fixture = self.fixture(user_text('작업해 줘'), tool_call(), interruption())
+        normal = FakeRunner(fixture)
+        opened = fixture.clock() + 3600
+
+        def runner(argv, **kwargs):
+            if argv[0] == '/usr/bin/pmset':
+                graphics = 'Graphics ' if fixture.clock() >= opened else ''
+                capabilities = f'Current System Capabilities are: CPU {graphics}Network\n'
+                return Mock(returncode=0, stdout=capabilities)
+            return normal(argv, **kwargs)
+
+        outcome = fixture.restart(runner).resume()
+
+        self.assertEqual((outcome, normal.typed), ('resumed', [RESUME_PROMPT]))
+        self.assertGreaterEqual(fixture.clock(), opened)
+
+    def test_the_try_comes_30_seconds_after_the_error(self):
+        """오류가 난 뒤 30초가 지나야 넣는다."""
+        fixture = self.fixture(user_text('작업해 줘'), interruption('connection_failed'))
+        normal, typed_at = FakeRunner(fixture), []
+
+        def runner(argv, **kwargs):
+            if argv[1:3] == ['rpc', 'terminal.paste']:
+                typed_at.append(fixture.clock())
+            return normal(argv, **kwargs)
+
+        started = fixture.clock()
+        fixture.restart(runner).resume()
+
+        self.assertEqual(normal.typed, [RESUME_PROMPT])
+        self.assertGreaterEqual(typed_at[0] - started, RESUME_GAP_SECONDS)
+
+    def test_three_tries_at_one_stuck_point_or_ten_until_a_turn_ends_are_the_limit(self):
+        """진행 없이 한 자리에서 3번, 정상으로 끝난 턴 뒤로 모두 10번을 넣었으면 더 넣지 않는다."""
+        stuck = [user_text('작업해 줘'), interruption('connection_failed')]
+        for i in range(3):
+            stuck += [user_text(RESUME_PROMPT), interruption('connection_failed', f'e{i + 1}')]
+        progressing = [assistant_text('끝났습니다.'), user_text('작업해 줘'), interruption()]
+        for i in range(10):
+            progressing += [user_text(RESUME_PROMPT), tool_call(f't{i}'),
+                            interruption(uuid=f'e{i + 1}')]
+        for entries in (stuck, progressing):
+            with self.subTest(entries=len(entries)):
+                fixture = self.fixture(*entries)
+                runner = FakeRunner(fixture)
+
+                outcome = fixture.restart(runner).resume()
+
+                self.assertEqual((outcome, runner.typed), ('resume_gave_up', []))
+
+    def test_a_normal_turn_end_or_progress_starts_the_count_again(self):
+        """정상으로 끝난 턴 앞의 시도는 세지 않고, 이어서 일을 진행한 뒤 다시 멈추면 새 자리로 센다."""
+        tries = [user_text(RESUME_PROMPT), interruption('connection_failed', 'r1'),
+                 user_text(RESUME_PROMPT), interruption('connection_failed', 'r2'),
+                 user_text(RESUME_PROMPT)]
+        after_end = [user_text('작업해 줘'), interruption()] + tries + [
+            assistant_text('끝났습니다.'), user_text('다음 작업'), interruption(uuid='last')]
+        after_progress = [user_text('작업해 줘'), interruption()] + tries + [
+            tool_call(), interruption(uuid='last')]
+        for entries in (after_end, after_progress):
+            with self.subTest(entries=len(entries)):
+                fixture = self.fixture(*entries)
+                runner = FakeRunner(fixture)
+
+                outcome = fixture.restart(runner).resume()
+
+                self.assertEqual((outcome, runner.typed), ('resumed', [RESUME_PROMPT]))
+
+    def test_a_session_continued_meanwhile_is_left_alone(self):
+        """기다리는 동안 사용자가 직접 이어서 입력했으면 넣지 않는다."""
+        fixture = self.fixture(user_text('작업해 줘'), interruption())
+        runner = FakeRunner(fixture)
+        fixture.clock.at(fixture.clock() + 10, lambda: fixture.transcript(
+            user_text('작업해 줘'), interruption(), user_text('계속해')))
+
+        outcome = fixture.restart(runner).resume()
+
+        self.assertEqual((outcome, runner.typed), ('resume_superseded', []))
+
+    def test_background_work_does_not_hold_back_the_resume_but_an_answer_or_a_draft_does(self):
+        """이어하기는 재시작과 달리 백그라운드 작업을 끊지 않아 기다리지 않지만, 응답 중이거나 입력창에 초안이 있으면 넣지 않는다."""
+        fixture = self.fixture(user_text('작업해 줘'), interruption())
+        busy_shell = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        self.assertEqual(fixture.restart(busy_shell).resume(), 'resumed')
+
+        fixture = self.fixture(user_text('작업해 줘'), interruption())
+        drafting = FakeRunner(fixture)
+        drafting.screen_text = screen('❯ 아직 쓰는 중')
+        outcome = fixture.restart(drafting).resume()
+        self.assertEqual((outcome, drafting.typed), ('resume_not_ready', []))
+
+        fixture = self.fixture(user_text('작업해 줘'), interruption())
+        fixture.register('busy', fixture.started_at())
+        answering = FakeRunner(fixture)
+        outcome = fixture.restart(answering).resume()
+        self.assertEqual((outcome, answering.typed), ('resume_not_ready', []))
 
 
 if __name__ == '__main__':

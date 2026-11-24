@@ -1,8 +1,11 @@
-"""Restart existing, unmanaged Claude sessions after an account change on their own cmux surface.
+"""Restart existing, unmanaged Claude sessions after an account change on their own cmux surface,
+and continue turns that sleep or a lost connection cut.
 
 The helper types `/restart` only into an empty input box and leaves a draft alone: the turn the
 user ends by sending it runs the hook again. Keep the receipt until Claude publishes its new
 startedAt, then continue if the original limit stop is still the last real conversation event.
+A turn an interruption cut gets RESUME_PROMPT once the Mac is fully awake; the tries are counted
+from the transcript itself, so a turn that ends normally starts the count again.
 """
 
 import hashlib
@@ -14,14 +17,29 @@ import shlex
 import subprocess
 import time
 
+from macos import system_awake
+
 CMUX_PATHS = ('/opt/homebrew/bin/cmux', '/Applications/cmux.app/Contents/Resources/bin/cmux')
-CONTINUE_PROMPT = (
-    '계정 전환 전에 하던 작업을 이어서 해줘. 먼저 마지막 요청, 실행 중인 프로세스와 남은 결과를 '
+# What to check before going on, after a restart or an interruption.
+CONTINUE_STEPS = (
+    '먼저 마지막 요청, 실행 중인 프로세스와 남은 결과를 '
     '확인해줘. 완료된 작업은 반복하지 말고, 아직 실행 중이면 그 결과를 기다려줘. 중단되거나 실패한 '
     '작업은 이어갈 수 있는 지점부터 계속하고, 이어갈 수 없으면 그 작업만 처음부터 다시 실행해줘. '
     '이미 반영됐을 수 있는 작업은 실제 반영 여부부터 확인하고, 사용자 승인이나 답변이 필요하면 다시 물어봐. '
     '직전 프롬프트가 부족하거나 이상하면 질문하고 이어서 해.'
 )
+CONTINUE_PROMPT = '계정 전환 전에 하던 작업을 이어서 해줘. ' + CONTINUE_STEPS
+RESUME_PROMPT = '잠자기나 연결 끊김으로 응답이 중간에 끊겼어. 하던 작업을 이어서 해줘. ' + CONTINUE_STEPS
+# API errors that cut a turn without anyone deciding to stop (transcripts of 2026-11-10~24:
+# computer_slept 10, no_response 4, connection_failed 3, stream_idle_timeout 2). A usage limit
+# waits for the account switch and model_requires_usage_credits needs the user.
+INTERRUPTIONS = frozenset({'computer_slept', 'connection_failed', 'no_response',
+                           'stream_idle_timeout'})
+# The user's rule (2026-11-24): 30 seconds after an error, at most 3 tries at one stuck point and
+# 10 in all until a turn ends normally.
+RESUME_GAP_SECONDS = 30
+RESUME_ATTEMPTS = 3
+RESUME_TOTAL = 10
 STATE = 'session_refresh'
 # Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
 # 16:27); after that every session reads the live login on its next request.
@@ -155,9 +173,41 @@ def completed(entry):
                 and (entry.get('message') or {}).get('stop_reason') in ('end_turn', 'stop_sequence'))
 
 
+def last_message(projects_dir, session_id, transcript=None):
+    if transcript is not None:
+        return last_entry(transcript)
+    return latest_message(projects_dir, session_id)
+
+
 def ended_with_limit_error(projects_dir, session_id, transcript=None):
-    entry = last_entry(transcript) if transcript is not None else latest_message(projects_dir, session_id)
-    return is_limit_error(entry)
+    return is_limit_error(last_message(projects_dir, session_id, transcript))
+
+
+def is_interruption(entry):
+    """Sleep or a lost connection cut the turn (Claude Code 2.1.330 `apiError`, 2026-11-23)."""
+    return bool(entry and entry['type'] == 'assistant' and entry.get('isApiErrorMessage')
+                and entry.get('apiError') in INTERRUPTIONS)
+
+
+def resume_counts(path):
+    """RESUME_PROMPTs typed since the model last answered, and since a turn last ended normally."""
+    attempts = total = 0
+    answered = False
+    for line in transcript_lines(path):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or 'type' not in entry:
+            continue
+        if completed(entry):
+            break
+        if entry['type'] == 'assistant' and not entry.get('isApiErrorMessage'):
+            answered = True
+        elif entry['type'] == 'user' and notification_text(entry).strip() == RESUME_PROMPT:
+            total += 1
+            attempts += not answered
+    return attempts, total
 
 
 def is_limit_error(entry):
@@ -482,6 +532,9 @@ class SelfRestart:
             result = self.wait(replacement, 10)
             return bool(result and result[0])
 
+    def interrupted(self):
+        return is_interruption(last_message(self.projects, self.session_id, self.transcript))
+
     def pending(self):
         receipt = self.state.load(self.receipt)
         since = receipt.get('since')
@@ -554,6 +607,67 @@ class SelfRestart:
             outcome = 'restarted_continuation_deferred'
         self.state.save(self.receipt, {'phase': outcome, 'since': pending['since']})
         return outcome
+
+    def resume(self):
+        """Type RESUME_PROMPT into the empty input box of a turn an interruption cut, once the Mac
+        is fully awake (a lid-closed maintenance wake wrote the 2026-11-23 19:25 sleep error two
+        seconds before sleeping again) and RESUME_GAP_SECONDS after the error."""
+        try:
+            return self._resume()
+        except SessionEnded:
+            return 'session_ended'
+
+    def _resume(self):
+        first_seen = {}
+
+        def due():
+            path = self.transcript_path()
+            try:
+                entry, (attempts, total) = last_entry(path), resume_counts(path)
+            except FileNotFoundError:
+                self.transcript = None
+                raise SessionUnavailable('Session transcript is being replaced') from None
+            if not is_interruption(entry):
+                return 'resume_superseded'
+            if attempts >= RESUME_ATTEMPTS or total >= RESUME_TOTAL:
+                return 'resume_gave_up'
+            seen = first_seen.setdefault(entry.get('uuid'), self.clock())
+            if self.clock() - seen < RESUME_GAP_SECONDS:
+                return None
+            return entry if system_awake(self.runner) and self.answerable() else None
+
+        # Waiting time counts only while the Mac is awake: time.monotonic stops in sleep
+        # (2026-11-24: 95 hours behind the wall clock since the 11-18 boot).
+        result = self.wait(due, REFRESH_WINDOW_SECONDS)
+        if result is None:
+            return 'resume_not_ready'
+        if isinstance(result, str):
+            return result
+
+        def still_cut():
+            # The user may continue meanwhile or start a draft after the last look.
+            return last_message(self.projects, self.session_id, self.transcript_path()) == result
+
+        return 'resumed' if self.type(RESUME_PROMPT, only_if=still_cut) else 'resume_not_ready'
+
+    def transcript_path(self):
+        """The hook's transcript, else the newest one of this session."""
+        if self.transcript is not None and self.transcript.is_file():
+            return self.transcript
+        try:
+            self.transcript = max(self.projects.glob(f'*/{self.session_id}.jsonl'),
+                                  key=lambda path: path.stat().st_mtime_ns)
+        except (ValueError, FileNotFoundError):  # none yet, or one vanished while comparing
+            raise SessionUnavailable('Session transcript is being replaced') from None
+        return self.transcript
+
+    def answerable(self):
+        """The session not answering, with an empty prompt; a dialog such as a permission prompt
+        replaces the prompt. Unlike `/restart`, a prompt does not stop background tasks."""
+        session = self.session()
+        if not session or session.get('status') == 'busy':
+            return None
+        return session if self.input_empty() else None
 
     def ready_before(self, since):
         """The quiet session with an empty input box while the switch is pending, else None."""
