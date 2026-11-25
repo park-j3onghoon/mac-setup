@@ -21,11 +21,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from refresh import (LIMIT_ERROR, SelfRestart, SessionEnded, SessionUnavailable,  # noqa: E402
-                     hook_ancestors, switch_pending)
+                     hook_ancestors, receipt_name, stuck_sessions, switch_pending)
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
 LOG = 'session-restarts.log'
+# Only a process started inside cmux may read or type into a surface ("Access denied - only
+# processes started inside cmux can connect", 2026-11-25), so sessions' own hooks start the sweep.
+SWEEP_SECONDS = 60
 
 
 def state_dir():
@@ -47,6 +50,7 @@ def hook():
         session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
         if not isinstance(session_id, str) or not session_id.replace('-', '').isalnum() or not surface:
             return 0
+        sweep_if_due(State(state_dir()))
         if session_id == os.environ.get('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID'):
             return 0
         managed_pid = os.environ.get('MAC_SETUP_MANAGED_CLAUDE_PID', '')
@@ -95,12 +99,57 @@ def hook():
         if isinstance(restart.last_session, dict):
             environment['CLAUDE_SWITCHER_REGISTRY_PID'] = str(restart.last_session['pid'])
         for mode in modes:
-            subprocess.Popen([sys.executable, __file__, mode, session_id, surface],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
+            launch([mode, session_id, surface], environment)
     except (SessionEnded, SwitcherError, OSError, ValueError, subprocess.SubprocessError):
         pass
     return 0
+
+
+def launch(arguments, environment):
+    subprocess.Popen([sys.executable, __file__, *arguments],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
+
+
+def helper_lock(mode, session_id, surface):
+    return ('restart-resume-' if mode == '--resume' else 'restart-') + \
+        receipt_name(session_id, surface).removeprefix('handoff-')
+
+
+def sweep_if_due(state):
+    """Start a detached sweep at most once a SWEEP_SECONDS from any session's turn end."""
+    now = time.time()
+    if now - state.load('sweep').get('at', 0) < SWEEP_SECONDS:
+        return
+    state.save('sweep', {'at': now})
+    launch(['--sweep'], os.environ.copy())
+
+
+def run_sweep():
+    state = State(state_dir())
+    try:
+        with state.lock('sweep'):
+            sweep(state)
+    except (LockBusy, SwitcherError, OSError, ValueError, subprocess.SubprocessError):
+        pass  # the next turn end tries again
+    return 0
+
+
+def sweep(state):
+    """Start a helper for each stopped session that none handles now. The helpers inherit this
+    process's cmux access and type into the stopped session's own surface."""
+    for session_id, surface, pid, mode in stuck_sessions(Path.home() / '.claude', state):
+        try:
+            with state.lock(helper_lock(mode, session_id, surface)):
+                pass  # free: no helper holds this session
+        except LockBusy:
+            continue
+        environment = os.environ.copy()
+        environment.pop('CLAUDE_SWITCHER_ANCESTORS', None)
+        environment.pop('CLAUDE_SWITCHER_TRANSCRIPT', None)
+        environment.update(ACCOUNT_SWITCHER_STATE_DIR=str(state.root),
+                           CLAUDE_SWITCHER_REGISTRY_PID=str(pid))
+        launch([mode, session_id, surface], environment)
 
 
 def helper(session_id, surface, mode='--helper'):
@@ -109,9 +158,8 @@ def helper(session_id, surface, mode='--helper'):
     resume = mode == '--resume'
     # A resume helper waits for the one before it: that one may have just typed the prompt whose
     # turn failed again and started this helper.
-    lock = ('restart-resume-' if resume else 'restart-') + restart.receipt.removeprefix('handoff-')
     try:
-        with state.lock(lock, blocking=resume):
+        with state.lock(helper_lock(mode, session_id, surface), blocking=resume):
             chain = os.environ.get('CLAUDE_SWITCHER_ANCESTORS')
             if chain is not None:
                 restart.ancestors = [int(pid) for pid in chain.split(',') if pid.isdecimal()]
@@ -133,4 +181,6 @@ def helper(session_id, surface, mode='--helper'):
 if __name__ == '__main__':
     if len(sys.argv) == 4 and sys.argv[1] in ('--helper', '--resume'):
         sys.exit(helper(sys.argv[2], sys.argv[3], sys.argv[1]))
+    if sys.argv[1:] == ['--sweep']:
+        sys.exit(run_sweep())
     sys.exit(hook())

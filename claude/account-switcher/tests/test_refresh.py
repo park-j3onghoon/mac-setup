@@ -8,7 +8,8 @@ from unittest.mock import Mock, patch
 
 from refresh import (CONTINUE_PROMPT, READY_TIMEOUT_SECONDS, REFRESH_WINDOW_SECONDS,
                      RESUME_GAP_SECONDS, RESUME_PROMPT, SelfRestart, ended_with_limit_error,
-                     input_ready, is_interruption, live_session, record_switch, switch_pending)
+                     input_ready, is_interruption, live_session, record_switch, stuck_sessions,
+                     switch_pending)
 from storage import State
 
 RULE = '─' * 40
@@ -755,6 +756,49 @@ class ResumeTests(unittest.TestCase):
         outcome = fixture.restart(answering).resume()
         self.assertEqual((outcome, answering.typed), ('resume_not_ready', []))
 
+
+class StuckSessionTests(unittest.TestCase):
+    """훅이 다시 오지 않는 멈춘 세션을 찾는다(11-25 ai봇)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.count = 0
+
+    def found(self, *entries, environment=f'claude CMUX_SURFACE_ID={SURFACE} TERM=xterm',
+              window_open=True):
+        self.count += 1
+        fixture = SessionFixture(Path(self.tmp.name) / str(self.count))
+        record_switch(fixture.state, SWITCHED_AT)
+        fixture.transcript(*entries)
+
+        def runner(argv, **kwargs):
+            return Mock(returncode=0, stdout=environment + '\n')
+        now = SWITCHED_AT + (60 if window_open else REFRESH_WINDOW_SECONDS + 60)
+        with patch('refresh.time.time', return_value=now):
+            return stuck_sessions(fixture.home, fixture.state, runner)
+
+    def test_a_limit_stop_or_a_cut_turn_in_a_cmux_surface_is_found(self):
+        self.assertEqual(self.found(user_text('작업해 줘'), limit_error()),
+                         [(SESSION, SURFACE, 101, '--helper')])
+        self.assertEqual(self.found(user_text('작업해 줘'), interruption()),
+                         [(SESSION, SURFACE, 101, '--resume')])
+
+    def test_sessions_a_helper_cannot_continue_are_left_out(self):
+        """끝난 턴, cmux 밖이나 관리 실행기 세션, 이어하기를 다 쓴 끊김, 기간이 지나 한 번 넣은 한도 멈춤은 뺀다."""
+        cut = [user_text('작업해 줘'), interruption()]
+        for i in range(3):
+            cut += [user_text(RESUME_PROMPT), interruption(uuid=f'e{i + 1}')]
+        retried = [user_text('작업해 줘'), limit_error(), user_text(CONTINUE_PROMPT), limit_error()]
+        self.assertEqual(self.found(user_text('작업해 줘'), assistant_text('끝났습니다.')), [])
+        outside = 'claude TERM=xterm'
+        self.assertEqual(self.found(user_text('작업해 줘'), limit_error(), environment=outside), [])
+        managed = f'claude CMUX_SURFACE_ID={SURFACE} MAC_SETUP_MANAGED_CLAUDE_PID=7'
+        self.assertEqual(self.found(user_text('작업해 줘'), limit_error(), environment=managed), [])
+        self.assertEqual(self.found(*cut), [])
+        self.assertEqual(self.found(*retried, window_open=False), [])
+        # Within the window a restart can still move it to the new account.
+        self.assertEqual(self.found(*retried), [(SESSION, SURFACE, 101, '--helper')])
 
 if __name__ == '__main__':
     unittest.main()

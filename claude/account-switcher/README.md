@@ -250,6 +250,13 @@ Claude에게 이전 결과를 확인하고 살아 있는 프로세스는 기다�
 넘겨 돌았거나 기간이 지난 뒤 훅이 처음 본 경우)은 재시작 없이 조용해지면 이어하기 지시만 넣는다.
 같은 멈춤에 한 번만 넣어 바뀐 계정도 한도면 반복하지 않는다. 8시간은 실제 시계라 잠자는 동안에도
 흐른다(2026-11-25: 02:46 다크 웨이크에 기간이 지나 이어하기 없이 끝났던 일을 고침).
+
+도우미는 턴이 끝날 때 훅이 띄우므로, 도우미가 끝난 뒤에도 멈춰 있는 세션은 다음 턴이 없어 다시
+깨울 계기가 없다. 그래서 어느 세션이든 턴이 끝나면 훅이 1분에 한 번 `--sweep`을 띄워, 한도나
+끊김으로 멈춘 세션(이어하기 횟수가 남은 것) 가운데 맡은 도우미가 없는 세션에 도우미를 띄운다.
+세션의 cmux 창은 그 프로세스 환경의 `CMUX_SURFACE_ID`로 찾는다. cmux는 cmux 안에서 시작한
+프로세스만 받으므로(「only processes started inside cmux can connect」) 상시 서비스가 아니라 세션
+훅이 띄운다. 모든 세션이 쉬는 동안에는 찾지 않고, 어느 세션이든 다음 턴이 끝나면 찾는다.
 `session-restarts.log`에서 `restarted`, `restarted_and_continued`, `restarted_continuation_deferred`,
 `continued_after_window`, `continuation_deferred`, `continuation_already_tried`,
 `restart_unconfirmed`, `not_ready`, `no_switch`, `session_ended` 결과를 확인할 수 있다.

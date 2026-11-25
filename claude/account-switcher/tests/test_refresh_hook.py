@@ -13,6 +13,9 @@ from refresh import SelfRestart
 from refresh import SessionEnded
 from storage import State, SwitcherError
 
+# Before setUp replaces it, so the once-a-minute rule itself can be tested.
+SWEEP_IF_DUE = refresh_hook.sweep_if_due
+
 
 def restart_stub(limited=False, needed=False, interrupted=False):
     """A SelfRestart class whose checks answer as given; an exception given for needed is raised
@@ -60,7 +63,8 @@ class HookTests(unittest.TestCase):
                 holder.__exit__(None, None, None)
 
     def setUp(self):
-        for name, value in [('hook_ancestors', [11]), ('switch_pending', 123)]:
+        stubs = [('hook_ancestors', [11]), ('switch_pending', 123), ('sweep_if_due', None)]
+        for name, value in stubs:
             mocked = patch.object(refresh_hook, name, return_value=value)
             mocked.start()
             self.addCleanup(mocked.stop)
@@ -137,10 +141,36 @@ class HookTests(unittest.TestCase):
             restart.return_value.resume.return_value = 'resumed'
             refresh_hook.helper('fixture', 'surface', '--resume')
         self.assertEqual((lock.call_args.args[-1], lock.call_args.kwargs),
-                         ('restart-resume-0123', {'blocking': True}))
+                         (refresh_hook.helper_lock('--resume', 'fixture', 'surface'),
+                          {'blocking': True}))
         restart.return_value.run.assert_not_called()
         log = (self.state_dir / refresh_hook.LOG).read_text()
         self.assertEqual(json.loads(log)['outcome'], 'resumed')
+
+    def test_sweep_starts_a_helper_only_for_a_stopped_session_no_helper_holds(self):
+        """멈춘 세션마다 도우미를 띄우되, 이미 그 세션을 맡은 도우미가 있으면 띄우지 않는다."""
+        state = State(self.state_dir)
+        stuck = [('fixture', 'S-9', 4242, '--helper')]
+        with patch.object(refresh_hook, 'stuck_sessions', return_value=stuck), \
+                patch('subprocess.Popen') as popen:
+            refresh_hook.sweep(state)
+            with state.lock(refresh_hook.helper_lock('--helper', 'fixture', 'S-9')):
+                refresh_hook.sweep(state)
+        self.assertEqual(popen.call_count, 1)
+        self.assertEqual(popen.call_args.args[0][-3:], ['--helper', 'fixture', 'S-9'])
+        environment = popen.call_args.kwargs['env']
+        self.assertEqual((environment['CLAUDE_SWITCHER_REGISTRY_PID'],
+                          environment['ACCOUNT_SWITCHER_STATE_DIR']), ('4242', str(state.root)))
+
+    def test_turn_ends_start_a_sweep_at_most_once_a_minute(self):
+        """어느 세션이든 턴이 끝나면 멈춘 세션 찾기를 띄우되 1분에 한 번만 띄운다."""
+        state = State(self.state_dir)
+        with patch('subprocess.Popen') as popen, \
+                patch.object(refresh_hook.time, 'time', side_effect=[100, 130, 161]):
+            for _ in range(3):
+                SWEEP_IF_DUE(state)
+        self.assertEqual([call.args[0][2:] for call in popen.call_args_list],
+                         [['--sweep'], ['--sweep']])
 
     def test_hook_does_nothing_without_a_restart_or_a_limit_stop(self):
         """재시작 대상도 아니고 한도에 멈추지도 않았으면 도우미를 띄우지 않고 바로 끝낸다."""

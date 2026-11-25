@@ -75,6 +75,10 @@ def record_switch(state, switched_at):
     state.save(STATE, {'since': switched_at})
 
 
+def receipt_name(session_id, surface):
+    return 'handoff-' + hashlib.sha256(f'{session_id}/{surface}'.encode()).hexdigest()[:32]
+
+
 def last_switch(state):
     since = state.load(STATE).get('since')
     return since if isinstance(since, (int, float)) else None
@@ -372,6 +376,53 @@ def live_session(config_home, session_id, runner=subprocess.run, prior=None, anc
     return matches[0] if matches else None
 
 
+def stuck_sessions(config_home, state, runner=subprocess.run):
+    """(session id, cmux surface, pid, helper mode) of each live session whose last turn stopped
+    at a limit or an interruption and that a helper can still continue. A turn end starts that
+    helper; this finds a session that stayed stopped after its helper ended (2026-11-25: ai봇
+    stayed at its limit after the restart window passed in its sleep, and an idle session has no
+    next turn)."""
+    config_home, now, found = Path(config_home), time.time(), []
+    for path in (config_home / 'sessions').glob('*.json'):
+        try:
+            entry = json.loads(path.read_text())
+            session_id, pid = entry['sessionId'], entry['pid']
+            transcript = max((config_home / 'projects').glob(f'*/{session_id}.jsonl'),
+                             key=lambda item: item.stat().st_mtime_ns)
+            last = last_entry(transcript)
+        except (OSError, ValueError, KeyError, TypeError):  # gone, being written, or no transcript
+            continue
+        if entry.get('kind') != 'interactive' or type(pid) is not int:
+            continue
+        if is_interruption(last):
+            attempts, total = prompt_counts(transcript, RESUME_PROMPT)
+            mode = '--resume' if attempts < RESUME_ATTEMPTS and total < RESUME_TOTAL else None
+        elif is_limit_error(last):
+            # Past the window a continue goes in once; after that only a new switch can help.
+            tried = (switch_pending(state, now) is None
+                     and prompt_counts(transcript, CONTINUE_PROMPT)[1])
+            mode = None if tried else '--helper'
+        else:
+            mode = None
+        surface = mode and process_surface(pid, runner)
+        if surface:
+            found.append((session_id, surface, pid, mode))
+    return found
+
+
+def process_surface(pid, runner=subprocess.run):
+    """The cmux surface in a Claude process's environment; None once it exited or when the managed
+    runner (managed_session.py) owns it."""
+    result = runner(['/bin/ps', '-E', '-p', str(pid), '-o', 'command='], capture_output=True,
+                    text=True, timeout=5, check=False)
+    words = result.stdout.split() if result.returncode == 0 else []
+    managed = ('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID=', 'MAC_SETUP_MANAGED_CLAUDE_PID=')
+    if any(word.startswith(managed) for word in words):
+        return None
+    surfaces = [word.split('=', 1)[1] for word in words if word.startswith('CMUX_SURFACE_ID=')]
+    return surfaces[-1] if surfaces else None
+
+
 def hook_ancestors():
     result = subprocess.run(['/bin/ps', '-ax', '-o', 'pid=,ppid='], capture_output=True,
                             text=True, timeout=3, check=True)
@@ -498,7 +549,7 @@ class SelfRestart:
         self.registry_hint = None
         self.ancestors = None
         self.first_lookup = self.monotonic()
-        self.receipt = 'handoff-' + hashlib.sha256(f'{session_id}/{surface}'.encode()).hexdigest()[:32]
+        self.receipt = receipt_name(session_id, surface)
 
     def session(self):
         session = live_session(self.config_home, self.session_id, self.runner,
