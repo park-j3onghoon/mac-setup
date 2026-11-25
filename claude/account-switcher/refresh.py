@@ -75,12 +75,15 @@ def record_switch(state, switched_at):
     state.save(STATE, {'since': switched_at})
 
 
+def last_switch(state):
+    since = state.load(STATE).get('since')
+    return since if isinstance(since, (int, float)) else None
+
+
 def switch_pending(state, now):
     """The latest switch time while sessions may still need a restart, else None."""
-    since = state.load(STATE).get('since')
-    if isinstance(since, (int, float)) and 0 <= now - since <= REFRESH_WINDOW_SECONDS:
-        return since
-    return None
+    since = last_switch(state)
+    return since if since is not None and 0 <= now - since <= REFRESH_WINDOW_SECONDS else None
 
 
 def is_rule(line):
@@ -195,8 +198,9 @@ def is_interruption(entry):
                 and entry.get('apiError') in INTERRUPTIONS)
 
 
-def resume_counts(path):
-    """RESUME_PROMPTs typed since the model last answered, and since a turn last ended normally."""
+def prompt_counts(path, prompt):
+    """How often `prompt` was typed since the model last answered, and since a turn last ended
+    normally."""
     attempts = total = 0
     answered = False
     for line in transcript_lines(path):
@@ -210,7 +214,7 @@ def resume_counts(path):
             break
         if entry['type'] == 'assistant' and not entry.get('isApiErrorMessage'):
             answered = True
-        elif entry['type'] == 'user' and notification_text(entry).strip() == RESUME_PROMPT:
+        elif entry['type'] == 'user' and notification_text(entry).strip() == prompt:
             total += 1
             attempts += not answered
     return attempts, total
@@ -474,6 +478,10 @@ class SessionEnded(Exception):
     pass
 
 
+class WindowPassed(Exception):
+    """REFRESH_WINDOW_SECONDS passed since the switch: the session's own token has expired."""
+
+
 class SelfRestart:
     """Restart one terminal's session after an account switch and continue a limit stop."""
 
@@ -549,10 +557,10 @@ class SelfRestart:
 
     def needed(self):
         """True when the latest switch happened after this session's process started."""
-        since = switch_pending(self.state, self.clock())
-        if not since:
-            return False
-        session = self.session()
+        return self.predates(switch_pending(self.state, self.clock()))
+
+    def predates(self, since):
+        session = self.session() if since else None
         return bool(session and session.get('startedAt', 0) / 1000 < since)
 
     def run(self):
@@ -567,6 +575,9 @@ class SelfRestart:
         if pending:
             return self.confirm(pending)
         was_limited = self.limited()
+        if (was_limited and switch_pending(self.state, self.clock()) is None
+                and self.predates(last_switch(self.state))):
+            return self.continue_after_window()
 
         def awaiting_switch():
             if self.needed():
@@ -599,7 +610,10 @@ class SelfRestart:
 
         if not restarted():
             if not self.ready_before(pending['since']):
-                return 'not_ready'
+                # 2026-11-25 02:46: subagents kept the session busy until the window passed in
+                # a lid-closed wake, and the session stayed stopped at its limit until the user
+                # came back.
+                return self.continue_after_window() if self.limited() else 'not_ready'
             # The user may restart meanwhile or start a draft after the last look.
             typed = self.type('/restart', only_if=lambda: not restarted())
             if not self.wait(restarted, RESTART_TIMEOUT_SECONDS if typed else 0):
@@ -631,7 +645,7 @@ class SelfRestart:
         def due():
             path = self.transcript_path()
             try:
-                entry, (attempts, total) = last_entry(path), resume_counts(path)
+                entry, (attempts, total) = last_entry(path), prompt_counts(path, RESUME_PROMPT)
             except FileNotFoundError:
                 self.transcript = None
                 raise SessionUnavailable('Session transcript is being replaced') from None
@@ -678,13 +692,31 @@ class SelfRestart:
         """The quiet session with an empty input box while the switch is pending, else None."""
         def ready_while_pending():
             if switch_pending(self.state, self.clock()) is None:
-                raise SessionEnded
+                raise WindowPassed
             return self.ready()
         expires = since + REFRESH_WINDOW_SECONDS
-        session = self.wait(ready_while_pending, min(READY_TIMEOUT_SECONDS, max(0, expires - self.clock())))
-        if session is None and self.limited():
-            session = self.wait(ready_while_pending, max(0, expires - self.clock()), LIMIT_WAIT_STEP_SECONDS)
+        try:
+            session = self.wait(ready_while_pending,
+                                min(READY_TIMEOUT_SECONDS, max(0, expires - self.clock())))
+            if session is None and self.limited():
+                session = self.wait(ready_while_pending, max(0, expires - self.clock()),
+                                    LIMIT_WAIT_STEP_SECONDS)
+        except WindowPassed:
+            return None
         return session
+
+    def continue_after_window(self):
+        """Continue a limit stop past the window without a restart: the session's own token
+        has expired, and Claude Code 2.1.331 renews it from the credential store, taking the
+        stored login when it differs from the one it held
+        (`tengu_oauth_token_refresh_race_resolved`). Once per stop, so a stop on the live account
+        too cannot loop through the hook."""
+        if prompt_counts(self.transcript_path(), CONTINUE_PROMPT)[1]:
+            return 'continuation_already_tried'
+        if (self.wait(self.ready, REFRESH_WINDOW_SECONDS, LIMIT_WAIT_STEP_SECONDS)
+                and self.type(CONTINUE_PROMPT, only_if=self.limited)):
+            return 'continued_after_window'
+        return 'continuation_deferred'
 
     def type(self, text, only_if=None):
         """Paste text with Enter in one cmux request when a last look finds the input box empty."""

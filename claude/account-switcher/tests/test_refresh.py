@@ -484,7 +484,7 @@ class SelfRestartTests(unittest.TestCase):
                          ('restarted_and_continued', ['/restart', CONTINUE_PROMPT]))
 
     def test_limit_stopped_session_with_endless_background_work_is_left_alone(self):
-        """한도에 멈춘 세션이라도 백그라운드 셸이 재시작 기간(8시간) 내내 돌면 아무것도 넣지 않고 포기한다."""
+        """한도에 멈춘 세션이라도 백그라운드 셸이 재시작 기간(8시간)과 그 뒤 이어하기 대기(8시간) 내내 돌면 아무것도 넣지 않는다."""
         # given
         fixture = self.fixture(status='waiting')
         fixture.transcript(user_text('작업해 줘'), limit_error())
@@ -492,8 +492,40 @@ class SelfRestartTests(unittest.TestCase):
         # when
         outcome = fixture.restart(runner).run()
         # then
-        self.assertEqual((outcome, runner.typed), ('not_ready', []))
-        self.assertEqual(fixture.clock(), SWITCHED_AT + REFRESH_WINDOW_SECONDS)
+        self.assertEqual((outcome, runner.typed), ('continuation_deferred', []))
+        self.assertEqual(fixture.clock(), SWITCHED_AT + 2 * REFRESH_WINDOW_SECONDS)
+
+    def test_work_that_outlasts_the_window_ends_in_a_continue_without_a_restart(self):
+        """11-25 ai봇: 하위 작업이 재시작 기간을 넘겨 돌았으면, 끝난 뒤 재시작 없이 이어하기만 넣는다.
+        그때는 세션 토큰이 만료돼 다음 요청에서 바뀐 로그인을 읽는다."""
+        fixture = self.fixture()
+        fixture.transcript(user_text('리뷰해 줘'), limit_error())
+        runner = FakeRunner(fixture, children='201 101 /bin/zsh\n')
+        work_ends = SWITCHED_AT + REFRESH_WINDOW_SECONDS + 2 * 3600
+        fixture.clock.at(work_ends, lambda: setattr(runner, 'children', ''))
+
+        outcome = fixture.restart(runner).run()
+
+        self.assertEqual((outcome, runner.typed), ('continued_after_window', [CONTINUE_PROMPT]))
+        self.assertGreaterEqual(fixture.clock(), work_ends)
+
+    def test_a_limit_stop_found_after_the_window_is_continued_once(self):
+        """재시작 기간이 지난 뒤 한도 멈춤을 처음 보면 이어하기만 넣고, 그 뒤 또 멈춘 것에는 다시 넣지 않는다."""
+        for entries, expected in (
+                ([user_text('작업해 줘'), limit_error()],
+                 ('continued_after_window', [CONTINUE_PROMPT])),
+                ([user_text('작업해 줘'), limit_error(), user_text(CONTINUE_PROMPT), limit_error()],
+                 ('continuation_already_tried', []))):
+            with self.subTest(entries=len(entries)):
+                fixture = SessionFixture(Path(self.tmp.name) / str(len(entries)))
+                record_switch(fixture.state, SWITCHED_AT)
+                fixture.clock.now = SWITCHED_AT + REFRESH_WINDOW_SECONDS + 60
+                fixture.transcript(*entries)
+                runner = FakeRunner(fixture)
+
+                outcome = fixture.restart(runner).run()
+
+                self.assertEqual((outcome, runner.typed), expected)
 
     def test_failed_process_snapshot_never_types_restart(self):
         """ps가 실패한 동안에는 작업 유무를 확정하지 않고 재시작을 보내지 않는다."""

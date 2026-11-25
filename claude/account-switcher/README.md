@@ -245,7 +245,13 @@ Claude에게 이전 결과를 확인하고 살아 있는 프로세스는 기다�
 
 도우미는 전환 시각부터 최대 8시간 동안 같은 프로세스의 재시작을 확인한다.
 창별 진행 상태를 디스크에 기록해 도우미가 다시 떠도 확인을 계속한다.
+8시간이 지나면 세션이 전환 전에 받은 토큰이 만료돼, Claude Code(2.1.331)는 다음 요청 때 저장된
+로그인을 다시 읽어 바뀐 계정을 쓴다. 그래서 그때까지 한도에 멈춰 있는 세션(하위 에이전트가 기간을
+넘겨 돌았거나 기간이 지난 뒤 훅이 처음 본 경우)은 재시작 없이 조용해지면 이어하기 지시만 넣는다.
+같은 멈춤에 한 번만 넣어 바뀐 계정도 한도면 반복하지 않는다. 8시간은 실제 시계라 잠자는 동안에도
+흐른다(2026-11-25: 02:46 다크 웨이크에 기간이 지나 이어하기 없이 끝났던 일을 고침).
 `session-restarts.log`에서 `restarted`, `restarted_and_continued`, `restarted_continuation_deferred`,
+`continued_after_window`, `continuation_deferred`, `continuation_already_tried`,
 `restart_unconfirmed`, `not_ready`, `no_switch`, `session_ended` 결과를 확인할 수 있다.
 
 각 대화 맥락은 그대로 남는다. 별도 `CLAUDE_CONFIG_DIR`,
