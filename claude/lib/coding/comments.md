@@ -1,6 +1,6 @@
 For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
 
-- Why, not what: write a comment only for a reason the code cannot show, such as why the code had to take an unusual way.
+- Context only: a comment or docstring holds only context the code cannot show, such as why the code had to take an unusual way or a constraint that lives outside this code. Delete every sentence or clause a reader can learn from this code and the functions it calls, checking each clause on its own.
 - Keep:
   - external standard references (AIP-XXX, RFC NNNN, company RFC links)
   - security rationale (enumeration prevention, capability token, XSS vector blocking)
@@ -9,7 +9,7 @@ For proto files, also Read `~/.claude/lib/coding/comments-proto.md`.
   - hidden constraints/invariants (DB column type alignment such as `MAX_*=65535  # MySQL unsigned smallint 최대`, external API nullability assumption), external-system contracts, circular-import avoidance (a type-only import for an annotation-only cycle)
   - the source of a rule the code reproduces from another system, named by that system: the query, job or file it mirrors
 - Delete:
-  - a description the name or signature already gives (`"X 토큰을 생성한다"` over `generate_x_token()`); "X용 VO/DTO" labels on data classes
+  - a description the name, signature, body or a called function already gives (`"X 토큰을 생성한다"` over `generate_x_token()`, `"없는 키면 None"` over `except KeyError: return None`, a `Raises: KeyError` entry for the body's own dict lookup); "X용 VO/DTO" labels on data classes
   - change history ("이전에는 Map이었으나...") → git log/PR body
   - comments about other code: caller info ("X 화면이 이걸 쓴다"), a description of another function's behaviour away from its own code
   - standard pattern/control-flow narration the structure already shows: `# compare-and-set 으로 중복 claim 방지`, `# try/except 로 한 항목 실패 격리`, `# 예외 시 좀비 방지 FAILED 마감`, `# 전부 SENT면 성공 아니면 실패`, `# 도메인 status → 모델 status 변환`
