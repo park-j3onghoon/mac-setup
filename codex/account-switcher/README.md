@@ -43,8 +43,8 @@ CODEX_ACCOUNT=personal codex     # 개인 고정, 자동 전환 없음
   이 조회는 로그인이나 토큰 갱신을 요청하지 않는다. 계정을 확인하지 못하거나 등록된
   두 계정 밖이면 `active`를 비우고 자동 전환을 보류하며 상태에는 `unknown`으로 표시한다.
 - 두 계정의 사용량을 공식 `account/rateLimits/read`로 확인한다. 간격은 지금 쓰는 계정의
-  사용률이 기준(90%)에서 30%p 이상 떨어져 있으면 9분, 15%p 이상이면 5분, 5%p 이상이면
-  2분, 그보다 가까우면 1분이다(Claude 전환기와 같은 규칙).
+  사용률이 기준에서 얼마나 떨어져 있는지로 정하고, 가장 짧은 간격은 1분이다. 계단은 Claude
+  전환기와 같고 [공용 코드 문서](../../claude/account-switcher/switchcore/README.md)에 있다.
 - 알려진 초기화 시각이 더 빠르면 그 직후 다시 조회한다.
 - 한도별 사용률·초기화 시각·조회 시각을 `~/.codex-auto/account-switcher.json`에 저장한다.
 - 초기화 예정 시각이 지났다는 이유만으로 사용률을 0으로 바꾸지 않는다.
@@ -79,6 +79,10 @@ CODEX_ACCOUNT=personal codex     # 개인 고정, 자동 전환 없음
   끊긴 감독 연결은 같은 서버에 재연결하며 서버 재시작이나 재로그인을 하지 않는다.
 - 서비스 준비 여부는 PID의 시작 시각과 120초 이내 heartbeat를 함께 확인한다.
   인증 갱신 실패 연결은 폐기하고, 동시에 대기한 갱신 요청은 한 번의 성공 결과를 공유한다.
+
+회사와 개인 홈 폴더, 기준(기본 90%), 전환 규칙은 git이 추적하지 않는
+`private/codex/account-switcher/config.json`으로 바꿀 수 있다. 값과 검사, 바꾼 뒤 다시 띄우는
+명령은 [공용 코드 문서](../../claude/account-switcher/switchcore/README.md)의 「로컬 설정」에 있다.
 
 ## 실행 구조
 
@@ -295,6 +299,7 @@ Chrome 브리지의 공용 데몬은 이미 공유되므로 다른 대화가 쓰
 
 ```sh
 python3 -m unittest discover -s codex/account-switcher -p 'test_*.py' -v
+(cd codex/account-switcher && python3 -m unittest discover -s switchcore/tests -v)
 python3 codex/account-switcher/probe_subscriptions.py --proxy --reconnect
 codex --account-status
 ```
