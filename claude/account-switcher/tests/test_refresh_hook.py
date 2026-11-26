@@ -197,6 +197,19 @@ class HookTests(unittest.TestCase):
         log = (self.state_dir / refresh_hook.LOG).read_text()
         self.assertEqual((result, json.loads(log)['outcome']), (0, 'config_error:terminal'))
 
+    def test_an_unreadable_settings_file_is_not_logged_as_a_terminal_error(self):
+        """설정 파일을 못 읽으면 다른 훅 오류처럼 조용히 넘기고, 터미널 이름 오류로 기록하지 않는다."""
+        # given
+        state = State(self.state_dir)
+        (state.root / 'config.json').write_text('{"terminal": ')
+        with patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=True)), \
+                patch('subprocess.Popen') as popen:
+            # when
+            result = refresh_hook.hook()
+        # then
+        popen.assert_not_called()
+        self.assertEqual((result, (state.root / refresh_hook.LOG).exists()), (0, False))
+
     def test_the_helper_gets_the_terminal_the_hook_chose(self):
         """훅이 고른 터미널 이름을 도우미에 넘겨, 그 사이 설정이 바뀌어도 둘이 같은 터미널을 쓴다."""
         # given

@@ -50,8 +50,9 @@ def hook():
     try:
         payload = json.load(sys.stdin)
         state = State(state_dir())
+        terminal_name = configured_terminal(state)
         try:
-            terminal_name, terminal = configured_terminal(state)
+            terminal = pick('terminal', terminal_name, TERMINALS)()
         except ValueError:
             record_outcome(state, payload.get('session_id'), 'config_error:terminal')
             return 0
@@ -115,10 +116,9 @@ def hook():
 
 
 def configured_terminal(state):
-    """The name and an instance of the terminal config.json names, read here because a turn end
-    must not import service.py (its HTTP and TLS modules)."""
-    name = state.load('config').get('terminal', DEFAULT_TERMINAL)
-    return name, pick('terminal', name, TERMINALS)()
+    """The terminal name config.json gives, read here because a turn end must not import
+    service.py (its HTTP and TLS modules)."""
+    return state.load('config').get('terminal', DEFAULT_TERMINAL)
 
 
 def record_outcome(state, session_id, outcome):
@@ -160,7 +160,8 @@ def run_sweep():
 def sweep(state):
     """Start a helper for each stopped session that none handles now. The helpers inherit this
     process's terminal access and type into the stopped session's own pane."""
-    terminal_name, terminal = configured_terminal(state)
+    terminal_name = configured_terminal(state)
+    terminal = pick('terminal', terminal_name, TERMINALS)()
     for session_id, pane, pid, mode in stuck_sessions(Path.home() / '.claude', state, terminal):
         try:
             with state.lock(helper_lock(mode, session_id, pane)):
