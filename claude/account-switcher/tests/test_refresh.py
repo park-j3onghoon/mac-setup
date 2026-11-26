@@ -422,6 +422,22 @@ class SelfRestartTests(unittest.TestCase):
         # then
         self.assertEqual((outcome, runner.typed), ('restarted', ['/restart']))
 
+    def test_a_failed_screen_read_is_checked_again(self):
+        """화면을 한 번 못 읽으면 아직 준비 안 된 것으로 보고 다시 본 뒤 `/restart`를 넣는다."""
+        # given
+        fixture = self.fixture()
+        runner = FakeRunner(fixture)
+        failures = [Mock(returncode=1, stdout='')]
+
+        def flaky(argv, **kwargs):
+            if argv[0] != '/bin/ps' and argv[1] == 'read-screen' and failures:
+                return failures.pop()
+            return runner(argv, **kwargs)
+        # when
+        outcome = fixture.restart(flaky).run()
+        # then
+        self.assertEqual((outcome, runner.typed, failures), ('restarted', ['/restart'], []))
+
     def test_busy_session_is_not_restarted(self):
         """작업 중인 세션은 기다리다가 시간이 지나도 끝나지 않으면 아무것도 넣지 않고 포기한다."""
         # given
@@ -766,14 +782,14 @@ class StuckSessionTests(unittest.TestCase):
         self.count = 0
 
     def found(self, *entries, environment=f'claude CMUX_SURFACE_ID={SURFACE} TERM=xterm',
-              window_open=True):
+              window_open=True, ps_status=0):
         self.count += 1
         fixture = SessionFixture(Path(self.tmp.name) / str(self.count))
         record_switch(fixture.state, SWITCHED_AT)
         fixture.transcript(*entries)
 
         def runner(argv, **kwargs):
-            return Mock(returncode=0, stdout=environment + '\n')
+            return Mock(returncode=ps_status, stdout='' if ps_status else environment + '\n')
         now = SWITCHED_AT + (60 if window_open else REFRESH_WINDOW_SECONDS + 60)
         with patch('refresh.time.time', return_value=now):
             return stuck_sessions(fixture.home, fixture.state, runner)
@@ -799,6 +815,10 @@ class StuckSessionTests(unittest.TestCase):
         self.assertEqual(self.found(*retried, window_open=False), [])
         # Within the window a restart can still move it to the new account.
         self.assertEqual(self.found(*retried), [(SESSION, SURFACE, 101, '--helper')])
+
+    def test_a_session_whose_process_ended_is_left_out(self):
+        """등록 파일이 남아 있어도 프로세스가 끝나 그 환경을 읽지 못하면 뺀다."""
+        self.assertEqual(self.found(user_text('작업해 줘'), limit_error(), ps_status=1), [])
 
 if __name__ == '__main__':
     unittest.main()

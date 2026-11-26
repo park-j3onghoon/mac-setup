@@ -1,6 +1,7 @@
 """Recovery contracts at the command and service boundaries."""
 import base64
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stderr
+import io
 import json
 import os
 from pathlib import Path
@@ -125,6 +126,18 @@ class DirectSelectionTests(unittest.TestCase):
                 self.sample('company', 2, 30), self.sample('personal', 1)]):
             launcher.direct_usages({})
             self.assertEqual(launcher.direct_usages(saved), {'company': 100, 'personal': 1})
+
+    def test_direct_launch_opens_company_when_both_are_over_the_threshold(self):
+        """감독 없이 바로 여는 실행은 두 계정이 모두 기준 이상이면 회사 계정으로 연다."""
+        samples = [self.sample('company', 95), self.sample('personal', 97)]
+        with patch.dict(os.environ, {}, clear=True), patch.object(launcher, 'raise_file_limit'), \
+                patch.object(launcher, 'load', return_value={}), \
+                patch.object(service, 'running', return_value=False), \
+                patch.object(launcher, 'read_snapshot', side_effect=samples), \
+                patch.object(os, 'execve') as run, redirect_stderr(io.StringIO()):
+            launcher.main(['exec', 'hello'])
+
+        self.assertEqual(run.call_args.args[2]['CODEX_HOME'], str(self.homes['company']))
 
     def test_unreadable_existing_direct_cache_does_not_assume_quota_recovery(self):
         (self.home / 'direct-usage-company.json').write_text('{')

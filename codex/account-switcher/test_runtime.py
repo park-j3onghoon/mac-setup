@@ -53,6 +53,17 @@ class StateTest(unittest.TestCase):
                 accounts = {"company": usage(percent, later, 100), "personal": usage(95, later, 100)}
                 self.assertEqual(poll_delay(accounts, active="company", now=100), seconds)
 
+    def test_blocked_active_account_is_checked_again_at_the_shortest_interval(self):
+        """사용 차단을 받은 지금 계정은 창 사용률이 낮아도 가장 짧은 간격으로 다시 본다."""
+        later = 10_000_000
+        blocked = snapshot({"rateLimits": {"spendControlReached": True, "primary": {
+            "usedPercent": 10, "resetsAt": later, "windowDurationMins": 10080}}}, observed_at=100)
+        accounts = {"company": record(None, blocked), "personal": usage(20, later, 100)}
+
+        delay = poll_delay(accounts, active="company", now=100)
+
+        self.assertEqual((accounts["company"]["used_percent"], delay), (100, 60))
+
     def test_only_metadata_is_written_with_private_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
@@ -1077,6 +1088,14 @@ class MonitorTest(unittest.TestCase):
         selected, _ = self.run_monitor(batches)
         self.assertEqual(selected, ["personal", "personal"])
         self.runtime.continue_limited.assert_called_once_with()
+
+    def test_first_poll_without_an_account_takes_the_preferred_one_when_both_are_high(self):
+        """감독이 다시 떠 지금 계정이 없고 두 계정이 모두 기준 이상이면 우선 계정으로 로그인한다."""
+        fresh = {"company": usage(95, 9999, 1000), "personal": usage(97, 9999, 1000)}
+
+        selected, state = self.run_monitor([(fresh, {})])
+
+        self.assertEqual((selected, state["status"]), (["company"], "ready"))
 
     def test_lookup_failure_keeps_current_account_and_old_reset_record(self):
         first = {"company": usage(5, 9999, 1000), "personal": usage(20, 9999, 1000)}

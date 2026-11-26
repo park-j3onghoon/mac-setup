@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -28,6 +29,16 @@ def restart_stub(limited=False, needed=False, interrupted=False):
 
 
 class HookTests(unittest.TestCase):
+    def test_the_hook_loads_no_network_or_service_modules(self):
+        """훅은 모든 세션의 매 턴 끝에 돌므로 HTTP·TLS 모듈과 서비스 코드를 불러오지 않는다."""
+        script = ('import sys, refresh_hook; '
+                  'print(sorted(m for m in ("http.client", "ssl", "service") if m in sys.modules))')
+
+        result = subprocess.run([sys.executable, '-B', '-c', script], capture_output=True, text=True,
+                                cwd=Path(__file__).resolve().parents[1], check=True, timeout=30)
+
+        self.assertEqual(result.stdout.strip(), '[]')
+
     def test_ended_session_is_a_successful_noop_for_the_stop_hook(self):
         """등록이 이미 사라진 세션은 Stop 훅 오류를 만들지 않는다."""
         with patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=SessionEnded())), \
