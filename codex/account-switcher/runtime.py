@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 
-from policy import THRESHOLD, UsageUnavailable
+from policy import DEFAULT_POLICY, UsageUnavailable, to_usage
 from profiles import BINARY, PROFILES
 from rpc import Rpc, RpcNotSent, RpcRejected, guard_request
 from state import RUNTIME, load, read_checkpoint, save
@@ -253,8 +253,8 @@ def newest_turn(client, thread_id):
 
 
 class Runtime:
-    def __init__(self, profiles, home=RUNTIME, binary=BINARY):
-        self.profiles, self.home, self.binary = profiles, Path(home), binary
+    def __init__(self, profiles, home=RUNTIME, binary=BINARY, policy=DEFAULT_POLICY):
+        self.profiles, self.home, self.binary, self.policy = profiles, Path(home), binary, policy
         self.socket = self.home / "auto.sock"
         self.process = self.client = None
         self.pid = None
@@ -678,7 +678,8 @@ class Runtime:
             serial = self.activity_serial
         if not force and not self.idle_ready(name, tokens):
             return False
-        if profile.usage()['used_percent'] >= THRESHOLD:
+        now = time.time()
+        if not self.policy.available(to_usage(profile.usage()['used_percent'], now), now):
             raise UsageUnavailable('Target account no longer has available quota')
         tokens = profile.tokens()
         with self.activity_lock:

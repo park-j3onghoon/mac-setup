@@ -1,20 +1,13 @@
-"""Choose a saved Codex profile from freshly reported plan limits."""
+"""Read Codex plan limits as switchcore usage and select a saved profile from them."""
 
 import math
+import time
+
+from switchcore.policy import StrictPriorityPolicy
+from switchcore.quota import Usage, Window
 
 
-THRESHOLD = 90
-# (headroom below THRESHOLD in percentage points, seconds until the next usage lookup); the same
-# tiers as the Claude account switcher.
-POLL_TIERS = ((30, 540), (15, 300), (5, 120))
-SHORTEST_POLL = 60
-
-
-def poll_seconds(used):
-    """Look up usage less often the further the active account is from the threshold."""
-    if used is None:
-        return SHORTEST_POLL
-    return next((seconds for floor, seconds in POLL_TIERS if THRESHOLD - used >= floor), SHORTEST_POLL)
+DEFAULT_POLICY = StrictPriorityPolicy(threshold=90, shortest_poll=60)
 
 
 class UsageUnavailable(ValueError):
@@ -53,14 +46,27 @@ def utilization(result):
     return max(values)
 
 
-def choose(usages, threshold=THRESHOLD, preferred="company"):
+def to_usage(used_percent, checked_at):
+    """One window holding a profile's used percentage, which state.record keeps at 100 while the
+    workspace blocks ordinary usage or reached spend control."""
+    return Usage(checked_at, (Window("codex", used_percent, None),))
+
+
+def is_available(account, policy, now):
+    """Whether a profile with this state.snapshot may be switched to under the rule."""
+    return policy.available(to_usage(account["used_percent"], account["observed_at"]), now)
+
+
+def choose(usages, preferred="company", policy=DEFAULT_POLICY, now=None):
+    """The profile to use from fresh used percentages; UsageUnavailable when the rule decides none."""
     if preferred not in ("company", "personal"):
         raise UsageUnavailable("Unknown preferred account")
     order = ("personal", "company") if preferred == "personal" else ("company", "personal")
-    for name in order:
-        if name not in usages:
-            raise UsageUnavailable(f"Cannot verify {name} plan usage")
-        value = usages[name]
-        if value < threshold:
-            return name
-    return preferred
+    now = time.time() if now is None else now
+    readings = {name: to_usage(used, now) for name, used in usages.items()}
+    target = policy.choose(order, None, readings, now).target
+    if target is None:
+        missing = next((name for name in order if name not in usages), None)
+        raise UsageUnavailable(f"Cannot verify {missing} plan usage" if missing else
+                               "No profile has plan capacity")
+    return target

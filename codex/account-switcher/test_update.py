@@ -157,7 +157,7 @@ class UpdateTest(unittest.TestCase):
         state = {"runtime_pid": 101, "runtime_pid_start": "old", "upgrade_status": "draining", "restore_account": "personal"}
         calls = []
 
-        def monitor(runtime, profiles, stop, state):
+        def monitor(runtime, profiles, stop, state, policy):
             calls.append((runtime.pid, state.get("upgrade_status"), state["runtime_version"]))
             return runtime is old
 

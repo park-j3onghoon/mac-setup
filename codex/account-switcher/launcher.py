@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-from policy import UsageUnavailable, choose
+from policy import DEFAULT_POLICY, UsageUnavailable, choose, is_available
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
 from profiles import credentials, registered_accounts
@@ -271,7 +271,7 @@ def update_clis():
     return int(failed or not confirmed)
 
 
-def direct_usages(state):
+def direct_usages(state, policy=DEFAULT_POLICY):
     bindings = registered_accounts(PROFILES, RUNTIME, state)
     current = {}
     for name, home in PROFILES.items():
@@ -297,7 +297,7 @@ def direct_usages(state):
             fresh = record(saved, sample)
             save(dict(fresh, account_id=current[name]), path)
         usages[name] = fresh['used_percent']
-        if usages[name] < 90:
+        if is_available(fresh, policy, time.time()):
             break
     return usages
 

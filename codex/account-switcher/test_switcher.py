@@ -1,6 +1,7 @@
 from contextlib import ExitStack, redirect_stdout
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -55,6 +56,16 @@ class PolicyTest(unittest.TestCase):
         with self.assertRaises(UsageUnavailable) as error:
             handle_message(None, b'{"id":2,"error":{"message":"secret-token"}}')
         self.assertNotIn("secret-token", str(error.exception))
+
+
+class SharedCodeTest(unittest.TestCase):
+    def test_switchcore_is_the_claude_switcher_original(self):
+        """두 전환기의 공용 코드는 Claude 쪽 원본 하나이고 Codex는 그 원본을 상대 심링크로 쓴다."""
+        link = Path(__file__).with_name("switchcore")
+
+        target = os.readlink(link)
+
+        self.assertEqual(target, "../../claude/account-switcher/switchcore")
 
 
 class LauncherTest(unittest.TestCase):

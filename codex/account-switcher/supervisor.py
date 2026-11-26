@@ -8,7 +8,7 @@ import signal
 import threading
 import time
 
-from policy import THRESHOLD, UsageUnavailable, choose
+from policy import DEFAULT_POLICY, UsageUnavailable, choose, is_available
 from profiles import PROFILES, Profile, RegistrationMismatch, registered_accounts
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
@@ -56,7 +56,10 @@ def check_upgrade(runtime, state):
         state.pop("upgrade_status", None)
 
 
-def monitor(runtime, profiles, stop, state):
+def monitor(runtime, profiles, stop, state, policy=DEFAULT_POLICY):
+    def usable(account):
+        return is_available(account, policy, time.time())
+
     state.setdefault("preferred", "company")
     next_poll = 0
     next_release = 0
@@ -197,7 +200,7 @@ def monitor(runtime, profiles, stop, state):
                 save(state)
             try:
                 desired = choose({name: value["used_percent"] for name, value in fresh.items()},
-                                 preferred=state["preferred"])
+                                 preferred=state["preferred"], policy=policy)
             except UsageUnavailable:
                 desired = None
             try:
@@ -215,16 +218,17 @@ def monitor(runtime, profiles, stop, state):
                 state["account_error"] = type(error).__name__
             if isinstance(runtime.restore_error, str) and runtime.active is None and 'account_error' not in state:
                 for name in (state['preferred'], *profiles):
-                    if fresh.get(name, {}).get('used_percent', THRESHOLD) < THRESHOLD:
+                    if name in fresh and usable(fresh[name]):
                         desired = name
                         break
-            if runtime.active and len(fresh) == 2 and all(v['used_percent'] >= THRESHOLD for v in fresh.values()):
+            if runtime.active and len(fresh) == 2 and not any(usable(v) for v in fresh.values()):
                 desired = runtime.active
-            if fresh.get(state['preferred'], {}).get('used_percent', 0) >= THRESHOLD:
+            if state['preferred'] in fresh and not usable(fresh[state['preferred']]):
                 state.pop('preference_immediate', None)
             if desired != previous_desired:
                 retry_switch_at, idle_retry_delay = 0, 2
-            next_poll = time.time() + poll_delay(fresh, runtime.active, history=state.get('accounts', {}))
+            next_poll = time.time() + poll_delay(fresh, runtime.active, history=state.get('accounts', {}),
+                                                 policy=policy)
             state["next_check_at"] = next_poll
             runtime.quota_periods = {name: max((window.get('last_reset_confirmed_at', 0)
                                       for window in known_windows(value)), default=0)
@@ -242,13 +246,12 @@ def monitor(runtime, profiles, stop, state):
                 if changed and old != runtime.active:
                     runtime.restore_error = None
                     state.pop('restore_error', None)
-                    next_poll = time.time() + poll_delay(state['accounts'], runtime.active)
+                    next_poll = time.time() + poll_delay(state['accounts'], runtime.active, policy=policy)
                     state['next_check_at'] = next_poll
                     state['last_observed_active'] = runtime.active
                     state["last_switch_at"] = time.time()
                     state["switch_count"] = state.get("switch_count", 0) + 1
-                if (changed and check_limited
-                        and state["accounts"][runtime.active]["used_percent"] < THRESHOLD):
+                if changed and check_limited and usable(state["accounts"][runtime.active]):
                     check_limited = runtime.continue_limited() is False
                 state["status"] = "ready" if changed else "waiting_for_idle"
                 if changed:
@@ -284,9 +287,9 @@ def monitor(runtime, profiles, stop, state):
         stop.wait(2)
 
 
-def run_runtimes(profiles, stop, state):
+def run_runtimes(profiles, stop, state, policy=DEFAULT_POLICY):
     while not stop.is_set():
-        runtime = Runtime(profiles)
+        runtime = Runtime(profiles, policy=policy)
         try:
             runtime.start(restore_account=state.get("restore_account"))
             if isinstance(runtime.restore_error, str):
@@ -298,7 +301,7 @@ def run_runtimes(profiles, stop, state):
                 state.pop("restore_account", None)
             state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start,
                          runtime_version=runtime.client.version)
-            if not monitor(runtime, profiles, stop, state):
+            if not monitor(runtime, profiles, stop, state, policy):
                 return
         finally:
             runtime.close()

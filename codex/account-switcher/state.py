@@ -8,7 +8,8 @@ from pathlib import Path
 import tempfile
 import time
 
-from policy import UsageUnavailable, poll_seconds, utilization
+from policy import DEFAULT_POLICY, UsageUnavailable, to_usage, utilization
+from switchcore.policy import LONGEST_POLL_SECONDS
 
 
 RUNTIME = Path.home() / ".codex-auto"
@@ -111,13 +112,15 @@ def usage_history(account_id, supervisor_sample, direct_sample):
     return record(before, after)
 
 
-def poll_delay(accounts, active=None, now=None, *, history=None):
+def poll_delay(accounts, active=None, now=None, *, history=None, policy=DEFAULT_POLICY):
     now = time.time() if now is None else now
     future = [window["resets_at"] - now + 1
               for account in (accounts if history is None else history).values()
               for window in known_windows(account)
               if window.get("resets_at") and window["resets_at"] > now]
-    interval = poll_seconds((accounts.get(active) or {}).get("used_percent"))
+    account = accounts.get(active)
+    usage = to_usage(account["used_percent"], account["observed_at"]) if account else None
+    interval = min(policy.poll_seconds(usage), LONGEST_POLL_SECONDS)
     return max(1, min([interval, *future]))
 
 

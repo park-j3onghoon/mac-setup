@@ -70,6 +70,34 @@ class PriorityPolicy:
         return _tiered_poll_seconds(_highest_percent(usage), self.threshold, self.shortest_poll)
 
 
+class StrictPriorityPolicy:
+    """The first account in order below the threshold, read in the same cycle.
+
+    A failed lookup of an earlier account decides nothing, so the current login stays; with every
+    account at the threshold the preferred one stays the target (the Codex switcher's rule, codex
+    README 「전환과 초기화」).
+    """
+
+    def __init__(self, threshold, shortest_poll):
+        self.threshold, self.shortest_poll = threshold, shortest_poll
+
+    def choose(self, order, active, readings, now):
+        for name in order:
+            reading = readings.get(name)
+            if reading is None:
+                return Decision(None, 'unverified')
+            if self.available(reading, now):
+                return Decision(name, 'available')
+        return Decision(order[0], 'all_at_threshold')
+
+    def available(self, usage, now):
+        return bool(usage.windows) and all(
+            w.percent is not None and w.percent < self.threshold and not w.blocked for w in usage.windows)
+
+    def poll_seconds(self, usage):
+        return _tiered_poll_seconds(_highest_percent(usage), self.threshold, self.shortest_poll)
+
+
 def _highest_percent(usage):
     if usage is None:
         return None
