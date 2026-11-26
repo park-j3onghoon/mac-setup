@@ -347,6 +347,7 @@ class ReviewBotTest(unittest.TestCase):
         self.weekly = [{'percent': 95}, {'percent': 99}]
         self.run_bot()
         self.requests = {}
+        self.now += datetime.timedelta(minutes=10)
 
         self.run_bot()
 
@@ -400,6 +401,19 @@ class ReviewBotTest(unittest.TestCase):
         self.assertEqual(self.run_claude.call_count, 2)
         self.assertEqual([review['commit_id'] for review in self.sent], [NEW_HEAD])
         self.assertEqual(self.entry()['status'], 'posted')
+
+    def test_review_again_before_posting_waits_when_quota_runs_out(self):
+        """올리기 직전에 head가 바뀌어 다시 리뷰할 때도 한도를 먼저 보고, 막히면 다시 리뷰하지 않고 다음 실행으로 미룬다."""
+        self.heads_after_review = [NEW_HEAD]
+        self.patch('check_quota', mock.Mock(side_effect=[None, ('full', '읽은 계정 2/2개 주간 95%, 97%')]))
+
+        self.run_bot(auto=True)
+
+        entry = self.entry()
+        self.assertEqual(self.run_claude.call_count, 1)
+        self.assertEqual(self.sent, [])
+        self.assertEqual((entry['status'], entry['mode'], entry['head']), ('draft', 'auto', NEW_HEAD))
+        self.assertEqual(self.state()['quota']['kind'], 'full')
 
     def test_commits_arriving_again_after_the_second_review_leave_a_draft_for_the_user(self):
         """다시 리뷰한 뒤에도 head가 또 바뀌면 올리지 않고 사람이 세션에서 볼 초안으로 남긴다."""

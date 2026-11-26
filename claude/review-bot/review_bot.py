@@ -176,6 +176,7 @@ def hold_lock(state_dir):
 
 def poll(requesters, auto_repos, state_dir):
     state = load_state(state_dir)
+    started = now_utc()
     try:
         login = current_login()
         requests = parse_review_requests(fetch_review_request_pages(), login)
@@ -195,6 +196,8 @@ def poll(requesters, auto_repos, state_dir):
             notify(f'GitHub 조회가 {POLL_FAILURES_TO_NOTIFY}번 연속 실패했습니다: {detail[:200]}')
     else:
         state['poll_failures'] = 0
+        if state['quota'] is not None and state['quota']['at'] < started:  # 이번 실행은 미룬 리뷰가 없다
+            state['quota'] = None
         prune(state, requests)
         state['polledAt'] = now_utc()
     save_state(state_dir, state)
@@ -232,7 +235,6 @@ def review_in_turn(jobs, state, state_dir):
             return
         state['quota'] = None
         review(*job, state, state_dir)
-    state['quota'] = None
 
 
 def check_quota():
@@ -297,7 +299,7 @@ def hold(state, state_dir, kind, detail):
     quota = state['quota']
     if quota is None or quota['kind'] != kind:
         quota = {'kind': kind, 'since': now_utc(), 'notified': False}
-    quota = {**quota, 'detail': detail}
+    quota = {**quota, 'detail': detail, 'at': now_utc()}
     log(state_dir, f'리뷰를 미룸({kind}): {detail}')
     waited = now() - parse_utc(quota['since'])
     if not quota['notified'] and (kind == 'full' or waited >= datetime.timedelta(seconds=UNKNOWN_NOTICE_SECONDS)):
@@ -483,6 +485,10 @@ def deliver(request, entry, state, state_dir):
     """자동 레포 초안을 올린다. 올리기 직전에 head가 바뀌었으면 새 head로 한 번 다시 리뷰한다(ai-review 3단계 5번)."""
     entry = post(request, entry)
     if is_moved(entry):
+        blocked = check_quota()
+        if blocked:  # 다시 리뷰도 모델을 쓰므로 한도부터 본다. head가 바뀐 자동 초안으로 두면 다음 실행이 다시 시도한다.
+            hold(state, state_dir, *blocked)
+            return {**entry, 'note': '올리기 직전에 새 커밋이 왔고 한도 때문에 다시 리뷰를 다음 실행으로 미룸'}
         moved = {**request, 'head': entry['head']}
         entry = post(request, draft_review(moved, Mode.AUTO, entry['attempts'], entry['since'], state, state_dir))
     if is_moved(entry):

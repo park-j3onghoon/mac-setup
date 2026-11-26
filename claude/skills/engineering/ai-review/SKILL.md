@@ -8,7 +8,7 @@ argument-hint: "[PR URL] [--draft] [--since 커밋]"
 
 코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 스코프 체크·보안 레벨·이슈 리포트는 3단계 초안으로만 보여 준다.
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 인자에 `--since {커밋}`이 있으면 그 커밋을 직전 리뷰의 끝 커밋으로 넘긴다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 인자에 `--since {커밋}`이 있으면 그 커밋을 직전 리뷰의 끝 커밋으로 넘긴다. 단 fetch 뒤 `git -C {클론} merge-base --is-ancestor {커밋} {대상 커밋}`이 0이 아니면(강제 push, 클론에 없는 커밋) 넘기지 않고 전체를 리뷰한다.
 
 → 완료: 그 문서의 완료 기준을 만족했다.
 
