@@ -40,7 +40,7 @@ argument-hint: "[PR URL] [--auto]"
 
    {줄 코멘트 꼴, 첫 문장에 file:line}
    ```
-4. 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주고 AskUserQuestion으로 올릴지 묻는다. 고칠 곳을 답하면 고친 초안으로 다시 묻고, 보류하면 4단계로 건너뛴다.
+4. 리뷰 본문이 `LGTM!`, `LGTM`, `LGTM~` 중 한 줄뿐이고 줄 코멘트가 없으면 바로 초안을 보여 준다. 그 밖에는 `~/.claude/skills/explain-issue/SKILL.md`를 Read하고 수행해 PR의 의도, diff, 달 발견을 바탕으로 사용자에게 경위를 먼저 설명한다. 승인에 사소한 의견을 붙이는 경우도 포함한다. GitHub에 올릴 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)은 설명과 구분해 보여 주고 AskUserQuestion으로 올릴지 묻는다. 고칠 곳을 답하면 수정한 초안에 같은 기준을 적용해 다시 묻고, 보류하면 4단계로 건너뛴다.
 5. 올리기 직전에 `gh pr view {number} -R {owner}/{repo} --json state,headRefOid`를 읽는다.
    - state가 `OPEN`이 아니면 4단계로 건너뛴다.
    - headRefOid가 1단계의 대상 커밋과 다르면 새 커밋이 올라왔다고 한 줄로 알리고 1단계부터 다시 한다.
