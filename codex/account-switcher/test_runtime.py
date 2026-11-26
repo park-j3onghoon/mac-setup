@@ -169,7 +169,7 @@ import resource, sys
 from pathlib import Path
 import runtime
 resource.setrlimit(resource.RLIMIT_NOFILE, (int(sys.argv[2]), int(sys.argv[3])))
-runtime.prepare_home = lambda home: None
+runtime.prepare_home = lambda home, **kwargs: None
 root = Path(sys.argv[1])
 server = runtime.Runtime({}, home=root, binary=root / 'codex')
 try:

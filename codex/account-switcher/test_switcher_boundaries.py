@@ -17,7 +17,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import launcher
-from policy import UsageUnavailable
+from policy import DEFAULT_POLICY, UsageUnavailable
 import profiles
 import rpc
 import runtime
@@ -87,6 +87,7 @@ class SwitcherBoundaryTest(unittest.TestCase):
         with (
             patch.object(launcher, 'RUNTIME', self.home),
             patch.object(launcher, 'raise_file_limit'),
+            patch.object(launcher, 'load_settings', return_value=profiles.DEFAULT_SETTINGS),
             patch.object(profiles, 'credentials', return_value={'chatgptAccountId': 'requested'}),
         ):
             for name in names:
@@ -213,7 +214,7 @@ class SwitcherBoundaryTest(unittest.TestCase):
 
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch.object(launcher, 'PROFILES', homes),
+            patch.object(launcher, 'load_settings', return_value=profiles.Settings(homes, 90, DEFAULT_POLICY)),
             patch.object(launcher, 'RUNTIME', self.home),
             patch.object(launcher, 'raise_file_limit'),
             patch.object(launcher, 'load', side_effect=read),

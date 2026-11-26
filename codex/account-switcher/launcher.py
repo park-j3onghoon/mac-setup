@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch Codex with company-first, 90%-threshold account selection."""
+"""Launch Codex with company-first account selection at the usage threshold in the local settings."""
 
 from contextlib import closing
 from datetime import datetime
@@ -12,20 +12,15 @@ import subprocess
 import sys
 import time
 
-from policy import DEFAULT_POLICY, UsageUnavailable, choose, is_available
+from policy import UsageUnavailable, choose, is_available
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
-from profiles import credentials, registered_accounts
+from profiles import BINARY, DEFAULT_SETTINGS, credentials, load_settings, registered_accounts
 from usage import read_snapshot
 from state import RUNTIME, load, read_checkpoint, record, save, usage_history
 from unix_ws import UnixWebSocket
 
 
-BINARY = Path("/opt/homebrew/bin/codex")
-PROFILES = {
-    "company": Path.home() / ".codex-work",
-    "personal": Path.home() / ".codex",
-}
 MANAGEMENT = {
     "login", "logout", "mcp", "plugin", "app-server", "remote-control",
     "app", "completion", "update", "doctor", "sandbox", "debug", "features",
@@ -34,7 +29,7 @@ MANAGEMENT = {
 }
 
 
-def show_status():
+def show_status(settings=DEFAULT_SETTINGS):
     from service import running
     state = load()
     is_running = running(state)
@@ -43,7 +38,7 @@ def show_status():
     else:
         state["active"] = None
         state['errors'] = {}
-        for name, home in PROFILES.items():
+        for name, home in settings.homes.items():
             try:
                 current = read_snapshot(BINARY, home)
             except (UsageUnavailable, OSError) as error:
@@ -73,7 +68,8 @@ def show_status():
     if not is_running:
         try:
             forecast = choose({name: value['used_percent'] for name, value in state.get('accounts', {}).items()
-                               if name not in state['errors']}, preferred=state.get('preferred', 'company'))
+                               if name not in state['errors']}, preferred=state.get('preferred', 'company'),
+                              policy=settings.policy)
         except UsageUnavailable:
             forecast = 'unknown'
         print(f'next selection: {forecast}')
@@ -184,11 +180,11 @@ def start_proxy(socket_path, delay):
     return start(socket_path, delay)
 
 
-def launch_automatic(arguments):
+def launch_automatic(arguments, settings=DEFAULT_SETTINGS):
     from service import ensure
     from runtime import SOCKET
-    state = ensure()
-    print(f"[codex] {state['active']}; automatic switching enabled (90%, idle turns)",
+    state = ensure(settings)
+    print(f"[codex] {state['active']}; automatic switching enabled ({settings.threshold:g}%, idle turns)",
           file=sys.stderr)
     environment = dict(os.environ, CODEX_HOME=str(RUNTIME))
     # A remote terminal sends no directory unless told, and the thread then runs in the
@@ -271,10 +267,11 @@ def update_clis():
     return int(failed or not confirmed)
 
 
-def direct_usages(state, policy=DEFAULT_POLICY):
-    bindings = registered_accounts(PROFILES, RUNTIME, state)
+def direct_usages(state, settings=DEFAULT_SETTINGS):
+    homes = settings.homes
+    bindings = registered_accounts(homes, RUNTIME, state)
     current = {}
-    for name, home in PROFILES.items():
+    for name, home in homes.items():
         try:
             current[name] = credentials(home)['chatgptAccountId']
         except UsageUnavailable:
@@ -291,13 +288,13 @@ def direct_usages(state, policy=DEFAULT_POLICY):
         with path.with_suffix('.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             saved = usage_history(current[name], state.get('accounts', {}).get(name), read_checkpoint(path))
-            sample = read_snapshot(BINARY, PROFILES[name])
-            if credentials(PROFILES[name])['chatgptAccountId'] != current[name]:
+            sample = read_snapshot(BINARY, homes[name])
+            if credentials(homes[name])['chatgptAccountId'] != current[name]:
                 raise UsageUnavailable('Workspace changed during direct quota lookup')
             fresh = record(saved, sample)
             save(dict(fresh, account_id=current[name]), path)
         usages[name] = fresh['used_percent']
-        if is_available(fresh, policy, time.time()):
+        if is_available(fresh, settings.policy, time.time()):
             break
     return usages
 
@@ -314,14 +311,15 @@ def main(arguments):
                 return 1
             return update_clis()
     if arguments == ["--account-status"]:
-        return show_status()
+        return show_status(load_settings())
     if len(arguments) == 2 and arguments[0] == '--account-register':
         from profiles import credentials
+        homes = load_settings().homes
         name = arguments[1]
-        if name not in PROFILES:
+        if name not in homes:
             raise UsageUnavailable('Choose company or personal for registration')
         binding = {'profile': name, 'requested_at': time.time(),
-                   'account_id': credentials(PROFILES[name])['chatgptAccountId']}
+                   'account_id': credentials(homes[name])['chatgptAccountId']}
         save(binding, RUNTIME / f'profile-registration-{name}.json')
         # A previously started supervisor still consumes the single-file protocol.
         save(binding, RUNTIME / 'profile-registration.json')
@@ -333,13 +331,14 @@ def main(arguments):
     if any(arg in ("--help", "-h", "--version", "-V", "--remote")
            or arg.startswith("--remote=") for arg in options):
         os.execv(str(BINARY), [str(BINARY), *arguments])
+    settings = load_settings()
     explicit = os.environ.get("CODEX_ACCOUNT", "auto")
     if explicit not in ("auto", "company", "personal"):
         raise UsageUnavailable("CODEX_ACCOUNT must be auto, company, or personal")
     if command_name(arguments) in MANAGEMENT and explicit == "auto":
         explicit = "company"
     if explicit == "auto" and interactive(arguments) and "--no-daemon" not in options:
-        return launch_automatic(arguments)
+        return launch_automatic(arguments, settings)
     if explicit != "auto":
         selected = explicit
     else:
@@ -371,13 +370,14 @@ def main(arguments):
                 if not usages:
                     raise UsageUnavailable('Fresh profile usage is unavailable')
         if not usages:
-            usages = direct_usages(state)
+            usages = direct_usages(state, settings)
         summary = ", ".join(f"{name} {used:g}% used" for name, used in usages.items())
-        selected = choose(usages)
+        selected = choose(usages, policy=settings.policy)
         print(f"[codex] {summary}; selected {selected}", file=sys.stderr)
-    if command_name(arguments) not in ('doctor', 'login', 'help', 'completion') and not (PROFILES[selected] / "auth.json").is_file():
+    home = settings.homes[selected]
+    if command_name(arguments) not in ('doctor', 'login', 'help', 'completion') and not (home / "auth.json").is_file():
         raise UsageUnavailable(f"Saved {selected} login is missing")
-    environment = dict(os.environ, CODEX_HOME=str(PROFILES[selected]))
+    environment = dict(os.environ, CODEX_HOME=str(home))
     os.execve(str(BINARY), [str(BINARY), *arguments], environment)
 
 

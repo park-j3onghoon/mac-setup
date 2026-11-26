@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import launcher
 from policy import UsageUnavailable, choose, utilization
+from profiles import DEFAULT_SETTINGS
 from runtime import SOCKET
 from usage import handle_message, read_usage
 
@@ -106,6 +107,9 @@ class LauncherTest(unittest.TestCase):
         binary_patch = patch.object(launcher, "BINARY", Path(sys.executable))
         binary_patch.start()
         self.addCleanup(binary_patch.stop)
+        settings_patch = patch.object(launcher, "load_settings", return_value=DEFAULT_SETTINGS)
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
 
     def test_automatic_terminal_gets_idle_proxy_and_can_opt_out(self):
         """새 자동 터미널은 15분 회수 proxy를 사용하고 0으로 기존 직접 연결을 선택한다."""
@@ -154,13 +158,13 @@ class LauncherTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 launcher.main(["login", "status"])
         query.assert_not_called()
-        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(launcher.PROFILES["company"]))
+        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(DEFAULT_SETTINGS.homes["company"]))
 
     def test_resume_uses_same_automatic_runtime_history(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(launcher, "launch_automatic", return_value=0) as run:
             self.assertEqual(launcher.main(["resume", "--last"]), 0)
-        run.assert_called_once_with(["resume", "--last"])
+        run.assert_called_once_with(["resume", "--last"], DEFAULT_SETTINGS)
 
     def test_full_company_falls_back_without_rewriting_credentials(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
@@ -172,13 +176,13 @@ class LauncherTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 launcher.main(["--cd", "/project", "exec", "do work"])
         self.assertEqual(run.call_args.args[1][1:], ["--cd", "/project", "exec", "do work"])
-        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(launcher.PROFILES["personal"]))
+        self.assertEqual(run.call_args.args[2]["CODEX_HOME"], str(DEFAULT_SETTINGS.homes["personal"]))
 
     def test_interactive_session_uses_automatic_runtime(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(launcher, "launch_automatic", return_value=0) as run:
             self.assertEqual(launcher.main(["--model", "chosen-model"]), 0)
-        run.assert_called_once_with(["--model", "chosen-model"])
+        run.assert_called_once_with(["--model", "chosen-model"], DEFAULT_SETTINGS)
 
     def test_automatic_session_runs_in_the_terminal_directory(self):
         with patch("service.ensure", return_value={"active": "company"}), \

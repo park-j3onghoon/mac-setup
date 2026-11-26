@@ -2,6 +2,7 @@
 
 import base64
 from contextlib import contextmanager
+from dataclasses import dataclass
 import fcntl
 import json
 import math
@@ -9,14 +10,35 @@ from pathlib import Path
 import threading
 import time
 
-from policy import UsageUnavailable
+from policy import DEFAULT_POLICY, DEFAULT_THRESHOLD, UsageUnavailable
 from rpc import Rpc
 from state import load, read_checkpoint, save, snapshot
+from switchcore.policy import SwitchPolicy
 
 
 BINARY = Path("/opt/homebrew/bin/codex")
-PROFILES = {"company": Path.home() / ".codex-work",
-            "personal": Path.home() / ".codex"}
+DEFAULT_HOMES = {"company": Path.home() / ".codex-work",
+                 "personal": Path.home() / ".codex"}
+
+
+@dataclass(frozen=True)
+class Settings:
+    homes: dict[str, Path]
+    threshold: float
+    policy: SwitchPolicy
+
+    @property
+    def server_config(self):
+        """The automatic server opens with the company setup (MCP servers, model)."""
+        return self.homes["company"] / "config.toml"
+
+
+DEFAULT_SETTINGS = Settings(DEFAULT_HOMES, DEFAULT_THRESHOLD, DEFAULT_POLICY)
+
+
+def load_settings():
+    """The settings this computer runs with: the built-in ones."""
+    return DEFAULT_SETTINGS
 
 
 def credentials(home):

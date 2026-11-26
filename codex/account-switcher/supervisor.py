@@ -9,7 +9,7 @@ import threading
 import time
 
 from policy import DEFAULT_POLICY, UsageUnavailable, choose, is_available
-from profiles import PROFILES, Profile, RegistrationMismatch, registered_accounts
+from profiles import DEFAULT_SETTINGS, Profile, RegistrationMismatch, load_settings, registered_accounts
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
 from state import (DRAIN_REPORT, RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_delay,
@@ -287,9 +287,9 @@ def monitor(runtime, profiles, stop, state, policy=DEFAULT_POLICY):
         stop.wait(2)
 
 
-def run_runtimes(profiles, stop, state, policy=DEFAULT_POLICY):
+def run_runtimes(profiles, stop, state, settings=DEFAULT_SETTINGS):
     while not stop.is_set():
-        runtime = Runtime(profiles, policy=policy)
+        runtime = Runtime(profiles, policy=settings.policy, server_config=settings.server_config)
         try:
             runtime.start(restore_account=state.get("restore_account"))
             if isinstance(runtime.restore_error, str):
@@ -301,7 +301,7 @@ def run_runtimes(profiles, stop, state, policy=DEFAULT_POLICY):
                 state.pop("restore_account", None)
             state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start,
                          runtime_version=runtime.client.version)
-            if not monitor(runtime, profiles, stop, state, policy):
+            if not monitor(runtime, profiles, stop, state, settings.policy):
                 return
         finally:
             runtime.close()
@@ -310,12 +310,14 @@ def run_runtimes(profiles, stop, state, policy=DEFAULT_POLICY):
 
 
 def main():
-    prepare_home()
+    RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (RUNTIME / "supervisor.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
+        settings = load_settings()
+        prepare_home(config=settings.server_config)
         for prefix in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-', '.usage-request.json-',
                        '.profile-registration.json-', '.profile-registration-company.json-',
                        '.profile-registration-personal.json-', '.continuation-followups.json-', '.usage-',
@@ -359,10 +361,10 @@ def main():
         signal.signal(signal.SIGINT, lambda *_: stop.set())
         profiles = {}
         try:
-            bindings = registered_accounts(PROFILES, RUNTIME, state)
+            bindings = registered_accounts(settings.homes, RUNTIME, state)
             profiles = {name: Profile(name, home, bindings_dir=RUNTIME, account_id=bindings.get(name))
-                        for name, home in PROFILES.items()}
-            run_runtimes(profiles, stop, state)
+                        for name, home in settings.homes.items()}
+            run_runtimes(profiles, stop, state, settings)
         except Exception as error:
             state.update(status="failed", runtime_error=type(error).__name__, updated_at=time.time())
             save(state)

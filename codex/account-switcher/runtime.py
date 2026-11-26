@@ -18,7 +18,7 @@ import threading
 import time
 
 from policy import DEFAULT_POLICY, UsageUnavailable, to_usage
-from profiles import BINARY, PROFILES
+from profiles import BINARY, DEFAULT_SETTINGS
 from rpc import Rpc, RpcNotSent, RpcRejected, guard_request
 from state import RUNTIME, load, read_checkpoint, save
 
@@ -67,8 +67,7 @@ def raise_file_limit():
         resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
 
 
-def prepare_home(home=RUNTIME, shared=Path.home() / ".codex",
-                 config=PROFILES["company"] / "config.toml"):
+def prepare_home(home=RUNTIME, shared=Path.home() / ".codex", config=DEFAULT_SETTINGS.server_config):
     home = Path(home)
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     home.chmod(0o700)
@@ -253,8 +252,10 @@ def newest_turn(client, thread_id):
 
 
 class Runtime:
-    def __init__(self, profiles, home=RUNTIME, binary=BINARY, policy=DEFAULT_POLICY):
+    def __init__(self, profiles, home=RUNTIME, binary=BINARY, policy=DEFAULT_POLICY,
+                 server_config=DEFAULT_SETTINGS.server_config):
         self.profiles, self.home, self.binary, self.policy = profiles, Path(home), binary, policy
+        self.server_config = server_config
         self.socket = self.home / "auto.sock"
         self.process = self.client = None
         self.pid = None
@@ -295,7 +296,7 @@ class Runtime:
         self.settled_threads = {}
 
     def start(self, *, restore_account=None):
-        prepare_home(self.home)
+        prepare_home(self.home, config=self.server_config)
         self.continuation_path = self.home / 'continuation-receipts.json'
         try:
             self.load_continuations()

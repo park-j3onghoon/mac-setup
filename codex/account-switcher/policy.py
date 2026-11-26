@@ -7,7 +7,9 @@ from switchcore.policy import StrictPriorityPolicy
 from switchcore.quota import Usage, Window
 
 
-DEFAULT_POLICY = StrictPriorityPolicy(threshold=90, shortest_poll=60)
+DEFAULT_THRESHOLD = 90
+SHORTEST_POLL = 60
+DEFAULT_POLICY = StrictPriorityPolicy(DEFAULT_THRESHOLD, SHORTEST_POLL)
 
 
 class UsageUnavailable(ValueError):

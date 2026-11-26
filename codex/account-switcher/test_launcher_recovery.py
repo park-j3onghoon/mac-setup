@@ -13,7 +13,8 @@ from unittest.mock import patch, Mock
 import launcher
 import service
 import state
-from policy import UsageUnavailable
+from policy import DEFAULT_POLICY, UsageUnavailable
+from profiles import DEFAULT_SETTINGS, Settings
 
 
 class LauncherRecoveryTests(unittest.TestCase):
@@ -25,6 +26,7 @@ class LauncherRecoveryTests(unittest.TestCase):
 
     def test_doctor_needs_no_auth_file(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(launcher, 'raise_file_limit'), \
+                patch.object(launcher, 'load_settings', return_value=DEFAULT_SETTINGS), \
                 patch.object(Path, 'is_file', return_value=False), patch.object(os, 'execve') as run:
             launcher.main(['doctor'])
         self.assertEqual(run.call_args.args[1][-1], 'doctor')
@@ -68,7 +70,8 @@ class DirectSelectionTests(unittest.TestCase):
         stack = ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(patch.object(launcher, 'RUNTIME', self.home))
-        stack.enter_context(patch.object(launcher, 'PROFILES', self.homes))
+        self.settings = Settings(self.homes, 90, DEFAULT_POLICY)
+        stack.enter_context(patch.object(launcher, 'load_settings', return_value=self.settings))
 
     def login(self, name, workspace):
         claims = {'exp': 1e12, 'https://api.openai.com/auth': {
@@ -82,30 +85,30 @@ class DirectSelectionTests(unittest.TestCase):
     def test_broken_unused_profile_allows_healthy_company_only(self):
         (self.homes['personal'] / 'auth.json').write_text('{')
         with patch.object(launcher, 'read_snapshot', return_value=self.sample('company', 5)) as read:
-            self.assertEqual(launcher.direct_usages({}), {'company': 5})
+            self.assertEqual(launcher.direct_usages({}, self.settings), {'company': 5})
         self.assertEqual([call.args[1] for call in read.call_args_list], [self.homes['company']])
 
     def test_known_duplicate_rejected_without_quota_call(self):
         self.login('personal', 'company')
         with patch.object(launcher, 'read_snapshot') as read, self.assertRaisesRegex(UsageUnavailable, 'duplicated'):
-            launcher.direct_usages({})
+            launcher.direct_usages({}, self.settings)
         read.assert_not_called()
 
     def test_needed_profile_must_have_a_readable_registered_login(self):
         with patch.object(launcher, 'read_snapshot', return_value=self.sample('company', 94)):
             (self.homes['personal'] / 'auth.json').write_text('{')
             with self.assertRaisesRegex(UsageUnavailable, 'personal login is unavailable'):
-                launcher.direct_usages({})
+                launcher.direct_usages({}, self.settings)
             (self.homes['company'] / 'auth.json').write_text('{')
             with self.assertRaisesRegex(UsageUnavailable, 'company login is unavailable'):
-                launcher.direct_usages({})
+                launcher.direct_usages({}, self.settings)
 
     def test_direct_rejects_unregistered_workspace_change(self):
         with patch.object(launcher, 'read_snapshot', return_value=self.sample('company', 1)):
-            self.assertEqual(launcher.direct_usages({}), {'company': 1})
+            self.assertEqual(launcher.direct_usages({}, self.settings), {'company': 1})
             self.login('company', 'replacement')
             with self.assertRaisesRegex(UsageUnavailable, 'needs registration'):
-                launcher.direct_usages({})
+                launcher.direct_usages({}, self.settings)
 
     def test_direct_and_supervisor_history_keep_independent_blocks(self):
         direct = self.sample('company', 100, 10, ordinary_usage_allowed=False)
@@ -113,7 +116,7 @@ class DirectSelectionTests(unittest.TestCase):
         saved = {'accounts': {'company': self.sample('company', 100, 20, spend_control_reached=True)}}
         def run(company):
             with patch.object(launcher, 'read_snapshot', side_effect=[company, self.sample('personal', 4)]):
-                return launcher.direct_usages(saved)
+                return launcher.direct_usages(saved, self.settings)
         self.assertEqual(run(self.sample('company', 3, 30)), {'company': 100, 'personal': 4})
         self.assertEqual(run(self.sample('company', 3, 35, ordinary_usage_allowed=True)),
                          {'company': 100, 'personal': 4})
@@ -124,8 +127,8 @@ class DirectSelectionTests(unittest.TestCase):
         with patch.object(launcher, 'read_snapshot', side_effect=[
                 self.sample('company', 100, 10, ordinary_usage_allowed=False), self.sample('personal', 1),
                 self.sample('company', 2, 30), self.sample('personal', 1)]):
-            launcher.direct_usages({})
-            self.assertEqual(launcher.direct_usages(saved), {'company': 100, 'personal': 1})
+            launcher.direct_usages({}, self.settings)
+            self.assertEqual(launcher.direct_usages(saved, self.settings), {'company': 100, 'personal': 1})
 
     def test_direct_launch_opens_company_when_both_are_over_the_threshold(self):
         """감독 없이 바로 여는 실행은 두 계정이 모두 기준 이상이면 회사 계정으로 연다."""
@@ -142,7 +145,7 @@ class DirectSelectionTests(unittest.TestCase):
     def test_unreadable_existing_direct_cache_does_not_assume_quota_recovery(self):
         (self.home / 'direct-usage-company.json').write_text('{')
         with patch.object(launcher, 'read_snapshot') as read, self.assertRaises(UsageUnavailable):
-            launcher.direct_usages({})
+            launcher.direct_usages({}, self.settings)
         read.assert_not_called()
 
 
