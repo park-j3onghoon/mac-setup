@@ -61,6 +61,14 @@ class ReviewBotTest(unittest.TestCase):
         self.ancestor_code = 0
         self.patch('git', self.git)
         self.patch('clone_repo', lambda repo, clone: self.git_calls.append('clone'))
+        self.switcher = root / 'switcher'
+        self.switcher.mkdir()
+        self.patch('SWITCHER_DIR', self.switcher)
+        self.patch('pause', self.pause)
+        self.weekly = [{'percent': 40}, {'percent': 30}]
+        self.switcher_answers = True
+        self.end_codex = self.patch('end_codex_session', mock.Mock())
+        self.running_during_review = []
         self.url_log = root / 'ai-review-urls.txt'
         self.patch('URL_LOG', self.url_log)
         self.pulls = {7: pull_request()}
@@ -94,6 +102,7 @@ class ReviewBotTest(unittest.TestCase):
 
     def claude(self, prompt, settings, run_dir, session):
         """ai-review --draft처럼 리뷰할 때의 head로 review.json을 쓰고 결과 줄을 낸다."""
+        self.running_during_review.append(self.state()['running'])
         number = int(re.search(r'/pull/(\d+) ', prompt).group(1))
         if self.writes_draft:
             draft = {'commit_id': self.pulls[number]['headRefOid'], **self.draft}
@@ -106,6 +115,24 @@ class ReviewBotTest(unittest.TestCase):
         nodes = [search_node(self.pulls[number], **request) for number, request in self.requests.items()]
         chunks = [nodes[start:start + self.page_size] for start in range(0, len(nodes), self.page_size)] or [[]]
         return [{'data': {'search': {'nodes': chunk}}} for chunk in chunks]
+
+    def pause(self, seconds):
+        """기다리는 동안 시계를 돌리고, 읽기 요청이 와 있으면 계정 전환기처럼 두 계정을 읽어 runtime.json에 쓴다."""
+        self.now += datetime.timedelta(seconds=seconds)
+        if self.switcher_answers and (self.switcher / 'usage_request.json').exists():
+            self.answer_switcher()
+
+    def answer_switcher(self, age=0):
+        moment = self.now.timestamp() - age
+        usage = {f'account{index}': self.switcher_reading(reading, moment) for index, reading in enumerate(self.weekly)}
+        (self.switcher / 'runtime.json').write_text(json.dumps({'sampled_at': moment, 'usage': usage}))
+        (self.switcher / 'usage_request.json').unlink(missing_ok=True)
+
+    @staticmethod
+    def switcher_reading(reading, moment):
+        """전환기 runtime.json의 계정 한 건(usage.{계정}). age초 전에 읽었고, 주간 창은 resets_in초 뒤 초기화된다."""
+        window = {'name': 'seven_day', 'percent': reading['percent'], 'resets_at': moment + reading.get('resets_in', 86400)}
+        return {'checked_at': moment - reading.get('age', 0), 'stale': reading.get('stale', False), 'windows': [window]}
 
     def git(self, clone, *args, check=True):
         self.git_calls.append(args[0])
@@ -235,6 +262,129 @@ class ReviewBotTest(unittest.TestCase):
         self.assertEqual((entry['status'], entry['attempts']), ('failed', 1))
         self.assertIn('unable to access', entry['note'])
 
+    def test_reviews_wait_while_every_account_is_at_the_weekly_limit(self):
+        """두 계정을 새로 읽어 모두 주간 90% 이상이면 리뷰를 미루고 한도 대기를 적어 처음 한 번만 알린다."""
+        self.weekly = [{'percent': 90}, {'percent': 97}]
+
+        self.run_bot()
+        self.run_bot()
+
+        quota = self.state()['quota']
+        self.run_claude.assert_not_called()
+        self.assertEqual((quota['kind'], quota['since'], quota['notified']), ('full', '2026-11-26T00:00:00Z', True))
+        self.notify.assert_called_once()
+        self.assertNotIn(f'{REPO}#7', self.state()['prs'])
+
+    def test_fresh_readings_decide_whether_a_review_may_start(self):
+        """새로 읽은 계정 하나라도 여유가 있으면 리뷰하고, 여유를 확인하지 못하면 한도 확인 안 됨으로 미룬다."""
+        cases = {
+            '89%인 계정이 있으면 리뷰': ([{'percent': 89}, {'percent': 100}], None),
+            '초기화 시각이 지난 주간 창은 여유': ([{'percent': 95, 'resets_in': -1}, {'percent': 100}], None),
+            '한 계정만 읽혀도 90% 아래면 리뷰': ([{'percent': 50}, {'percent': 100, 'stale': True}], None),
+            'stale 계정은 못 읽은 것': ([{'percent': 95}, {'percent': 50, 'stale': True}], 'unknown'),
+            '요청보다 오래된 기록은 못 읽은 것': ([{'percent': 95}, {'percent': 50, 'age': 60}], 'unknown'),
+            '계정 기록이 하나뿐': ([{'percent': 95}], 'unknown'),
+        }
+        for name, (weekly, kind) in cases.items():
+            with self.subTest(name), mock.patch.object(self, 'weekly', weekly):
+                self.run_claude.reset_mock()
+                for leftover in (self.state_dir / 'state.json', self.switcher / 'runtime.json'):
+                    leftover.unlink(missing_ok=True)
+
+                self.run_bot()
+
+                self.assertEqual(self.run_claude.called, kind is None)
+                self.assertEqual((self.state()['quota'] or {}).get('kind'), kind)
+
+    def test_reading_from_the_last_twenty_seconds_is_used_without_a_new_request(self):
+        """전환기가 20초 안에 읽은 값이 있으면 읽기 요청 파일을 쓰지 않고 그 값으로 판단한다."""
+        self.switcher_answers = False
+        self.answer_switcher(age=5)
+
+        self.run_bot()
+
+        self.assertFalse((self.switcher / 'usage_request.json').exists())
+        self.run_claude.assert_called_once()
+
+    def test_switcher_that_does_not_answer_in_twenty_seconds_defers_the_review(self):
+        """전환기가 20초 안에 답하지 않으면 리뷰를 미루고, 1시간 넘게 이어질 때 한 번만 알린다."""
+        self.switcher_answers = False
+
+        self.run_bot()
+        self.now += datetime.timedelta(minutes=50)
+        self.run_bot()
+        notified_within_an_hour = self.notify.call_count
+        self.now += datetime.timedelta(minutes=20)
+        self.run_bot()
+        self.run_bot()
+
+        quota = self.state()['quota']
+        self.run_claude.assert_not_called()
+        self.assertEqual(notified_within_an_hour, 0)
+        self.notify.assert_called_once()
+        self.assertEqual((quota['kind'], quota['since']), ('unknown', '2026-11-26T00:00:20Z'))
+
+    def test_halted_switcher_is_not_asked_and_defers_the_review(self):
+        """계정 전환기가 멈춰 있으면(halt.json) 읽기를 요청하지 않고 리뷰를 미룬다."""
+        (self.switcher / 'halt.json').write_text(json.dumps({'reason': 'keychain'}))
+
+        self.run_bot()
+
+        self.assertFalse((self.switcher / 'usage_request.json').exists())
+        self.run_claude.assert_not_called()
+        self.assertEqual(self.state()['quota']['kind'], 'unknown')
+
+    def test_quota_kind_change_restarts_the_wait(self):
+        """미루는 이유가 바뀌면(한도 대기에서 확인 안 됨으로) 그 시각부터 다시 센다."""
+        self.weekly = [{'percent': 95}, {'percent': 99}]
+        self.run_bot()
+        self.now += datetime.timedelta(hours=2)
+        self.switcher_answers = False
+
+        self.run_bot()
+
+        quota = self.state()['quota']
+        self.assertEqual((quota['kind'], quota['since'], quota['notified']), ('unknown', '2026-11-26T02:00:20Z', False))
+
+    def test_run_with_nothing_to_review_clears_the_wait(self):
+        """미룰 리뷰가 없는 실행은 한도 기록을 지운다."""
+        self.weekly = [{'percent': 95}, {'percent': 99}]
+        self.run_bot()
+        self.requests = {}
+
+        self.run_bot()
+
+        self.assertIsNone(self.state()['quota'])
+
+    def test_manual_review_and_posting_again_do_not_ask_the_switcher(self):
+        """손수 리뷰와 게시만 다시 하는 실행은 모델 한도를 쓰지 않거나 사람이 부른 것이라 읽기를 요청하지 않는다."""
+        self.send_failures = [Crash()]
+        with self.assertRaises(Crash):
+            self.run_bot(auto=True)
+        (self.switcher / 'runtime.json').unlink()
+        self.switcher_answers = False
+
+        self.run_bot(auto=True)
+        self.bot('review', '--repo', REPO, '7')
+
+        self.assertFalse((self.switcher / 'usage_request.json').exists())
+        self.assertEqual(self.entry()['mode'], 'draft')
+        self.assertEqual(self.run_claude.call_count, 2)
+
+    def test_running_record_lives_while_reviewing_and_codex_is_cleaned_after_every_run(self):
+        """리뷰 중에는 running이 있고 끝나면 지워지며, 성공과 실패와 시간 초과 모두 끝에 Codex를 정리한다."""
+        results = [review_bot.ClaudeRun(None, '', ()), review_bot.ClaudeRun(1, '', ())]
+        self.run_claude.side_effect = lambda *args: (self.running_during_review.append(self.state()['running'])
+                                                     or results.pop(0))
+
+        self.run_bot()
+        self.run_bot()
+
+        worktree = str(self.clone / '.claude/worktrees/review-7')
+        self.assertEqual([running['worktree'] for running in self.running_during_review], [worktree, worktree])
+        self.assertIsNone(self.state()['running'])
+        self.assertEqual([call.args[0] for call in self.end_codex.call_args_list], [Path(worktree), Path(worktree)])
+
     def test_closed_pull_request_is_recorded_without_posting(self):
         """리뷰하는 사이 PR이 닫히면 올리지 않고 closed로 적는다."""
         self.pulls[7]['state'] = 'MERGED'
@@ -327,6 +477,7 @@ class ReviewBotTest(unittest.TestCase):
         self.assertEqual((entry['status'], entry['reviewUrl']), ('posted', REVIEW_URL))
         self.assertEqual(self.url_log.read_text(), REVIEW_URL + '\n')
         self.assertIsNone(self.state()['running'])
+        self.assertEqual(self.end_codex.call_count, 2)
 
     def test_auto_draft_left_before_posting_is_posted_by_the_next_run_without_reviewing_again(self):
         """올리기 전에 죽어 남은 자동 레포 초안은 다음 실행이 다시 리뷰하지 않고 올리기만 한다."""
