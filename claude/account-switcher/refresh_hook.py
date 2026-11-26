@@ -21,8 +21,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from refresh import (DEFAULT_TERMINAL, LIMIT_ERROR, SelfRestart, SessionEnded,  # noqa: E402
-                     SessionUnavailable,
-                     hook_ancestors, receipt_name, stuck_sessions, switch_pending)
+                     SessionUnavailable, hook_ancestors, receipt_name, stuck_sessions, switch_pending)
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
 from switchcore.choices import TERMINALS, pick  # noqa: E402
 
