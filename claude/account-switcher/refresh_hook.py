@@ -4,8 +4,8 @@ a turn that sleep or a lost connection cut.
 
 The hook itself only checks and returns, so a turn never waits on it. When the session
 stopped at a usage limit or started before the latest switch, it launches a detached helper
-(`--helper`) that waits for the switch and does the restart through the session's own cmux
-surface (see refresh.py). When an interruption cut the turn, a `--resume` helper types the
+(`--helper`) that waits for the switch and does the restart through the session's own terminal
+pane (see refresh.py). When an interruption cut the turn, a `--resume` helper types the
 continue prompt once the Mac is awake. Set ACCOUNT_SWITCHER_STATE_DIR to use another state
 directory (tests).
 """
@@ -23,6 +23,7 @@ sys.path.insert(0, str(HERE))
 from refresh import (LIMIT_ERROR, SelfRestart, SessionEnded, SessionUnavailable,  # noqa: E402
                      hook_ancestors, receipt_name, stuck_sessions, switch_pending)
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
+from switchcore.cmux import CmuxTerminal  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
 LOG = 'session-restarts.log'
@@ -47,8 +48,9 @@ def hook():
     """Never fail or block a turn: any problem just skips the restart."""
     try:
         payload = json.load(sys.stdin)
-        session_id, surface = payload.get('session_id'), os.environ.get('CMUX_SURFACE_ID')
-        if not isinstance(session_id, str) or not session_id.replace('-', '').isalnum() or not surface:
+        terminal = CmuxTerminal()
+        session_id, pane = payload.get('session_id'), terminal.pane_in(os.environ)
+        if not isinstance(session_id, str) or not session_id.replace('-', '').isalnum() or not pane:
             return 0
         sweep_if_due(State(state_dir()))
         if session_id == os.environ.get('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID'):
@@ -61,7 +63,7 @@ def hook():
                 managed = {}
             if managed.get('sessionId') == session_id:
                 return 0
-        restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, surface)
+        restart = SelfRestart(State(state_dir()), Path.home() / '.claude', session_id, pane, terminal)
         hint = transcript_hint(session_id, payload.get('transcript_path'))
         restart.transcript = hint
         pending = restart.pending()
@@ -99,7 +101,7 @@ def hook():
         if isinstance(restart.last_session, dict):
             environment['CLAUDE_SWITCHER_REGISTRY_PID'] = str(restart.last_session['pid'])
         for mode in modes:
-            launch([mode, session_id, surface], environment)
+            launch([mode, session_id, pane], environment)
     except (SessionEnded, SwitcherError, OSError, ValueError, subprocess.SubprocessError):
         pass
     return 0
@@ -111,9 +113,9 @@ def launch(arguments, environment):
                      stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
 
 
-def helper_lock(mode, session_id, surface):
+def helper_lock(mode, session_id, pane):
     return ('restart-resume-' if mode == '--resume' else 'restart-') + \
-        receipt_name(session_id, surface).removeprefix('handoff-')
+        receipt_name(session_id, pane).removeprefix('handoff-')
 
 
 def sweep_if_due(state):
@@ -137,10 +139,10 @@ def run_sweep():
 
 def sweep(state):
     """Start a helper for each stopped session that none handles now. The helpers inherit this
-    process's cmux access and type into the stopped session's own surface."""
-    for session_id, surface, pid, mode in stuck_sessions(Path.home() / '.claude', state):
+    process's terminal access and type into the stopped session's own pane."""
+    for session_id, pane, pid, mode in stuck_sessions(Path.home() / '.claude', state, CmuxTerminal()):
         try:
-            with state.lock(helper_lock(mode, session_id, surface)):
+            with state.lock(helper_lock(mode, session_id, pane)):
                 pass  # free: no helper holds this session
         except LockBusy:
             continue
@@ -149,17 +151,17 @@ def sweep(state):
         environment.pop('CLAUDE_SWITCHER_TRANSCRIPT', None)
         environment.update(ACCOUNT_SWITCHER_STATE_DIR=str(state.root),
                            CLAUDE_SWITCHER_REGISTRY_PID=str(pid))
-        launch([mode, session_id, surface], environment)
+        launch([mode, session_id, pane], environment)
 
 
-def helper(session_id, surface, mode='--helper'):
+def helper(session_id, pane, mode='--helper'):
     state = State(state_dir())
-    restart = SelfRestart(state, Path.home() / '.claude', session_id, surface)
+    restart = SelfRestart(state, Path.home() / '.claude', session_id, pane, CmuxTerminal())
     resume = mode == '--resume'
     # A resume helper waits for the one before it: that one may have just typed the prompt whose
     # turn failed again and started this helper.
     try:
-        with state.lock(helper_lock(mode, session_id, surface), blocking=resume):
+        with state.lock(helper_lock(mode, session_id, pane), blocking=resume):
             chain = os.environ.get('CLAUDE_SWITCHER_ANCESTORS')
             if chain is not None:
                 restart.ancestors = [int(pid) for pid in chain.split(',') if pid.isdecimal()]

@@ -11,6 +11,7 @@ from refresh import (CONTINUE_PROMPT, READY_TIMEOUT_SECONDS, REFRESH_WINDOW_SECO
                      input_ready, is_interruption, live_session, record_switch, stuck_sessions,
                      switch_pending)
 from storage import State
+from switchcore.cmux import CmuxTerminal
 
 RULE = '─' * 40
 SWITCHED_AT = 2_000_000_000.0
@@ -125,8 +126,9 @@ class SessionFixture:
             os.utime(path, (written, written))
 
     def restart(self, runner):
-        return SelfRestart(self.state, self.home, SESSION, SURFACE, runner,
-                           sleep=self.clock.sleep, clock=self.clock, cmux='/usr/local/bin/cmux')
+        terminal = CmuxTerminal(runner=runner, path='/usr/local/bin/cmux')
+        return SelfRestart(self.state, self.home, SESSION, SURFACE, terminal, runner,
+                           sleep=self.clock.sleep, clock=self.clock)
 
 
 class FakeRunner:
@@ -157,6 +159,25 @@ class FakeRunner:
         return Mock(returncode=0, stdout=self.screen_text if argv[1] == 'read-screen' else '')
 
 
+class FakeTerminal:
+    """A terminal other than cmux: shows an empty prompt and records what it types. Typing
+    `/restart` re-registers the session, as Claude Code's exec restart does."""
+
+    def __init__(self, fixture):
+        self.fixture, self.typed = fixture, []
+
+    def pane_in(self, environment):
+        return environment.get('FAKE_PANE')
+
+    def read_screen(self, pane, lines):
+        return screen()
+
+    def submit(self, pane, text):
+        self.typed.append((pane, text))
+        if text == '/restart':
+            self.fixture.register('idle', self.fixture.clock() + 1)
+
+
 class InputReadyTests(unittest.TestCase):
     def test_an_error_hint_in_the_prompt_is_not_a_draft(self):
         """API 오류 뒤 빈 입력창에 흐리게 뜨는 안내는 초안이 아니다. 실제 화면은 ❯ 뒤에 줄바꿈 없는 공백이 온다."""
@@ -167,8 +188,8 @@ class InputReadyTests(unittest.TestCase):
         """문자 입력과 Enter 사이 대기 없이 한 번의 cmux 요청으로 제출한다."""
         runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
                                   Mock(returncode=0, stdout='{"submitted":true}')])
-        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner,
-                              cmux='/fixture/cmux', sleep=Mock())
+        restart = SelfRestart(None, '/fixture', SESSION, SURFACE,
+                              CmuxTerminal(runner=runner, path='/fixture/cmux'), runner=runner, sleep=Mock())
 
         typed = restart.type('/restart')
 
@@ -183,7 +204,8 @@ class InputReadyTests(unittest.TestCase):
         """붙여넣기만 수락되고 제출이 확인되지 않으면 명령이나 Enter를 다시 보내지 않는다."""
         runner = Mock(side_effect=[Mock(returncode=0, stdout=screen()),
                                   Mock(returncode=0, stdout='{"submitted":false}')])
-        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, runner=runner, cmux='/fixture')
+        restart = SelfRestart(None, '/fixture', SESSION, SURFACE, CmuxTerminal(runner=runner, path='/fixture'),
+                              runner=runner)
 
         with self.assertRaises(OSError):
             restart.type('/restart')
@@ -421,6 +443,18 @@ class SelfRestartTests(unittest.TestCase):
         outcome = fixture.restart(runner).run()
         # then
         self.assertEqual((outcome, runner.typed), ('restarted', ['/restart']))
+
+    def test_a_terminal_other_than_cmux_restarts_the_session_the_same_way(self):
+        """cmux가 아닌 터미널도 창 읽기와 한 번에 넣기를 구현하면 같은 흐름으로 세션을 다시 띄운다."""
+        # given
+        fixture = self.fixture()
+        terminal = FakeTerminal(fixture)
+        restart = SelfRestart(fixture.state, fixture.home, SESSION, 'pane-7', terminal, FakeRunner(fixture),
+                              sleep=fixture.clock.sleep, clock=fixture.clock)
+        # when
+        outcome = restart.run()
+        # then
+        self.assertEqual((outcome, terminal.typed), ('restarted', [('pane-7', '/restart')]))
 
     def test_a_failed_screen_read_is_checked_again(self):
         """화면을 한 번 못 읽으면 아직 준비 안 된 것으로 보고 다시 본 뒤 `/restart`를 넣는다."""
@@ -792,7 +826,7 @@ class StuckSessionTests(unittest.TestCase):
             return Mock(returncode=ps_status, stdout='' if ps_status else environment + '\n')
         now = SWITCHED_AT + (60 if window_open else REFRESH_WINDOW_SECONDS + 60)
         with patch('refresh.time.time', return_value=now):
-            return stuck_sessions(fixture.home, fixture.state, runner)
+            return stuck_sessions(fixture.home, fixture.state, CmuxTerminal(), runner)
 
     def test_a_limit_stop_or_a_cut_turn_in_a_cmux_surface_is_found(self):
         self.assertEqual(self.found(user_text('작업해 줘'), limit_error()),

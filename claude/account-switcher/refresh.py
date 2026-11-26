@@ -1,4 +1,4 @@
-"""Restart existing, unmanaged Claude sessions after an account change on their own cmux surface,
+"""Restart existing, unmanaged Claude sessions after an account change on their own terminal pane,
 and continue turns that sleep or a lost connection cut.
 
 The helper types `/restart` only into an empty input box and leaves a draft alone: the turn the
@@ -18,8 +18,10 @@ import subprocess
 import time
 
 from macos import system_awake
+from switchcore.terminal import TerminalUnavailable
 
-CMUX_PATHS = ('/opt/homebrew/bin/cmux', '/Applications/cmux.app/Contents/Resources/bin/cmux')
+# managed_session.py sets these on the sessions it reopens itself after a switch.
+MANAGED_ENVIRONMENT = ('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID', 'MAC_SETUP_MANAGED_CLAUDE_PID')
 # What to check before going on, after a restart or an interruption.
 CONTINUE_STEPS = (
     '먼저 마지막 요청, 실행 중인 프로세스와 남은 결과를 '
@@ -67,16 +69,12 @@ PROMPT_HINTS = ('Resend your message to try again', 'Once fixed, resend your mes
 RULE_MIN_DASHES = 10
 
 
-def find_cmux():
-    return next((path for path in CMUX_PATHS if Path(path).is_file()), None)
-
-
 def record_switch(state, switched_at):
     state.save(STATE, {'since': switched_at})
 
 
-def receipt_name(session_id, surface):
-    return 'handoff-' + hashlib.sha256(f'{session_id}/{surface}'.encode()).hexdigest()[:32]
+def receipt_name(session_id, pane):
+    return 'handoff-' + hashlib.sha256(f'{session_id}/{pane}'.encode()).hexdigest()[:32]
 
 
 def last_switch(state):
@@ -376,8 +374,8 @@ def live_session(config_home, session_id, runner=subprocess.run, prior=None, anc
     return matches[0] if matches else None
 
 
-def stuck_sessions(config_home, state, runner=subprocess.run):
-    """(session id, cmux surface, pid, helper mode) of each live session whose last turn stopped
+def stuck_sessions(config_home, state, terminal, runner=subprocess.run):
+    """(session id, terminal pane, pid, helper mode) of each live session whose last turn stopped
     at a limit or an interruption and that a helper can still continue. A turn end starts that
     helper; this finds a session that stayed stopped after its helper ended (2026-11-25: ai봇
     stayed at its limit after the restart window passed in its sleep, and an idle session has no
@@ -404,23 +402,23 @@ def stuck_sessions(config_home, state, runner=subprocess.run):
             mode = None if tried else '--helper'
         else:
             mode = None
-        surface = mode and process_surface(pid, runner)
-        if surface:
-            found.append((session_id, surface, pid, mode))
+        if not mode:
+            continue
+        environment = process_environment(pid, runner)
+        if any(key in environment for key in MANAGED_ENVIRONMENT):
+            continue
+        pane = terminal.pane_in(environment)
+        if pane:
+            found.append((session_id, pane, pid, mode))
     return found
 
 
-def process_surface(pid, runner=subprocess.run):
-    """The cmux surface in a Claude process's environment; None once it exited or when the managed
-    runner (managed_session.py) owns it."""
+def process_environment(pid, runner=subprocess.run):
+    """A Claude process's environment as ps shows it; empty once the process exited."""
     result = runner(['/bin/ps', '-E', '-p', str(pid), '-o', 'command='], capture_output=True,
                     text=True, timeout=5, check=False)
     words = result.stdout.split() if result.returncode == 0 else []
-    managed = ('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID=', 'MAC_SETUP_MANAGED_CLAUDE_PID=')
-    if any(word.startswith(managed) for word in words):
-        return None
-    surfaces = [word.split('=', 1)[1] for word in words if word.startswith('CMUX_SURFACE_ID=')]
-    return surfaces[-1] if surfaces else None
+    return dict(word.split('=', 1) for word in words if '=' in word)
 
 
 def hook_ancestors():
@@ -536,12 +534,11 @@ class WindowPassed(Exception):
 class SelfRestart:
     """Restart one terminal's session after an account switch and continue a limit stop."""
 
-    def __init__(self, state, config_home, session_id, surface, runner=subprocess.run,
-                 sleep=time.sleep, clock=time.time, cmux=None, monotonic=None):
+    def __init__(self, state, config_home, session_id, pane, terminal, runner=subprocess.run,
+                 sleep=time.sleep, clock=time.time, monotonic=None):
         self.state, self.config_home = state, Path(config_home)
-        self.session_id, self.surface = session_id, surface
+        self.session_id, self.pane, self.terminal = session_id, pane, terminal
         self.runner, self.sleep, self.clock = runner, sleep, clock
-        self.cmux_path = cmux or find_cmux()
         self.projects = self.config_home / 'projects'
         self.monotonic = monotonic or (time.monotonic if clock is time.time else clock)
         self.transcript = None
@@ -549,7 +546,7 @@ class SelfRestart:
         self.registry_hint = None
         self.ancestors = None
         self.first_lookup = self.monotonic()
-        self.receipt = receipt_name(session_id, surface)
+        self.receipt = receipt_name(session_id, pane)
 
     def session(self):
         session = live_session(self.config_home, self.session_id, self.runner,
@@ -770,17 +767,12 @@ class SelfRestart:
         return 'continuation_deferred'
 
     def type(self, text, only_if=None):
-        """Paste text with Enter in one cmux request when a last look finds the input box empty."""
+        """Type text with Enter in one request when a last look finds the input box empty."""
         if only_if and not only_if():
             return False
         if not self.input_empty():
             return False
-        # cmux 0.64.22 dispatches paste and submit together on its main actor. It has no
-        # empty-input precondition, so only text typed after the last look can still mix in.
-        response = json.loads(self.cmux('rpc', 'terminal.paste', json.dumps({
-            'surface_id': self.surface, 'text': text, 'submit_key': 'enter'})))
-        if response.get('submitted') is not True:
-            raise OSError('cmux accepted the paste without confirming submission')
+        self.terminal.submit(self.pane, text)
         return True
 
     def wait(self, check, timeout, step=WAIT_STEP_SECONDS):
@@ -806,7 +798,10 @@ class SelfRestart:
         return session if session and self.input_empty() else None
 
     def input_empty(self):
-        return input_ready(self.cmux('read-screen', '--surface', self.surface, '--lines', '12'))
+        try:
+            return input_ready(self.terminal.read_screen(self.pane, 12))
+        except TerminalUnavailable as error:
+            raise SessionUnavailable('Could not read the terminal screen') from error
 
     def quiet_session(self):
         session = self.session()
@@ -817,12 +812,3 @@ class SelfRestart:
         if background_work(session, process_children(self.runner), self.projects, self.clock(), self.runner):
             return None
         return session
-
-    def cmux(self, *args):
-        result = self.runner([self.cmux_path, *args], capture_output=True, text=True,
-                             timeout=10, check=False)
-        if result.returncode:
-            if args[0] == 'read-screen':
-                raise SessionUnavailable('Could not read the terminal screen')
-            raise OSError(f'cmux {args[0]} failed: status={result.returncode}')
-        return result.stdout
