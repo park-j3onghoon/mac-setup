@@ -274,10 +274,9 @@ Claude에게 이전 결과를 확인하고 살아 있는 프로세스는 기다�
 ```sh
 cd "$HOME/git/mac-setup/claude/account-switcher"
 python3 -m unittest discover -s tests -v
-python3 -m unittest discover -s switchcore/tests -v
 ```
 
-공용 코드 테스트는 Codex 폴더에서도 돌린다([공용 코드 문서](switchcore/README.md)의 「테스트」).
+공용 코드 테스트 명령은 [공용 코드 문서](switchcore/README.md)의 「테스트」에 있다.
 
 정책, 토큰 보존, MCP 보존, 설정 쓰기 실패 복구, 프로세스 종료 복구,
 초기화 시각 예약, 조회 제한 대기, 리다이렉트 거부를 실제 계정 없이 검증한다.
@@ -291,7 +290,7 @@ python3 -m unittest discover -s switchcore/tests -v
 교체 대기·`no_switch`, 한도 멈춤 세션의 긴 백그라운드 작업 대기, 한도 선택창은 사용자에게 둠,
 재시작 미확인 보고, stdio MCP 서버 자식 제외, `finished` 표시와 프로세스 시작 시각으로 본 하위
 에이전트, 정리 답 뒤 한도 안내, 입력창 아래 한도 안내, 대기 기록을 이어받은 한도 멈춤 세션의 긴
-대기)을 포함한다. 2026-11-23 기준 254개 중 253개를 통과했고 Keychain 상호 운용 테스트 1개는 생략했다.
+대기)을 포함한다. 2026-11-26 기준 270개 중 269개를 통과했고 Keychain 상호 운용 테스트 1개는 생략했다.
 
 2026-11-13 16:04 시험 세션에서 턴이 끝난 뒤 훅이 `/restart`를 넣었고, 다시 뜬 세션이
 앞선 대화를 기억했으며 다음 턴에는 재시작하지 않았다. 실행 중 세션도 바뀐

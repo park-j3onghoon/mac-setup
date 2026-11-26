@@ -17,7 +17,7 @@
 
 - `choose(order, active, readings, now)`: 지금 쓸 계정. `order`는 우선 계정이 앞에 온 계정 이름 목록이고, `readings`는 이번 주기에 읽은 계정의 `quota.Usage`다. `Decision.target`이 None이면 바꾸지 않는다.
 - `available(usage, now)`: 그 계정으로 바꿔도 되는지. 두 전환기는 로그인을 바꾸기 직전에 이것으로 한 번 더 묻는다.
-- `poll_seconds(usage)`: 다음 사용량 조회까지의 초. 전환기는 `LONGEST_POLL_SECONDS`(540초)보다 길게 쓰지 않는다. 작업 대시보드가 상태 파일을 믿는 10분과 Claude 재시작 도우미가 전환을 기다리는 15분보다 짧아야 하기 때문이다.
+- `poll_seconds(usage)`: 다음 사용량 조회까지의 초. 전환기는 `poll_interval(policy, usage)`로 물어 `LONGEST_POLL_SECONDS`(540초)를 넘지 않게 한다. 작업 대시보드가 상태 파일을 믿는 10분과 Claude 재시작 도우미가 전환을 기다리는 15분보다 짧아야 하기 때문이다.
 
 두 내장 규칙은 지금 두 전환기의 규칙을 그대로 옮긴 것이다. 조회 간격 계단은 같다. 기준까지 30%p 이상 남으면 540초, 15%p 이상 300초, 5%p 이상 120초, 그보다 가깝거나 사용량이 없으면 가장 짧은 간격이다(`POLL_TIERS`).
 
@@ -77,7 +77,7 @@ Codex 감독을 다시 띄워도 공유 서버와 열린 대화는 그대로다(
 
 ## 새 구현 더하기
 
-1. 이 폴더에 구현을 둔다. 인터페이스의 메서드만 맞추면 되고 상속은 필요 없다. 규칙의 예는 `policy.py`의 두 내장 규칙이다. 터미널의 가장 작은 예는 `../tests/test_refresh.py`의 `FakeTerminal`이고, 테스트가 이 가짜로 재시작 흐름 전체를 돌린다.
+1. 이 폴더에 구현을 둔다. 인터페이스의 메서드만 맞추면 되고 상속은 필요 없다. 생성자는 규칙이 `cls(threshold, shortest_poll)`, 터미널이 `cls()` 모양이어야 한다. 전환기가 이 모양으로 만든다. 규칙의 예는 `policy.py`의 두 내장 규칙이다. 터미널의 가장 작은 예는 `../tests/test_refresh.py`의 `FakeTerminal`이고, 테스트가 이 가짜로 재시작 흐름 전체를 돌린다.
 2. 이름표에 한 줄을 더한다. 터미널은 `choices.py`의 `TERMINALS`, 규칙은 `policy.py` 끝의 `POLICIES`다. 훅은 매 턴 돌기 때문에 터미널 이름표가 규칙 모듈을 불러오지 않게 표를 나눴다.
 3. 로컬 설정에 그 이름을 쓴다.
 4. `tests/`에 테스트를 더하고 아래 명령으로 확인한다.

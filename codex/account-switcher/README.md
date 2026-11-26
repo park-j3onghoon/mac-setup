@@ -299,10 +299,11 @@ Chrome 브리지의 공용 데몬은 이미 공유되므로 다른 대화가 쓰
 
 ```sh
 python3 -m unittest discover -s codex/account-switcher -p 'test_*.py' -v
-(cd codex/account-switcher && python3 -m unittest discover -s switchcore/tests -v)
 python3 codex/account-switcher/probe_subscriptions.py --proxy --reconnect
 codex --account-status
 ```
+
+공용 코드 테스트 명령은 [공용 코드 문서](../../claude/account-switcher/switchcore/README.md)의 「테스트」에 있다.
 
 실제 0.169.0 바이너리, 임시 홈, 가짜 로컬 모델·MCP를 사용한 재현 명령과
 FD·프로세스 측정 결과는 [자원 회수 검증 보고서](RESOURCE_REPORT.md)에 남겼다.
