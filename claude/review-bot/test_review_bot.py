@@ -71,7 +71,7 @@ class ReviewBotTest(unittest.TestCase):
         self.url_log = root / 'ai-review-urls.txt'
         self.patch('URL_LOG', self.url_log)
         self.pulls = {7: pull_request()}
-        self.requests = {7: {'requester': 'bob', 'requested_at': REQUESTED_AT}}
+        self.requests = {7: {'requester': 'alice', 'requested_at': REQUESTED_AT}}
         self.page_size = 100
         self.now = NOW
         self.draft = {'event': 'APPROVE', 'body': 'LGTM!',
@@ -154,7 +154,7 @@ class ReviewBotTest(unittest.TestCase):
             return review_bot.main(['--state-dir', str(self.state_dir), *args])
 
     def run_bot(self, auto=False):
-        return self.bot('run', '--requester', 'bob', '--requester', 'alice', *(('--auto-repo', REPO) if auto else ()))
+        return self.bot('run', '--requester', 'alice', '--requester', 'bob', *(('--auto-repo', REPO) if auto else ()))
 
     def state(self):
         return json.loads((self.state_dir / 'state.json').read_text())
@@ -531,7 +531,7 @@ class ReviewBotTest(unittest.TestCase):
         self.assertEqual((entry['request'], entry['status'], entry['attempts']), (REQUESTED_AGAIN_AT, 'failed', 1))
 
     def test_requests_from_other_people_are_neither_reviewed_nor_recorded(self):
-        """Bob, Alice가 아닌 사람이 보낸 요청은 리뷰하지 않고 기록도 남기지 않는다."""
+        """정한 사람이 아닌 사람이 보낸 요청은 리뷰하지 않고 기록도 남기지 않는다."""
         self.requests[7]['requester'] = 'someone'
 
         self.run_bot()
@@ -577,7 +577,7 @@ class ReviewBotTest(unittest.TestCase):
     def test_requests_on_every_search_page_are_handled(self):
         """검색 결과가 여러 페이지로 나뉘어도 모든 페이지의 요청을 처리한다."""
         self.pulls[8] = pull_request(8)
-        self.requests[8] = {'requester': 'alice', 'requested_at': REQUESTED_AT}
+        self.requests[8] = {'requester': 'bob', 'requested_at': REQUESTED_AT}
         self.page_size = 1
 
         self.run_bot()
@@ -602,7 +602,7 @@ class ReviewBotTest(unittest.TestCase):
         self.run_bot()
         self.now = NOW + datetime.timedelta(days=3)
         self.pulls[8] = pull_request(8)
-        self.requests = {8: {'requester': 'alice', 'requested_at': REQUESTED_AT}}
+        self.requests = {8: {'requester': 'bob', 'requested_at': REQUESTED_AT}}
         self.run_bot()
         self.requests = {}
         self.now = NOW + datetime.timedelta(days=8)
@@ -613,11 +613,11 @@ class ReviewBotTest(unittest.TestCase):
 
     def test_first_install_skips_waiting_requests_and_reinstall_keeps_records(self):
         """처음 설치할 때 기다리던 요청은 리뷰하지 않고, 다시 설치하면 그사이 온 요청도 그대로 리뷰한다."""
-        self.bot('install', '--requester', 'bob')
+        self.bot('install', '--requester', 'alice')
         self.run_bot()
         self.pulls[8] = pull_request(8)
-        self.requests[8] = {'requester': 'bob', 'requested_at': REQUESTED_AGAIN_AT}
-        self.bot('install', '--requester', 'bob')
+        self.requests[8] = {'requester': 'alice', 'requested_at': REQUESTED_AGAIN_AT}
+        self.bot('install', '--requester', 'alice')
 
         self.run_bot()
 
@@ -633,7 +633,7 @@ class ReviewBotTest(unittest.TestCase):
                                      'at': '2026-11-24T11:47:00'}}, 'poll_failures': 0}
         (self.state_dir / 'state.json').write_text(json.dumps(old))
 
-        self.bot('install', '--requester', 'bob')
+        self.bot('install', '--requester', 'alice')
 
         self.assertNotIn(f'{REPO}#1', self.state()['prs'])
 
