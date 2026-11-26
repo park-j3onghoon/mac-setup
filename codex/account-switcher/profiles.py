@@ -6,19 +6,25 @@ from dataclasses import dataclass
 import fcntl
 import json
 import math
+import os
 from pathlib import Path
+import stat
 import threading
 import time
 
-from policy import DEFAULT_POLICY, DEFAULT_THRESHOLD, UsageUnavailable
+from policy import DEFAULT_POLICY, DEFAULT_THRESHOLD, SHORTEST_POLL, UsageUnavailable
 from rpc import Rpc
-from state import load, read_checkpoint, save, snapshot
+from state import RUNTIME, load, read_checkpoint, save, snapshot
+from switchcore.choices import pick
 from switchcore.policy import SwitchPolicy
 
 
 BINARY = Path("/opt/homebrew/bin/codex")
 DEFAULT_HOMES = {"company": Path.home() / ".codex-work",
                  "personal": Path.home() / ".codex"}
+# A computer's own values live outside git; the launcher runs through a ~/.local/bin link.
+SETTINGS_FILE = Path(__file__).resolve().parents[2] / "private/codex/account-switcher/config.json"
+SETTING_KEYS = ("homes", "threshold", "policy")
 
 
 @dataclass(frozen=True)
@@ -36,9 +42,43 @@ class Settings:
 DEFAULT_SETTINGS = Settings(DEFAULT_HOMES, DEFAULT_THRESHOLD, DEFAULT_POLICY)
 
 
-def load_settings():
-    """The settings this computer runs with: the built-in ones."""
-    return DEFAULT_SETTINGS
+def load_settings(path=None):
+    """This computer's SETTINGS_FILE, or the built-in settings without one. UsageUnavailable tells
+    which value to fix; the file picks the homes whose tokens the switcher reads."""
+    path = SETTINGS_FILE if path is None else Path(path)
+    if not path.exists() and not path.is_symlink():
+        return DEFAULT_SETTINGS
+    for item in (path.parent, path):
+        info = item.lstat()
+        if stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid():
+            raise UsageUnavailable(f"Switcher settings must be your own file, not a link: {item}")
+    path.parent.chmod(0o700)
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise UsageUnavailable(f"Cannot read switcher settings: {path}") from error
+    if not isinstance(value, dict) or set(value) - set(SETTING_KEYS):
+        raise UsageUnavailable(f"Invalid switcher settings: {path} (keys: {', '.join(SETTING_KEYS)})")
+    homes = dict(DEFAULT_HOMES)
+    folders = value.get("homes", {})
+    if not isinstance(folders, dict) or set(folders) - set(homes):
+        raise UsageUnavailable("Invalid switcher setting: homes (keys: company, personal)")
+    for name, folder in folders.items():
+        if not isinstance(folder, str) or "/" in folder or folder in ("", ".", "..", RUNTIME.name):
+            raise UsageUnavailable(f"Invalid switcher setting: homes.{name}={folder} "
+                                   "(one folder name directly under your home)")
+        homes[name] = Path.home() / folder
+    if homes["company"] == homes["personal"]:
+        raise UsageUnavailable("Invalid switcher setting: homes (company and personal must differ)")
+    threshold = value.get("threshold", DEFAULT_THRESHOLD)
+    if (isinstance(threshold, bool) or not isinstance(threshold, (int, float))
+            or not math.isfinite(threshold) or not 1 <= threshold <= 100):
+        raise UsageUnavailable("Invalid switcher setting: threshold (a number from 1 to 100)")
+    try:
+        policy = pick("policy", value.get("policy", "strict-priority"))(threshold, SHORTEST_POLL)
+    except ValueError as error:
+        raise UsageUnavailable(str(error)) from error
+    return Settings(homes, threshold, policy)
 
 
 def credentials(home):

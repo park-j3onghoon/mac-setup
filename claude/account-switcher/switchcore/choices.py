@@ -1,10 +1,10 @@
 """The built-in implementations a local setting may name. Only names listed here can be chosen:
 both switchers hold two accounts' tokens, so a setting never loads code from outside the repo."""
 
-from .policy import PriorityPolicy
+from .policy import PriorityPolicy, StrictPriorityPolicy
 
 
-POLICIES = {'priority': PriorityPolicy}
+POLICIES = {'priority': PriorityPolicy, 'strict-priority': StrictPriorityPolicy}
 CHOICES = {'policy': POLICIES}
 
 

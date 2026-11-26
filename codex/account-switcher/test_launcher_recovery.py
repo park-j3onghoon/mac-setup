@@ -15,6 +15,7 @@ import service
 import state
 from policy import DEFAULT_POLICY, UsageUnavailable
 from profiles import DEFAULT_SETTINGS, Settings
+from switchcore.policy import StrictPriorityPolicy
 
 
 class LauncherRecoveryTests(unittest.TestCase):
@@ -129,6 +130,14 @@ class DirectSelectionTests(unittest.TestCase):
                 self.sample('company', 2, 30), self.sample('personal', 1)]):
             launcher.direct_usages({}, self.settings)
             self.assertEqual(launcher.direct_usages(saved, self.settings), {'company': 100, 'personal': 1})
+
+    def test_the_configured_threshold_ends_the_direct_lookup(self):
+        """기준을 95로 설정하면 92%인 회사 계정에서 바로 조회를 멈춘다. 기본 90이면 개인까지 읽는다."""
+        settings = Settings(self.homes, 95, StrictPriorityPolicy(95, 60))
+        with patch.object(launcher, 'read_snapshot', return_value=self.sample('company', 92)) as read:
+            usages = launcher.direct_usages({}, settings)
+
+        self.assertEqual((usages, read.call_count), ({'company': 92}, 1))
 
     def test_direct_launch_opens_company_when_both_are_over_the_threshold(self):
         """감독 없이 바로 여는 실행은 두 계정이 모두 기준 이상이면 회사 계정으로 연다."""

@@ -158,7 +158,8 @@ class ChoicesTests(unittest.TestCase):
         # then
         self.assertIs(chosen, PriorityPolicy)
         self.assertEqual(str(raised.exception),
-                         'Invalid switcher setting: policy=my_rules:Custom (choose from: priority)')
+                         'Invalid switcher setting: policy=my_rules:Custom '
+                         '(choose from: priority, strict-priority)')
 
 
 if __name__ == '__main__':

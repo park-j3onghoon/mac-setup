@@ -316,7 +316,15 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
-        settings = load_settings()
+        try:
+            settings = load_settings()
+        except UsageUnavailable as error:
+            # launchd discards this process's output, so the status file carries the reason.
+            state = load()
+            state.update(status="failed", runtime_error=type(error).__name__, settings_error=str(error),
+                         updated_at=time.time())
+            save(state)
+            return
         prepare_home(config=settings.server_config)
         for prefix in (f'.{STATE_FILE.name}-', '.continuation-receipts.json-', '.usage-request.json-',
                        '.profile-registration.json-', '.profile-registration-company.json-',

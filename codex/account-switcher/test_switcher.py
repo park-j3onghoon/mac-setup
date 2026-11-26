@@ -150,6 +150,17 @@ class LauncherTest(unittest.TestCase):
                 launcher.main(["resume", "my-thread"])
         self.assertEqual(run.call_args.args[1][1:], ["resume", "my-thread"])
 
+    def test_explicit_home_runs_even_with_broken_switcher_settings(self):
+        """CODEX_HOME을 직접 준 실행은 전환기 설정을 읽지 않으므로 설정이 잘못돼도 막히지 않는다."""
+        broken = UsageUnavailable("Invalid switcher setting: threshold (a number from 1 to 100)")
+        with patch.object(launcher, "load_settings", side_effect=broken), \
+             patch.dict(launcher.os.environ, {"CODEX_HOME": "/chosen"}), \
+             patch.object(launcher.os, "execv", side_effect=SystemExit) as run:
+            with self.assertRaises(SystemExit):
+                launcher.main(["resume", "my-thread"])
+
+        self.assertEqual(run.call_args.args[1][1:], ["resume", "my-thread"])
+
     def test_company_management_does_not_query_or_select_personal(self):
         with patch.dict(launcher.os.environ, {}, clear=True), \
              patch.object(Path, "is_file", return_value=True), \

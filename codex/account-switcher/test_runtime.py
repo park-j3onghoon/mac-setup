@@ -12,11 +12,13 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from policy import UsageUnavailable
+from policy import DEFAULT_POLICY, UsageUnavailable
 from rpc import RpcRejected
 from runtime import CONTINUE_PROMPT, Runtime, all_idle, prepare_home
 from state import load, poll_delay, record, save, snapshot
+import supervisor
 from supervisor import monitor
+from switchcore.policy import StrictPriorityPolicy
 
 
 def usage(percent, resets, observed):
@@ -766,6 +768,26 @@ class SwitchingTest(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(self.runtime.active, "personal")
 
+    def test_the_configured_threshold_decides_the_last_check_before_login(self):
+        """로그인 직전 마지막 사용량 확인도 설정한 기준을 쓴다: 92%는 기본 90에서 막고 기준 95에서는 바꾼다."""
+        def request(method, params=None):
+            if method == "account/login/start":
+                return {"type": "chatgptAuthTokens"}
+            if method == "account/rateLimits/read":
+                return {"accountId": "personal"}
+            return {"data": []}
+        self.profiles["personal"].usage.return_value = usage(92, 9999, 1000)
+        configured = Runtime(self.profiles, policy=StrictPriorityPolicy(95, 60))
+        self.addCleanup(configured.close)
+        configured.active, configured.client = "company", Mock(closed=False)
+        configured.client.request.side_effect = request
+
+        with self.assertRaisesRegex(UsageUnavailable, "no longer has available quota"):
+            self.runtime.select("personal", force=True)
+        changed = configured.select("personal", force=True)
+
+        self.assertEqual((changed, configured.active), (True, "personal"))
+
     def test_failed_manual_switch_restores_the_previous_account(self):
         """수동 전환이 실패해도 서버 확인값이 이미 원래 계정이면 다시 로그인하지 않는다."""
         self.runtime.client.request.side_effect = [
@@ -1040,7 +1062,7 @@ class MonitorTest(unittest.TestCase):
 
         self.assertEqual(written, [1000, 1010, 1040])
 
-    def run_monitor(self, batches, preferred="company", requested=None):
+    def run_monitor(self, batches, preferred="company", requested=None, policy=DEFAULT_POLICY):
         clock = [1000]
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] >= 1000 + len(batches) * 61
@@ -1060,7 +1082,7 @@ class MonitorTest(unittest.TestCase):
              patch('supervisor.poll_delay', return_value=60), \
              patch("supervisor.collect", side_effect=batches), patch("supervisor.save"), \
              patch("supervisor.preference", return_value=requested or {}):
-            monitor(runtime, {}, stop, state)
+            monitor(runtime, {}, stop, state, policy)
         self.runtime = runtime
         return selected, state
 
@@ -1096,6 +1118,29 @@ class MonitorTest(unittest.TestCase):
         selected, state = self.run_monitor([(fresh, {})])
 
         self.assertEqual((selected, state["status"]), (["company"], "ready"))
+
+    def test_the_configured_threshold_keeps_an_account_the_default_would_leave(self):
+        """기준을 95로 설정하면 92%인 회사 계정을 그대로 쓴다. 기본 90이면 개인 계정으로 넘어간다."""
+        fresh = {"company": usage(92, 9999, 1000), "personal": usage(10, 9999, 1000)}
+
+        default, _ = self.run_monitor([(fresh, {})])
+        configured, _ = self.run_monitor([(fresh, {})], policy=StrictPriorityPolicy(95, 60))
+
+        self.assertEqual((default, configured), (["personal"], ["company"]))
+
+    def test_invalid_settings_stop_the_supervisor_with_the_reason_in_its_status(self):
+        """launchd가 감독의 출력을 버리므로 설정 오류는 상태 파일에 남기고 서버를 띄우지 않는다."""
+        reason = "Invalid switcher setting: threshold (a number from 1 to 100)"
+        saved = []
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("supervisor.RUNTIME", Path(directory)), patch("supervisor.load", return_value={}), \
+                patch("supervisor.save", side_effect=saved.append), \
+                patch("supervisor.load_settings", side_effect=UsageUnavailable(reason)), \
+                patch("supervisor.prepare_home") as prepare:
+            supervisor.main()
+
+        self.assertEqual((saved[-1]["status"], saved[-1]["settings_error"]), ("failed", reason))
+        prepare.assert_not_called()
 
     def test_lookup_failure_keeps_current_account_and_old_reset_record(self):
         first = {"company": usage(5, 9999, 1000), "personal": usage(20, 9999, 1000)}
