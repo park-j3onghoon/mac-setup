@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""나에게 직접 리뷰를 요청한 PR을 ai-review 스킬로 리뷰해 GitHub에 올리는 봇.
+"""정한 사람이 나에게 직접 보낸 리뷰 요청을 ai-review 스킬로 리뷰하는 봇. 자동 레포는 확인 뒤 GitHub에 올리고,
+나머지는 초안으로 둔다. 같은 요청은 한 번만 리뷰하고, 다시 요청이 와야 다시 리뷰한다. 리뷰 직전마다 Claude 계정
+전환기에 두 계정의 주간 사용량을 새로 읽게 해, 모두 찼거나 확인하지 못하면 새 리뷰를 다음 실행으로 미룬다.
 
 launchd가 10분마다 `run`을 부른다.
-- 켜기: /usr/bin/python3 review_bot.py install --repo OWNER/REPO (켤 때 이미 기다리던 요청은 건너뛴다)
+- 켜기: /usr/bin/python3 review_bot.py install --requester LOGIN [--auto-repo OWNER/REPO]
+  (처음 켤 때 이미 기다리던 요청은 건너뛴다)
 - 끄기: launchctl bootout gui/$(id -u)/local.review-bot
-- 한 PR 바로 리뷰: /usr/bin/python3 review_bot.py review --repo OWNER/REPO NUMBER [--dry-run]
-기록은 ~/pr_reviews/review-bot 아래 state.json, bot.log, runs/(실행마다 권한 설정과 대화 기록)에 남는다.
+- 한 PR 바로 초안 만들기: /usr/bin/python3 review_bot.py review --repo OWNER/REPO NUMBER
+기록은 ~/pr_reviews/review-bot 아래 state.json, bot.log, runs/(리뷰마다 권한 설정, 대화 기록, review.json)에 남는다.
+초안은 그 리뷰 폴더에서 `claude --resume {세션}`으로 리뷰 세션을 이어 받아 확인하고 올린다.
 """
 from __future__ import annotations
 
@@ -21,6 +25,8 @@ from pathlib import Path
 import plistlib
 import re
 import subprocess
+import time
+import uuid
 
 HOME = Path.home()
 CLAUDE = HOME / '.local/bin/claude'
@@ -29,21 +35,63 @@ URL_LOG = HOME / 'pr_reviews/ai-review-urls.txt'
 DEFAULT_STATE_DIR = HOME / 'pr_reviews/review-bot'
 SIMPLE_DESIGN = HOME / 'Downloads/Obsidian Vault/Simple Design.md'
 CODEX_GLOB = '.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs'
+# 계정 전환기 상태 폴더. 전환기 switcher.py의 DEFAULT_STATE와 같은 자리다.
+SWITCHER_DIR = Path(__file__).resolve().parents[2] / 'private/claude/account-switcher'
 LABEL = 'local.review-bot'
 PLIST = HOME / 'Library/LaunchAgents' / f'{LABEL}.plist'
 # 사람은 리뷰 요청을 몇 시간 안에 보므로 10분 지연은 짧고, 요청 직후 이어지는 push는 한 번에 리뷰한다.
 INTERVAL_SECONDS = 600
 MAX_ATTEMPTS = 2
+# 대시보드 「봇이 올린 리뷰」가 7일을 보인다.
+RECORD_DAYS = 7
+# 주간 사용량이 이 % 이상인 계정은 찼다. 모든 계정이 차면 사용자 작업에 남은 한도를 봇이 쓰지 않게 리뷰를 미룬다.
+QUOTA_LIMIT = 90
+# 전환기 읽기 요청은 대시보드 「지금 확인」과 같은 값을 쓴다: 20초 안의 읽기는 지금 읽은 것으로 보고, 답을 20초 기다린다.
+READING_FRESH_SECONDS = 20
+READING_TIMEOUT_SECONDS = 20
+READING_POLL_SECONDS = 0.2
+UNKNOWN_NOTICE_SECONDS = 60 * 60
 POLL_FAILURES_TO_NOTIFY = 3
 COMMAND_TIMEOUT_SECONDS = 60
+# 처음 보는 큰 레포(앱 13개가 든 모노레포)의 클론과 오래 쉰 클론의 fetch도 끝나게 한다.
+GIT_TIMEOUT_SECONDS = 30 * 60
 REVIEW_TIMEOUT_SECONDS = 90 * 60
 MODEL_ARGS = ('--model', 'opus', '--effort', 'xhigh')
 TOOLS = 'Read,Grep,Glob,Edit,Write,Bash,Agent'
-# ai-review 4단계가 마지막에 내는 결과 한 줄의 꼴이다.
-POSTED_LINE = re.compile(r'(APPROVE|COMMENT) · CRITICAL \d+ · INFO \d+ · https://github\.com/[^\s`)]+#pullrequestreview-\d+')
-NOT_POSTED_LINE = re.compile(r'올리지 않음 · [^\n`]+')
+REQUEST_SEARCH = 'is:pr is:open archived:false draft:false user-review-requested:@me'
+# PR마다 마지막 100개 리뷰 요청을 받는다. 다음 페이지는 gh --paginate가 $endCursor로 받는다.
+REQUEST_QUERY = '''query($q: String!, $endCursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $endCursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes { ... on PullRequest {
+      number title url headRefOid isCrossRepository repository { nameWithOwner }
+      timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 100) {
+        nodes { ... on ReviewRequestedEvent { createdAt actor { login } requestedReviewer { ... on User { login } } } }
+      }
+    } }
+  }
+}'''
+# ai-review 4단계가 --draft에서 마지막에 내는 결과 한 줄의 꼴이다.
+DRAFT_LINE = re.compile(r'초안 · (APPROVE|COMMENT) · CRITICAL (\d+) · INFO (\d+)')
+EVENTS = ('APPROVE', 'COMMENT')
+# 남이 쓴 PR을 읽은 모델의 초안이라, 토큰 꼴 문자열이 섞였으면 올리지 않는다.
+SECRET_PATTERN = re.compile(r'AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+                            r'|sk-ant-|xox[abpr]-')
+NOTICES = {
+    'draft': '{note}. 대시보드에서 「세션으로 가기」로 확인해 주세요.',
+    'posted': '{note} · {reviewUrl}',
+    'closed': '{note}이라 올리지 않았습니다.',
+    'failed': '리뷰 실패({attempts}/{max_attempts}): {note}. 기록 {runDir}',
+    'skipped': '{note}',
+}
+QUOTA_NOTICES = {
+    'full': 'Claude 두 계정의 주간 사용량이 {limit}% 이상이라 새 리뷰를 미룹니다({detail}). 한 계정이라도 내려가면 이어서 리뷰합니다.',
+    'unknown': 'Claude 한도를 1시간 넘게 확인하지 못해 새 리뷰를 미루고 있습니다({detail}).',
+}
 GIT_READ_VERBS = ('log', 'diff', 'show', 'rev-parse', 'merge-base', 'rev-list', 'ls-files', 'ls-tree', 'cat-file',
                   'blame', 'grep', 'status', 'describe')
+# ~/.claude/lib/review/diff.md의 증분 블록이 파이프에서 쓰는 명령.
+DIFF_PIPE_COMMANDS = ('sort -u', 'grep -c .', 'printf *')
 # 읽기 명령에 붙어도 파일을 쓰거나(--output), 저장소 밖 파일을 읽거나(--no-index, --contents), 명령을 실행한다(-O).
 GIT_DENIED_OPTIONS = ('--output', '--no-index', '--contents', '-O', '--open-files-in-pager')
 GH_WRITE_OPTIONS = ('-X', '--method', '-f', '-F', '--field', '--raw-field', '--input')
@@ -58,9 +106,16 @@ ENV = {
 
 
 class Status(str, enum.Enum):
+    DRAFT = 'draft'
     POSTED = 'posted'
+    CLOSED = 'closed'
     FAILED = 'failed'
     SKIPPED = 'skipped'
+
+
+class Mode(str, enum.Enum):
+    AUTO = 'auto'  # 봇이 확인 뒤 올린다.
+    DRAFT = 'draft'  # 사람이 리뷰 세션을 이어 받아 올린다.
 
 
 @dataclass(frozen=True)
@@ -68,6 +123,14 @@ class ClaudeRun:
     exit_code: int | None  # None이면 시간 안에 끝나지 않아 멈췄다.
     final_text: str
     denied: tuple[str, ...]
+
+
+class ReviewRejected(Exception):
+    """GitHub가 리뷰 게시를 거절했다. 메시지는 응답 본문이라 토큰이 없다."""
+
+    def __init__(self, status, message):
+        super().__init__(f'HTTP {status}: {message}')
+        self.status = status
 
 
 def main(argv=None):
@@ -78,24 +141,25 @@ def main(argv=None):
         if not locked:
             print('다른 리뷰 봇 실행이 돌고 있어 끝낸다')
         elif args.command == 'run':
-            poll(args.repo, state_dir)
+            poll(set(args.requester), set(args.auto_repo), state_dir)
         elif args.command == 'review':
-            review_now(args.repo, args.number, state_dir, args.dry_run)
+            review_now(args.repo, args.number, state_dir)
         else:
-            install(args.repo, state_dir)
+            install(args.requester, args.auto_repo, state_dir)
     return 0
 
 
 def parse_args(argv):
-    parser = argparse.ArgumentParser(description='나에게 직접 리뷰를 요청한 PR을 ai-review로 리뷰해 올린다')
+    parser = argparse.ArgumentParser(description='정한 사람이 나에게 직접 보낸 리뷰 요청을 ai-review로 리뷰한다')
     parser.add_argument('--state-dir', default=str(DEFAULT_STATE_DIR))
     commands = parser.add_subparsers(dest='command', required=True)
     for name in ('run', 'install'):
-        commands.add_parser(name).add_argument('--repo', required=True)
+        command = commands.add_parser(name)
+        command.add_argument('--requester', action='append', required=True, help='이 GitHub login이 보낸 요청만 리뷰한다')
+        command.add_argument('--auto-repo', action='append', default=[], help='확인 없이 리뷰를 올릴 레포')
     review = commands.add_parser('review')
     review.add_argument('--repo', required=True)
     review.add_argument('number', type=int)
-    review.add_argument('--dry-run', action='store_true')
     return parser.parse_args(argv)
 
 
@@ -110,139 +174,428 @@ def hold_lock(state_dir):
             yield True
 
 
-def poll(repo, state_dir):
+def poll(requesters, auto_repos, state_dir):
     state = load_state(state_dir)
+    started = now_utc()
     try:
-        review_requests(repo, state_dir, state)
+        login = current_login()
+        requests = parse_review_requests(fetch_review_request_pages(), login)
+        recover(state, login, state_dir)
+        jobs = []
+        for request in requests:
+            if request['request'] is None:
+                log(state_dir, f'{request["key"]} 마지막 100개 리뷰 요청에 나에게 온 것이 없어 건너뜀')
+            elif request['requester'] in requesters:
+                jobs.append(handle(request, mode_of(request, auto_repos), state, state_dir, login))
+        review_in_turn([job for job in jobs if job is not None], state, state_dir)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-        detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
+        detail = failure_detail(error)
         state['poll_failures'] += 1
         log(state_dir, f'GitHub 조회 실패 {state["poll_failures"]}번째: {detail}')
         if state['poll_failures'] == POLL_FAILURES_TO_NOTIFY:
             notify(f'GitHub 조회가 {POLL_FAILURES_TO_NOTIFY}번 연속 실패했습니다: {detail[:200]}')
     else:
         state['poll_failures'] = 0
+        if state['quota'] is not None and state['quota']['at'] < started:  # 이번 실행은 미룬 리뷰가 없다
+            state['quota'] = None
+        prune(state, requests)
+        state['polledAt'] = now_utc()
     save_state(state_dir, state)
 
 
-def review_requests(repo, state_dir, state):
-    login = None
-    for pr in list_review_requests(repo):
-        key, head = f'{repo}#{pr["number"]}', pr['headRefOid']
-        entry = state['prs'].get(key)
-        if is_settled(entry, head):
-            continue
-        login = login or current_login()
-        if has_review_on(repo, pr['number'], head, login):
-            state['prs'][key] = record(head, Status.SKIPPED, 0, '내 리뷰가 있는 커밋으로 다시 요청됨')
-            log(state_dir, f'{key} {head[:8]} 같은 커밋 재요청이라 건너뜀')
-            notify(f'{short_name(key)} 같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.')
-        else:
-            retried = entry is not None and entry['sha'] == head and entry['status'] == Status.FAILED
-            state['prs'][key] = review_pr(repo, pr, state_dir, entry['attempts'] if retried else 0)
-        save_state(state_dir, state)
+def handle(request, mode, state, state_dir, login):
+    """요청 하나를 처리하고, 리뷰할 요청이면 review()에 넘길 (request, mode, attempt, since)를 돌려준다.
+    같은 요청은 한 번만 리뷰하고, 그 요청에 새 커밋만 오면 head만 갱신한다."""
+    key = request['key']
+    entry = state['prs'].get(key)
+    if entry is not None and entry['request'] == request['request']:
+        entry['head'] = request['head']
+        if entry['status'] == Status.DRAFT and entry['mode'] == Mode.AUTO:
+            start_running(state, state_dir, key, Path(entry['runDir']), entry['session'])
+            finish(key, deliver(request, entry, state, state_dir), state, state_dir)
+        elif entry['status'] == Status.FAILED and entry['attempts'] < MAX_ATTEMPTS:
+            return request, mode, entry['attempts'] + 1, last_review_commit(request['repo'], request['number'], login)
+        return None
+    if request['fork']:
+        finish(key, record(request, mode, note='fork PR은 봇이 head를 받지 못해 손수 리뷰해 주세요.'), state, state_dir)
+        return None
+    since = last_review_commit(request['repo'], request['number'], login)
+    if since == request['head']:
+        finish(key, record(request, mode, note='같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.'), state, state_dir)
+        return None
+    return request, mode, 1, since
 
 
-def is_settled(entry, head):
-    """이 커밋에서 더 할 일이 없는지 본다: 건너뛰기로 정했거나 실패 횟수를 다 썼다."""
-    if entry is None or entry['sha'] != head:
-        return False
-    return entry['status'] == Status.SKIPPED or (entry['status'] == Status.FAILED and entry['attempts'] >= MAX_ATTEMPTS)
+def review_in_turn(jobs, state, state_dir):
+    """리뷰를 하나씩 돌린다. 시작하기 직전마다 한도를 확인하고, 막히면 남은 리뷰를 다음 실행으로 미룬다."""
+    for job in jobs:
+        blocked = check_quota()
+        if blocked:
+            hold(state, state_dir, *blocked)
+            return
+        state['quota'] = None
+        review(*job, state, state_dir)
 
 
-def review_now(repo, number, state_dir, dry_run):
-    entry = review_pr(repo, view_pull_request(repo, number), state_dir, 0, dry_run)
-    if not dry_run:
-        state = load_state(state_dir)
-        state['prs'][f'{repo}#{number}'] = entry
-        save_state(state_dir, state)
+def check_quota():
+    """계정 전환기에 두 계정을 지금 읽어 달라고 하고, 새로 읽은 값으로 새 리뷰를 시작해도 되는지 본다.
+    여유 있는 계정이 하나라도 있으면 None, 아니면 미룰 이유 (kind, detail)를 돌려준다. 요청과 답은 대시보드
+    「지금 확인」과 같은 계약이다: usage_request.json의 requested_at → runtime.json의 sampled_at."""
+    if read_json(SWITCHER_DIR / 'halt.json'):
+        return 'unknown', '계정 전환기가 멈춤'
+    requested_at = now().timestamp()
+    runtime = read_json(SWITCHER_DIR / 'runtime.json')
+    if not sampled_since(runtime, requested_at - READING_FRESH_SECONDS):
+        try:
+            write_json(SWITCHER_DIR / 'usage_request.json', {'requested_at': requested_at})
+        except OSError as error:
+            return 'unknown', f'계정 전환기에 읽기를 요청하지 못함({error})'
+        runtime = wait_for_reading(requested_at)
+        if runtime is None:
+            return 'unknown', f'계정 전환기가 {READING_TIMEOUT_SECONDS}초 안에 답하지 않음'
+    return judge_quota(runtime.get('usage') or {}, requested_at)
 
 
-def install(repo, state_dir):
+def wait_for_reading(requested_at):
+    deadline = requested_at + READING_TIMEOUT_SECONDS
+    while now().timestamp() < deadline:
+        pause(READING_POLL_SECONDS)
+        runtime = read_json(SWITCHER_DIR / 'runtime.json')
+        if sampled_since(runtime, requested_at):
+            return runtime
+    return None
+
+
+def sampled_since(runtime, moment):
+    stamp = runtime.get('sampled_at')
+    return isinstance(stamp, (int, float)) and stamp >= moment
+
+
+def judge_quota(usage, requested_at):
+    """새로 읽은 계정 하나라도 주간 여유가 있으면 None. 2개 이상 계정을 모두 새로 읽었고 모두 찼으면 full,
+    그 밖(못 읽은 계정이 있고 읽은 계정은 모두 참)은 unknown이다."""
+    weekly = [weekly_percent(reading, requested_at) for reading in usage.values()]
+    read = [percent for percent in weekly if percent is not None]
+    if any(percent < QUOTA_LIMIT for percent in read):
+        return None
+    detail = f'읽은 계정 {len(read)}/{len(weekly)}개 주간 ' + ', '.join(f'{percent:.0f}%' for percent in read)
+    return ('full' if len(weekly) >= 2 and len(read) == len(weekly) else 'unknown'), detail
+
+
+def weekly_percent(reading, requested_at):
+    """새로 읽은 계정의 주간 사용률. 그 창의 초기화 시각이 지났으면 0이고, 새로 읽지 못했으면 None이다.
+    전환기는 못 읽은 계정의 지난 값에 stale을 붙여 남긴다."""
+    if reading.get('stale') or reading.get('checked_at', 0) < requested_at - READING_FRESH_SECONDS:
+        return None
+    window = next((row for row in reading.get('windows', []) if row.get('name') == 'seven_day'), None)
+    if window is None:
+        return None
+    resets = window.get('resets_at')
+    return 0 if resets is not None and resets <= now().timestamp() else window['percent']
+
+
+def hold(state, state_dir, kind, detail):
+    """새 리뷰를 미룬다. 한도 대기는 처음 미룰 때, 한도 확인 안 됨은 1시간 넘게 이어지면 한 번 알린다."""
+    quota = state['quota']
+    if quota is None or quota['kind'] != kind:
+        quota = {'kind': kind, 'since': now_utc(), 'notified': False}
+    quota = {**quota, 'detail': detail, 'at': now_utc()}
+    log(state_dir, f'리뷰를 미룸({kind}): {detail}')
+    waited = now() - parse_utc(quota['since'])
+    if not quota['notified'] and (kind == 'full' or waited >= datetime.timedelta(seconds=UNKNOWN_NOTICE_SECONDS)):
+        notify(QUOTA_NOTICES[kind].format(detail=detail, limit=QUOTA_LIMIT))
+        quota['notified'] = True
+    state['quota'] = quota
+
+
+def mode_of(request, auto_repos):
+    return Mode.AUTO if request['repo'] in auto_repos else Mode.DRAFT
+
+
+def prune(state, requests):
+    """요청 목록에 없고 마지막 기록이 RECORD_DAYS 지난 기록을 지운다. 리뷰 폴더와 세션 파일은 남긴다."""
+    listed = {request['key'] for request in requests}
+    cutoff = now() - datetime.timedelta(days=RECORD_DAYS)
+    state['prs'] = {key: entry for key, entry in state['prs'].items() if key in listed or parse_utc(entry['at']) > cutoff}
+
+
+def recover(state, login, state_dir):
+    """앞 실행이 리뷰나 게시 중에 죽어 남은 running을 GitHub와 맞춘 뒤 지운다. 게시가 받아들여지면 GitHub가
+    요청을 지워 그 PR이 다시 검색되지 않으므로, 이것이 그 리뷰를 posted로 적을 유일한 단서다."""
+    running = state['running']
+    if running is None:
+        return
+    end_codex_session(Path(running['worktree']), running['session'], state_dir)
+    entry = state['prs'].get(running['key'])
+    if entry is not None and entry['status'] == Status.DRAFT:
+        repo, number = running['key'].rsplit('#', 1)
+        url = next((url for sha, url in my_reviews(repo, int(number), login) if sha == entry['sha']), None)
+        if url:
+            state['prs'][running['key']] = {**entry, 'status': Status.POSTED.value, 'reviewUrl': url,
+                                            'note': '앞 실행이 올린 뒤 멈춰 다음 실행이 기록함', 'at': now_utc()}
+            append_url_log(url)
+    state['running'] = None
+    save_state(state_dir, state)
+
+
+def review_now(repo, number, state_dir):
+    """손수 실행: 그 PR을 초안으로 리뷰한다. 그때 기다리던 요청이 있으면 그 요청을 끝낸 것으로 적는다."""
     state = load_state(state_dir)
-    for pr in list_review_requests(repo):
-        state['prs'].setdefault(f'{repo}#{pr["number"]}', record(pr['headRefOid'], Status.SKIPPED, 0, '설치 전부터 대기'))
-    save_state(state_dir, state)
+    login = current_login()
+    recover(state, login, state_dir)
+    key, pull = f'{repo}#{number}', view_pull_request(repo, number)
+    waiting = next((request for request in parse_review_requests(fetch_review_request_pages(), login)
+                    if request['key'] == key), {})
+    request = {'key': key, 'repo': repo, 'number': number, 'title': pull['title'], 'url': pull['url'],
+               'head': pull['headRefOid'], 'request': waiting.get('request'), 'requester': waiting.get('requester')}
+    review(request, Mode.DRAFT, 1, last_review_commit(repo, number, login), state, state_dir)
+
+
+def install(requesters, auto_repos, state_dir):
+    """launchd에 등록한다. 처음 설치할 때만 이미 기다리던 요청을 건너뛴 것으로 적어, 오래 밀린 요청을 한꺼번에
+    리뷰하지 않는다. 다시 설치할 때는 기록을 건드리지 않아 그사이 온 요청도 그대로 리뷰한다."""
+    state = load_state(state_dir)
+    if state['installedAt'] is None:
+        # 요청 시각이 없는 옛 꼴(커밋 기준 봇) 기록은 새 기준으로 읽을 수 없어 버린다.
+        state['prs'] = {key: entry for key, entry in state['prs'].items() if 'request' in entry}
+        for request in parse_review_requests(fetch_review_request_pages(), current_login()):
+            if request['requester'] in requesters:
+                waiting = record(request, mode_of(request, auto_repos), note='설치 전부터 대기')
+                state['prs'].setdefault(request['key'], waiting)
+        state['installedAt'] = now_utc()
+        save_state(state_dir, state)
     register_launch_agent({
         'Label': LABEL,
-        'ProgramArguments': ['/usr/bin/python3', str(Path(__file__).resolve()), '--state-dir', str(state_dir),
-                             'run', '--repo', repo],
+        'ProgramArguments': ['/usr/bin/python3', str(Path(__file__).resolve()), '--state-dir', str(state_dir), 'run',
+                             *options('--requester', requesters), *options('--auto-repo', auto_repos)],
         'StartInterval': INTERVAL_SECONDS,
         'RunAtLoad': True,
         'StandardOutPath': str(state_dir / 'launchd.log'),
         'StandardErrorPath': str(state_dir / 'launchd.log'),
     })
-    print(f'{LABEL} 등록: {INTERVAL_SECONDS // 60}분마다 {repo} 리뷰 요청 확인 -> {PLIST}')
+    print(f'{LABEL} 등록: {INTERVAL_SECONDS // 60}분마다 {", ".join(requesters)}의 리뷰 요청 확인 -> {PLIST}')
 
 
-def review_pr(repo, pr, state_dir, attempts, dry_run=False):
-    key, head = f'{repo}#{pr["number"]}', pr['headRefOid']
+def options(flag, values):
+    return [arg for value in values for arg in (flag, value)]
+
+
+def review(request, mode, attempt, since, state, state_dir):
+    """PR 하나를 초안으로 리뷰하고, 자동 레포면 이어서 올린 뒤 결과를 기록하고 알린다.
+    since는 내가 마지막으로 리뷰한 커밋이고, 있으면 그 뒤의 커밋만 리뷰한다."""
+    entry = draft_review(request, mode, attempt, since, state, state_dir)
+    if mode is Mode.AUTO:
+        entry = deliver(request, entry, state, state_dir)
+    finish(request['key'], entry, state, state_dir)
+
+
+def draft_review(request, mode, attempt, since, state, state_dir):
+    """ai-review --draft로 초안을 만든다. 올리기 전에 죽어도 다음 실행이 맞출 수 있게 결과를 바로 기록한다."""
+    key, repo, number, head = request['key'], request['repo'], request['number'], request['head']
     started = datetime.datetime.now()
-    run_dir = state_dir / 'runs' / f'{repo.split("/")[1]}-{pr["number"]}-{head[:8]}-{started:%Y%m%d-%H%M%S-%f}'
+    run_dir = state_dir / 'runs' / f'{repo.split("/")[1]}-{number}-{head[:8]}-{started:%Y%m%d-%H%M%S-%f}'
     run_dir.mkdir(parents=True)
+    session = str(uuid.uuid4())
     codex = codex_script()
     settings = run_dir / 'settings.json'
-    settings.write_text(json.dumps(sandbox_settings(repo, pr['number'], run_dir, codex, dry_run),
-                                   ensure_ascii=False, indent=1))
-    run = run_claude(review_prompt(pr['url'], run_dir, codex, dry_run), settings, run_dir)
-    if dry_run:
-        print(f'{run.final_text}\n기록 {run_dir} · 거부 {len(run.denied)}개')
-        return None
-    entry = judge(run, head, attempts + 1)
-    log(state_dir, f'{key} {head[:8]} {entry["status"]} {entry["note"]} · 거부 {len(run.denied)}개 · {run_dir}')
-    if entry['status'] == Status.FAILED:
-        notify(f'{short_name(key)} 리뷰 실패({entry["attempts"]}/{MAX_ATTEMPTS}): {entry["note"]}. 기록 {run_dir}')
+    settings.write_text(json.dumps(sandbox_settings(repo, number, run_dir, codex), ensure_ascii=False, indent=1))
+    start_running(state, state_dir, key, run_dir, session)
+    try:
+        since = prepare_clone(repo, since, head)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        result, denied = failure(f'클론 준비 실패: {failure_detail(error)}'), ()
     else:
-        notify(f'{short_name(key)} {entry["note"]}')
+        run = run_claude(review_prompt(request['url'], since, run_dir, codex), settings, run_dir, session)
+        end_codex_session(review_worktree(repo, number), session, state_dir)
+        result, denied = judge(run, run_dir), run.denied
+    entry = record(request, mode, since=since, runDir=str(run_dir), session=session, attempts=attempt, **result)
+    log(state_dir, f'{key} {head[:8]} {entry["status"]} {entry["note"]} · 거부 {len(denied)}개 · {run_dir}')
+    state['prs'][key] = entry
+    save_state(state_dir, state)
     return entry
 
 
-def judge(run, head, attempts):
-    posted = POSTED_LINE.search(run.final_text)
-    if posted:
-        return record(head, Status.POSTED, attempts, posted.group(0))
-    not_posted = NOT_POSTED_LINE.search(run.final_text)
-    if not_posted:
-        return record(head, Status.SKIPPED, attempts, not_posted.group(0))
-    if run.exit_code is None:
-        reason = f'{REVIEW_TIMEOUT_SECONDS // 60}분 안에 끝나지 않음'
-    elif run.exit_code:
-        reason = f'종료 코드 {run.exit_code}'
-    else:
-        reason = '결과 줄 없음'
-    return record(head, Status.FAILED, attempts, reason)
+def prepare_clone(repo, since, head):
+    """리뷰 전에 ai-review가 쓰는 메인 클론을 받아 두고 최신화한다. since가 head의 조상일 때만 증분 기준으로
+    돌려준다. 강제 push로 조상이 아니거나 옛 커밋이 클론에 없으면 전체를 리뷰한다."""
+    clone = clone_path(repo)
+    if not clone.exists():
+        clone_repo(repo, clone)
+    git(clone, 'fetch', 'origin', '--quiet')
+    if since is None or git(clone, 'merge-base', '--is-ancestor', since, head, check=False).returncode:
+        return None
+    return since
 
 
-def record(sha, status, attempts, note):
-    return {'sha': sha, 'status': status.value, 'attempts': attempts, 'note': note,
-            'at': datetime.datetime.now().isoformat(timespec='seconds')}
+def failure_detail(error):
+    return error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) and error.stderr else str(error)
+
+
+def record(request, mode, **fields):
+    """state.json의 PR 기록 한 건. 칸은 대시보드가 읽는 상태 파일 계약 그대로다."""
+    return {'request': request['request'], 'requester': request['requester'], 'title': request['title'][:300],
+            'url': request['url'], 'mode': mode.value, 'sha': None, 'head': request['head'], 'since': None,
+            'status': Status.SKIPPED.value, 'event': None, 'critical': None, 'info': None, 'runDir': None,
+            'session': None, 'reviewUrl': None, 'attempts': 0, 'note': '', **fields, 'at': now_utc()}
+
+
+def judge(run, run_dir):
+    """마지막 줄이 결과 줄이고 review.json이 같은 event의 올바른 초안이면 초안, 아니면 실패 이유."""
+    lines = run.final_text.strip().splitlines()
+    line = DRAFT_LINE.fullmatch(lines[-1].strip(' `')) if lines else None
+    if line is None:
+        if run.exit_code is None:
+            return failure(f'{REVIEW_TIMEOUT_SECONDS // 60}분 안에 끝나지 않음')
+        return failure(f'종료 코드 {run.exit_code}' if run.exit_code else '결과 줄 없음')
+    try:
+        draft = read_draft(run_dir)
+    except ValueError as error:
+        return failure(str(error))
+    if draft['event'] != line.group(1):
+        return failure(f'결과 줄 event {line.group(1)}와 review.json event {draft["event"]}가 다름')
+    return {'status': Status.DRAFT.value, 'sha': draft['commit_id'], 'event': draft['event'],
+            'critical': int(line.group(2)), 'info': int(line.group(3)), 'note': line.group(0)}
+
+
+def failure(note):
+    return {'status': Status.FAILED.value, 'sha': None, 'event': None, 'critical': None, 'info': None, 'note': note}
+
+
+def read_draft(run_dir):
+    """리뷰 폴더의 review.json. ai-review 3단계 6번의 꼴이 아니면 ValueError."""
+    try:
+        draft = json.loads((run_dir / 'review.json').read_text())
+        valid = (draft['event'] in EVENTS and re.fullmatch(r'[0-9a-f]{40}', draft['commit_id'])
+                 and isinstance(draft['body'], str) and all(is_line_comment(comment) for comment in draft['comments']))
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ValueError(f'review.json을 읽지 못함({error})') from error
+    if not valid:
+        raise ValueError('review.json 꼴이 ai-review 3단계 6번과 다름')
+    return draft
+
+
+def is_line_comment(comment):
+    if not (isinstance(comment['path'], str) and isinstance(comment['line'], int) and comment['side'] == 'RIGHT'
+            and isinstance(comment['body'], str)):
+        return False
+    return 'start_line' not in comment or (isinstance(comment['start_line'], int) and comment['start_side'] == 'RIGHT')
+
+
+def deliver(request, entry, state, state_dir):
+    """자동 레포 초안을 올린다. 올리기 직전에 head가 바뀌었으면 새 head로 한 번 다시 리뷰한다(ai-review 3단계 5번)."""
+    entry = post(request, entry)
+    if is_moved(entry):
+        blocked = check_quota()
+        if blocked:  # 다시 리뷰도 모델을 쓰므로 한도부터 본다. head가 바뀐 자동 초안으로 두면 다음 실행이 다시 시도한다.
+            hold(state, state_dir, *blocked)
+            return {**entry, 'note': '올리기 직전에 새 커밋이 왔고 한도 때문에 다시 리뷰를 다음 실행으로 미룸'}
+        moved = {**request, 'head': entry['head']}
+        entry = post(request, draft_review(moved, Mode.AUTO, entry['attempts'], entry['since'], state, state_dir))
+    if is_moved(entry):
+        return {**entry, 'mode': Mode.DRAFT.value, 'note': '올리기 직전에 새 커밋이 또 와서 초안으로 둠'}
+    return entry
+
+
+def is_moved(entry):
+    return entry['status'] == Status.DRAFT and entry['head'] != entry['sha']
+
+
+def post(request, entry):
+    """초안을 확인한 뒤 올린다. head가 바뀌었으면 올리지 않고 새 head만 적어 돌려준다."""
+    if entry['status'] != Status.DRAFT:
+        return entry
+    pull = view_pull_request(request['repo'], request['number'])
+    if pull['state'] != 'OPEN':
+        return {**entry, 'status': Status.CLOSED.value, 'note': f'PR {pull["state"]}'}
+    if pull['headRefOid'] != entry['sha']:
+        return {**entry, 'head': pull['headRefOid']}
+    try:
+        draft = read_draft(Path(entry['runDir']))
+    except ValueError as error:
+        return {**entry, **failure(str(error))}
+    if any(SECRET_PATTERN.search(text) for text in (draft['body'], *(comment['body'] for comment in draft['comments']))):
+        return {**entry, **failure('초안에 비밀값 꼴 문자열이 있어 올리지 않음')}
+    try:
+        url = submit_review(request['repo'], request['number'], draft)
+    except ReviewRejected as error:
+        return {**entry, **failure(f'게시 거절 {error}')}
+    append_url_log(url)
+    return {**entry, 'status': Status.POSTED.value, 'reviewUrl': url,
+            'note': f'{entry["event"]} 올림 · CRITICAL {entry["critical"]} · INFO {entry["info"]}'}
+
+
+def submit_review(repo, number, draft):
+    """리뷰를 올려 그 주소를 돌려준다. 줄을 찾지 못했다는 422면 줄 코멘트를 본문 끝으로 옮겨 한 번 더 보낸다."""
+    try:
+        return send_review(repo, number, draft)
+    except ReviewRejected as error:
+        if error.status != 422 or 'line' not in str(error).lower():
+            raise
+    moved = '\n'.join(f'- `{comment["path"]}:{comment["line"]}` {comment["body"]}' for comment in draft['comments'])
+    return send_review(repo, number, {**draft, 'body': f'{draft["body"]}\n\n{moved}', 'comments': []})
+
+
+def start_running(state, state_dir, key, run_dir, session):
+    repo, number = key.rsplit('#', 1)
+    state['running'] = {'pid': os.getpid(), 'key': key, 'runDir': str(run_dir),
+                        'worktree': str(review_worktree(repo, number)), 'session': session, 'startedAt': now_utc()}
+    save_state(state_dir, state)
+
+
+def finish(key, entry, state, state_dir):
+    state['prs'][key] = {**entry, 'at': now_utc()}
+    state['running'] = None
+    save_state(state_dir, state)
+    log(state_dir, f'{key} 끝 {entry["status"]} {entry["note"]}')
+    notify(f'{short_name(key)} {NOTICES[entry["status"]].format(**entry, max_attempts=MAX_ATTEMPTS)}')
 
 
 def short_name(key):
     return key.split('/', 1)[1]
 
 
-def review_prompt(url, run_dir, codex, dry_run):
+def now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def now_utc():
+    return now().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def parse_utc(text):
+    return datetime.datetime.strptime(text, '%Y-%m-%dT%H:%M:%S%z')
+
+
+def review_prompt(url, since, run_dir, codex):
+    arguments = f'{url} --draft' + (f' --since {since}' if since else '')
     lines = [
-        '리뷰 봇 실행이다. 사용자가 이 PR의 리뷰를 확인 없이 GitHub에 올리도록 미리 승인했고, 이 실행에는 질문에 답할 사람이 없다.',
+        '리뷰 봇 실행이다. 이 실행은 리뷰 초안만 만들고 GitHub에 올리지 않으며, 질문에 답할 사람이 없다.',
         '1. `~/.claude/CLAUDE.md`와 그 파일의 `@` 줄이 가리키는 파일을 Read하고 따른다.',
-        f'2. `~/.claude/skills/ai-review/SKILL.md`를 Read하고 인자 `{url} --auto`로 수행한다. `{{스크래치}}`는 `{run_dir}`이다.',
+        f'2. `~/.claude/skills/ai-review/SKILL.md`를 Read하고 인자 `{arguments}`로 수행한다. `{{스크래치}}`는 `{run_dir}`이다.',
         '실행 환경: Bash는 허용한 꼴만 돈다. 경로는 따옴표 없는 절대경로로 쓰고, `cd` 대신 `git -C {경로}`를 쓴다.',
+        # 권한 검사는 값을 미리 알 수 없는 셸 변수 사용("$RANGE")과 반복문을 막는다(11-26 권한 시험).
+        '셸 변수를 쓰는 명령과 반복문은 막힌다. `~/.claude/lib/review/diff.md`의 블록도 앞 명령에서 얻은 해시를 글자로 넣어 '
+        '명령마다 따로 실행하고, merge 커밋은 하나씩 `git -C {클론} show --cc`로 보고 출력이 있을 때만 diff 파일 끝에 붙인다.',
     ]
     if codex:
         lines.append(f'Codex 동반 스크립트는 `node {codex} ... --cwd {{작업 디렉토리}}`로 부른다.')
-    if dry_run:
-        lines.append('시험 실행이다: GitHub에 리뷰를 올리지 않는다. 리뷰를 올리는 `gh api` 명령 대신 `{스크래치}/review.json`까지만 쓰고, '
-                     '마지막 줄을 `시험 · {event} · CRITICAL {x} · INFO {y} · {review.json 경로}`로 낸다.')
     return '\n'.join(lines)
 
 
-def sandbox_settings(repo, number, run_dir, codex, dry_run):
-    """이 PR 하나를 읽고 그 PR에만 리뷰 한 건을 올릴 수 있는 권한을 만든다. PR 본문과 코드는 남이 쓴 입력이다."""
+def clone_path(repo):
     owner, name = repo.split('/')
-    clone = HOME / owner.lower() / name  # ai-review lib/review/prepare.md의 메인 클론 위치
-    worktree = clone / '.claude/worktrees' / f'review-{number}'
-    readable = [clone, run_dir, HOME / 'plans', SIMPLE_DESIGN, *instruction_paths()]
+    return HOME / owner.lower() / name  # ai-review lib/review/prepare.md의 메인 클론 위치
+
+
+def review_worktree(repo, number):
+    return clone_path(repo) / '.claude/worktrees' / f'review-{number}'  # 같은 문서 3절의 리뷰 worktree
+
+
+def sandbox_settings(repo, number, run_dir, codex):
+    """이 PR 하나를 읽고 초안을 리뷰 폴더에만 쓸 수 있는 권한을 만든다. PR 본문과 코드는 남이 쓴 입력이라
+    GitHub에 쓰는 권한은 주지 않는다."""
+    clone, worktree = clone_path(repo), review_worktree(repo, number)
+    readable = [clone, run_dir, SIMPLE_DESIGN, *instruction_paths()]
     # 다른 레포는 로컬 클론 대신 GitHub에서 읽는다. 클론 옆에는 비밀값 파일과 개인 작업 폴더가 섞여 있다.
     commands = [
         'gh pr view *', 'gh pr diff *', 'gh pr list *', 'gh search *', 'gh api repos/*', 'gh api user', 'gh api user --jq .login',
@@ -254,17 +607,14 @@ def sandbox_settings(repo, number, run_dir, codex, dry_run):
         *(f'git -C {w} checkout --detach *' for w in spellings(worktree)),
         *(f'git -C {p} {verb}{rest}' for p in (*spellings(clone), *spellings(worktree)) for verb in GIT_READ_VERBS
           for rest in ('', ' *')),
+        *DIFF_PIPE_COMMANDS,
     ]
     deny = [*(f'Read({pattern})' for pattern in SECRET_FILES), *(f'Bash(git * {option}*)' for option in GIT_DENIED_OPTIONS),
             *(f'Bash(gh api repos/* {option}*)' for option in GH_WRITE_OPTIONS)]
     if codex:
         commands.append(f'node {codex} *')
         deny += [f'Bash(node {codex} setup*)', f'Bash(node {codex} * --write*)']
-    if not dry_run:
-        commands += [f'gh api -X POST repos/{repo}/pulls/{number}/reviews --input {p}' for p in spellings(run_dir / 'review.json')]
-        commands += [f'jq -r .html_url {p}' for p in spellings(run_dir / 'posted.json')]
-        commands += [f'tee -a {p}' for p in spellings(URL_LOG)]
-    allow = ['Agent', *(read_rule(path) for path in readable), f'Edit({rule_path(run_dir)}/**)', f'Edit({rule_path(URL_LOG)})',
+    allow = ['Agent', *(read_rule(path) for path in readable), f'Edit({rule_path(run_dir)}/**)',
              *(f'Bash({command})' for command in commands)]
     return {'permissions': {'allow': allow, 'deny': deny}}
 
@@ -298,16 +648,33 @@ def codex_script():
     return scripts[-1] if scripts else None
 
 
+def read_json(path):
+    """다른 프로그램이 쓰는 상태 파일. 없거나 쓰는 중이라 못 읽으면 빈 값이다."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def write_json(path, value):
+    """읽는 쪽이 반쯤 쓴 파일을 보지 않게 임시 파일에 쓴 뒤 이름을 바꾼다."""
+    temporary = path.with_name(f'.{path.name}.review-bot')
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=1))
+    temporary.replace(path)
+
+
+def pause(seconds):
+    time.sleep(seconds)
+
+
 def load_state(state_dir):
     path = state_dir / 'state.json'
-    return json.loads(path.read_text()) if path.exists() else {'prs': {}, 'poll_failures': 0}
+    saved = json.loads(path.read_text()) if path.exists() else {}
+    return {'prs': {}, 'running': None, 'quota': None, 'installedAt': None, 'polledAt': None, 'poll_failures': 0, **saved}
 
 
 def save_state(state_dir, state):
-    path = state_dir / 'state.json'
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=1))
-    temporary.replace(path)
+    write_json(state_dir / 'state.json', state)
 
 
 def log(state_dir, message):
@@ -315,34 +682,84 @@ def log(state_dir, message):
         stream.write(f'{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {message}\n')
 
 
-def list_review_requests(repo):
-    """나에게 직접 요청된(팀 요청 제외) 열린 PR 중 draft가 아닌 것."""
-    return json.loads(gh('pr', 'list', '-R', repo, '--search', 'user-review-requested:@me draft:false',
-                         '--json', 'number,headRefOid,url', '--limit', '100'))
+def append_url_log(url):
+    with URL_LOG.open('a') as stream:
+        stream.write(url + '\n')
+
+
+def fetch_review_request_pages():
+    """나에게 직접 온(팀 요청 제외) 열린 PR 검색 결과 페이지들. 응답에 errors가 있거나 한 페이지라도 실패하면
+    gh가 실패로 끝나 CalledProcessError가 난다."""
+    return json.loads(gh('api', 'graphql', '--paginate', '--slurp', '-f', f'query={REQUEST_QUERY}', '-f', f'q={REQUEST_SEARCH}'))
+
+
+def parse_review_requests(pages, login):
+    """PR마다 나에게 온 마지막 리뷰 요청. 마지막 100개 요청 기록에 나에게 온 것이 없으면 request가 None이다."""
+    requests = []
+    for page in pages:
+        for node in page['data']['search']['nodes']:
+            mine = [event for event in node['timelineItems']['nodes']
+                    if (event['requestedReviewer'] or {}).get('login') == login]
+            last = mine[-1] if mine else {}
+            repo = node['repository']['nameWithOwner']
+            requests.append({'key': f'{repo}#{node["number"]}', 'repo': repo, 'number': node['number'],
+                             'title': node['title'], 'url': node['url'], 'head': node['headRefOid'],
+                             'fork': node['isCrossRepository'], 'request': last.get('createdAt'),
+                             'requester': (last.get('actor') or {}).get('login')})
+    return requests
 
 
 def view_pull_request(repo, number):
-    return json.loads(gh('pr', 'view', str(number), '-R', repo, '--json', 'number,headRefOid,url'))
+    return json.loads(gh('pr', 'view', str(number), '-R', repo, '--json', 'number,headRefOid,url,state,title'))
 
 
 def current_login():
     return gh('api', 'user', '--jq', '.login').strip()
 
 
-def has_review_on(repo, number, head, login):
-    query = f'.[] | select(.user.login == "{login}" and .commit_id == "{head}") | .id'
-    return bool(gh('api', f'repos/{repo}/pulls/{number}/reviews', '--paginate', '--jq', query).strip())
+def last_review_commit(repo, number, login):
+    """내가 그 PR에 마지막으로 단 리뷰의 커밋. 없으면 None."""
+    reviews = my_reviews(repo, number, login)
+    return reviews[-1][0] if reviews else None
 
 
-def gh(*args):
-    return subprocess.run(['gh', *args], env=ENV, capture_output=True, text=True, check=True,
-                          timeout=COMMAND_TIMEOUT_SECONDS).stdout
+def my_reviews(repo, number, login):
+    """내가 그 PR에 단 리뷰들의 (커밋, 주소). 단 순서대로다."""
+    query = f'.[] | select(.user.login == "{login}") | [.commit_id, .html_url] | @tsv'
+    lines = gh('api', f'repos/{repo}/pulls/{number}/reviews', '--paginate', '--jq', query).splitlines()
+    return [tuple(line.split('\t')) for line in lines if line]
 
 
-def run_claude(prompt, settings, run_dir):
-    command = [str(CLAUDE), '-p', prompt, *MODEL_ARGS, '--setting-sources', 'local', '--settings', str(settings),
-               '--strict-mcp-config', '--no-chrome', '--permission-mode', 'dontAsk', '--tools', TOOLS,
-               '--output-format', 'stream-json', '--verbose']
+def send_review(repo, number, draft):
+    """리뷰 한 건을 올려 주소를 돌려준다. 거절되면 응답 본문을 담은 ReviewRejected."""
+    result = run_command(['gh', 'api', '-X', 'POST', f'repos/{repo}/pulls/{number}/reviews', '--input', '-'],
+                         input=json.dumps(draft, ensure_ascii=False), check=False)
+    if result.returncode == 0:
+        return json.loads(result.stdout)['html_url']
+    status = re.search(r'HTTP (\d{3})', result.stderr)
+    raise ReviewRejected(int(status.group(1)) if status else None, (result.stdout or result.stderr).strip()[:500])
+
+
+def run_command(command, input=None, check=True, timeout=COMMAND_TIMEOUT_SECONDS):
+    return subprocess.run(command, input=input, env=ENV, capture_output=True, text=True, check=check, timeout=timeout)
+
+
+def gh(*args, timeout=COMMAND_TIMEOUT_SECONDS):
+    return run_command(['gh', *args], timeout=timeout).stdout
+
+
+def clone_repo(repo, clone):
+    gh('repo', 'clone', repo, str(clone), timeout=GIT_TIMEOUT_SECONDS)
+
+
+def git(clone, *args, check=True):
+    return run_command(['git', '-C', str(clone), *args], check=check, timeout=GIT_TIMEOUT_SECONDS)
+
+
+def run_claude(prompt, settings, run_dir, session):
+    command = [str(CLAUDE), '-p', prompt, *MODEL_ARGS, '--session-id', session, '--setting-sources', 'local',
+               '--settings', str(settings), '--strict-mcp-config', '--no-chrome', '--permission-mode', 'dontAsk',
+               '--tools', TOOLS, '--output-format', 'stream-json', '--verbose']
     transcript = run_dir / 'transcript.jsonl'
     with transcript.open('w') as stream:
         try:
@@ -360,6 +777,22 @@ def run_claude(prompt, settings, run_dir):
             final_text = event.get('result') or final_text
             denied += [f'{d["tool_name"]} {json.dumps(d["tool_input"], ensure_ascii=False)}' for d in event['permission_denials']]
     return ClaudeRun(exit_code, final_text, tuple(denied))
+
+
+def end_codex_session(worktree, session, state_dir):
+    """리뷰가 띄운 Codex broker를 끝낸다. 봇의 claude -p는 플러그인 훅을 돌리지 않아, 리뷰 worktree를 작업 폴더로
+    Codex 플러그인의 SessionEnd 훅을 대신 부른다."""
+    script = codex_script()
+    if script is None:
+        return
+    hook = ['node', str(script.with_name('session-lifecycle-hook.mjs')), 'SessionEnd']
+    try:
+        result = run_command(hook, input=json.dumps({'cwd': str(worktree), 'session_id': session}), check=False)
+    except subprocess.TimeoutExpired:
+        log(state_dir, f'Codex 정리가 {COMMAND_TIMEOUT_SECONDS}초 안에 끝나지 않음: {worktree}')
+        return
+    if result.returncode:
+        log(state_dir, f'Codex 정리 실패({worktree}): {result.stderr.strip()[:300]}')
 
 
 def notify(message):

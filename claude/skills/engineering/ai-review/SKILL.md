@@ -1,14 +1,14 @@
 ---
 name: ai-review
 description: 다른 사람의 PR에 리뷰를 달아 달라고 할 때, PR을 위험도에 맞춘 리뷰어로 리뷰하고 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다. 내 PR을 고치는 리뷰와 GitHub에 올리지 않는 읽기 전용 리뷰에는 쓰지 않는다.
-argument-hint: "[PR URL] [--auto]"
+argument-hint: "[PR URL] [--draft] [--since 커밋]"
 ---
 
 ## 1. 리뷰 준비
 
 코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 스코프 체크·보안 레벨·이슈 리포트는 3단계 초안으로만 보여 준다.
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 인자에 `--since {커밋}`이 있으면 그 커밋을 직전 리뷰의 끝 커밋으로 넘긴다. 단 fetch 뒤 `git -C {클론} merge-base --is-ancestor {커밋} {대상 커밋}`이 0이 아니면(강제 push, 클론에 없는 커밋) 넘기지 않고 전체를 리뷰한다.
 
 → 완료: 그 문서의 완료 기준을 만족했다.
 
@@ -20,7 +20,9 @@ argument-hint: "[PR URL] [--auto]"
 
 ## 3. GitHub 리뷰 올리기
 
-2단계 이슈 리포트에서 남김을 뺀 발견으로 리뷰 한 건을 만들고, 승인받은 뒤 올린다. 인자에 `--auto`가 있으면 사용자가 확인 없이 올리도록 미리 승인한 실행이라 4번을 건너뛴다.
+2단계 이슈 리포트에서 남김을 뺀 발견으로 리뷰 한 건을 만들고, 승인받은 뒤 올린다. 인자에 `--draft`가 있으면 초안만 만드는 리뷰 봇 실행이다. 4번은 올릴 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주기만 하고 묻지 않는다. 5번은 건너뛰고, 6번은 리뷰를 `{스크래치}/review.json`으로 쓰기만 한다(올리지도, URL을 더하지도 않는다).
+
+`--draft`로 만든 세션을 사람이 이어 받아 올리라고 하면 4번 승인부터 이어 간다. 5번에서 headRefOid가 review.json의 `commit_id`와 다르면 그 `commit_id`를 `--since`로 삼아 1단계부터 새 커밋만 리뷰하고, 고친 초안으로 4번 승인을 다시 받는다.
 
 1. event와 달 발견을 정한다.
    - CRITICAL 발견이 있으면 event는 `COMMENT`이고 CRITICAL 발견만 단다.
@@ -54,10 +56,10 @@ argument-hint: "[PR URL] [--auto]"
 
    422로 거절되면 `{스크래치}/posted.json`의 메시지를 읽고 고쳐 다시 올린다. 줄을 찾지 못했다는 줄 코멘트는 리뷰 본문으로 옮긴다. event를 거절하면 event를 `COMMENT`로 바꾸고 거절 이유를 4단계 출력 끝에 붙인다. 그 밖의 거절이면 멈추고 응답을 알린다.
 
-→ 완료: 승인받은 리뷰 한 건이 올라가 그 URL이 `~/pr_reviews/ai-review-urls.txt` 끝 줄에 있고, 달 발견이 모두 줄 코멘트나 리뷰 본문에 들었다. 또는 사용자가 보류했거나 state가 `OPEN`이 아니어서 4단계로 건너뛰었다.
+→ 완료: 승인받은 리뷰 한 건이 올라가 그 URL이 `~/pr_reviews/ai-review-urls.txt` 끝 줄에 있고, 달 발견이 모두 줄 코멘트나 리뷰 본문에 들었다. 또는 사용자가 보류했거나 state가 `OPEN`이 아니어서 4단계로 건너뛰었다. `--draft`면 달 발견이 모두 든 `{스크래치}/review.json`을 썼다.
 
 ## 4. 마무리
 
-`git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지운 뒤, 마지막 출력으로 `{event} · CRITICAL {x} · INFO {y} · {리뷰 URL}` 한 줄만 낸다. x·y는 이슈 리포트에서 남김을 뺀 CRITICAL·INFO 발견 수다. 3단계에서 건너뛰었으면 `올리지 않음 · {사용자 보류 | PR {state}}` 한 줄을 낸다.
+`git -C {클론} worktree remove {작업 디렉토리}`로 리뷰 worktree를 지운 뒤, 마지막 출력으로 `{event} · CRITICAL {x} · INFO {y} · {리뷰 URL}` 한 줄만 낸다. x·y는 이슈 리포트에서 남김을 뺀 CRITICAL·INFO 발견 수다. 3단계에서 건너뛰었으면 `올리지 않음 · {사용자 보류 | PR {state}}` 한 줄을 낸다. `--draft`면 `초안 · {event} · CRITICAL {x} · INFO {y}` 한 줄을 낸다.
 
 → 완료: 리뷰 worktree가 지워졌고 결과 한 줄을 냈다.
