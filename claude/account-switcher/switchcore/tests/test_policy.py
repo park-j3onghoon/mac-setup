@@ -1,8 +1,8 @@
 import unittest
 
-from switchcore.choices import pick
+from switchcore.choices import TERMINALS, pick
 from switchcore.cmux import CmuxTerminal
-from switchcore.policy import Decision, PriorityPolicy
+from switchcore.policy import POLICIES, Decision, PriorityPolicy
 from switchcore.quota import Usage, Window
 
 
@@ -153,9 +153,9 @@ class ChoicesTests(unittest.TestCase):
     def test_a_setting_names_only_a_built_in_policy(self):
         """설정은 repo 안 규칙의 이름만 고를 수 있고, 모르는 이름은 쓸 수 있는 이름을 알려 주며 거부한다."""
         # when
-        chosen = pick('policy', 'priority')
+        chosen = pick('policy', 'priority', POLICIES)
         with self.assertRaises(ValueError) as raised:
-            pick('policy', 'my_rules:Custom')
+            pick('policy', 'my_rules:Custom', POLICIES)
         # then
         self.assertIs(chosen, PriorityPolicy)
         self.assertEqual(str(raised.exception),
@@ -165,9 +165,9 @@ class ChoicesTests(unittest.TestCase):
     def test_a_setting_names_only_a_built_in_terminal(self):
         """터미널도 repo 안 구현의 이름으로만 고른다."""
         # when
-        chosen = pick('terminal', 'cmux')
+        chosen = pick('terminal', 'cmux', TERMINALS)
         with self.assertRaises(ValueError) as raised:
-            pick('terminal', 'tmux')
+            pick('terminal', 'tmux', TERMINALS)
         # then
         self.assertIs(chosen, CmuxTerminal)
         self.assertEqual(str(raised.exception), 'Invalid switcher setting: terminal=tmux (choose from: cmux)')

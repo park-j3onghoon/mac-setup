@@ -9,7 +9,7 @@ class TerminalUnavailable(OSError):
 
 
 class Terminal(Protocol):
-    """A terminal a local setting picks from switchcore/choices.py by name."""
+    """A terminal a local setting picks by name from TERMINALS in switchcore/choices.py."""
 
     def pane_in(self, environment: Mapping[str, str]) -> str | None:
         """The pane a process with this environment runs in; None outside this terminal."""

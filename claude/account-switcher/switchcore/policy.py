@@ -22,7 +22,7 @@ class Decision:
 
 
 class SwitchPolicy(Protocol):
-    """A rule a switcher asks; a local setting picks one of switchcore/choices.py by name."""
+    """A rule a switcher asks; a local setting picks one by name from POLICIES below."""
 
     def choose(self, order: Sequence[str], active: str | None, readings: Mapping[str, Usage],
                now: float) -> Decision:
@@ -110,3 +110,6 @@ def _tiered_poll_seconds(highest, threshold, shortest):
         return shortest
     headroom = threshold - highest
     return next((max(seconds, shortest) for floor, seconds in POLL_TIERS if headroom >= floor), shortest)
+
+
+POLICIES = {'priority': PriorityPolicy, 'strict-priority': StrictPriorityPolicy}

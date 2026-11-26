@@ -16,7 +16,7 @@ from policy import DEFAULT_POLICY, DEFAULT_THRESHOLD, SHORTEST_POLL, UsageUnavai
 from rpc import Rpc
 from state import RUNTIME, load, read_checkpoint, save, snapshot
 from switchcore.choices import pick
-from switchcore.policy import SwitchPolicy
+from switchcore.policy import POLICIES, SwitchPolicy
 
 
 BINARY = Path("/opt/homebrew/bin/codex")
@@ -75,7 +75,7 @@ def load_settings(path=None):
             or not math.isfinite(threshold) or not 1 <= threshold <= 100):
         raise UsageUnavailable("Invalid switcher setting: threshold (a number from 1 to 100)")
     try:
-        policy = pick("policy", value.get("policy", "strict-priority"))(threshold, SHORTEST_POLL)
+        policy = pick("policy", value.get("policy", "strict-priority"), POLICIES)(threshold, SHORTEST_POLL)
     except ValueError as error:
         raise UsageUnavailable(str(error)) from error
     return Settings(homes, threshold, policy)

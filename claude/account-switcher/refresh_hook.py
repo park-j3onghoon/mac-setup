@@ -24,7 +24,7 @@ from refresh import (DEFAULT_TERMINAL, LIMIT_ERROR, SelfRestart, SessionEnded,  
                      SessionUnavailable,
                      hook_ancestors, receipt_name, stuck_sessions, switch_pending)
 from storage import LockBusy, State, SwitcherError, read_json  # noqa: E402
-from switchcore.choices import pick  # noqa: E402
+from switchcore.choices import TERMINALS, pick  # noqa: E402
 
 DEFAULT_STATE = HERE.parents[1] / 'private/claude/account-switcher'
 LOG = 'session-restarts.log'
@@ -118,7 +118,7 @@ def configured_terminal(state):
     """The name and an instance of the terminal config.json names, read here because a turn end
     must not import service.py (its HTTP and TLS modules)."""
     name = state.load('config').get('terminal', DEFAULT_TERMINAL)
-    return name, pick('terminal', name)()
+    return name, pick('terminal', name, TERMINALS)()
 
 
 def record_outcome(state, session_id, outcome):
@@ -181,7 +181,8 @@ def helper(session_id, pane, mode='--helper'):
     # A resume helper waits for the one before it: that one may have just typed the prompt whose
     # turn failed again and started this helper.
     try:
-        terminal = pick('terminal', os.environ.get('CLAUDE_SWITCHER_TERMINAL', DEFAULT_TERMINAL))()
+        name = os.environ.get('CLAUDE_SWITCHER_TERMINAL', DEFAULT_TERMINAL)
+        terminal = pick('terminal', name, TERMINALS)()
         restart = SelfRestart(state, Path.home() / '.claude', session_id, pane, terminal)
         with state.lock(helper_lock(mode, session_id, pane), blocking=resume):
             chain = os.environ.get('CLAUDE_SWITCHER_ANCESTORS')

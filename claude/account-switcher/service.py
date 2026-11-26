@@ -11,8 +11,8 @@ from compatibility import check as check_compatibility
 from macos import KeychainError
 from refresh import DEFAULT_TERMINAL, record_switch
 from storage import LockBusy, SwitcherError, email_key, fingerprint, read_json
-from switchcore.choices import pick
-from switchcore.policy import LONGEST_POLL_SECONDS, Decision
+from switchcore.choices import TERMINALS, pick
+from switchcore.policy import LONGEST_POLL_SECONDS, POLICIES, Decision
 from switchcore.quota import Usage, Window
 
 
@@ -56,9 +56,10 @@ def validate_config(config):
         if (isinstance(value, bool) or not isinstance(value, (int, float))
                 or not math.isfinite(value) or not low <= value <= high):
             raise SwitcherError(f'Invalid switcher setting: {key}')
-    for kind, default in (('policy', DEFAULT_POLICY), ('terminal', DEFAULT_TERMINAL)):
+    for kind, choices, default in (('policy', POLICIES, DEFAULT_POLICY),
+                                   ('terminal', TERMINALS, DEFAULT_TERMINAL)):
         try:
-            pick(kind, config.get(kind, default))
+            pick(kind, config.get(kind, default), choices)
         except ValueError as error:
             raise SwitcherError(str(error)) from error
 
@@ -78,7 +79,7 @@ class Switcher:
         self.config, self.state, self.live = config, state, live
         self.vault, self.api = vault, api
         self.accounts = (config['primary'], config['fallback'])
-        self.policy = pick('policy', config.get('policy', DEFAULT_POLICY))(
+        self.policy = pick('policy', config.get('policy', DEFAULT_POLICY), POLICIES)(
             config['threshold'], config['poll_seconds'])
 
         self._last_preference = None
