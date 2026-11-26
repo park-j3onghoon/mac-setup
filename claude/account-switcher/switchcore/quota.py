@@ -32,16 +32,3 @@ class Window:
 class Usage:
     checked_at: float
     windows: tuple[Window, ...]
-
-    def verified(self, now: float, max_age: float) -> bool:
-        """A fresh reading that reports every window's percentage."""
-        return (bool(self.windows) and 0 <= now - self.checked_at <= max_age
-                and all(w.percent is not None for w in self.windows))
-
-    def available(self, now: float, threshold: float, max_age: float) -> bool:
-        return self.verified(now, max_age) and all(
-            w.percent < threshold
-            and not w.blocked
-            and (w.resets_at is None or w.resets_at > now)
-            for w in self.windows
-        )

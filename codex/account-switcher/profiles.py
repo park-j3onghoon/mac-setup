@@ -12,7 +12,7 @@ import stat
 import threading
 import time
 
-from policy import DEFAULT_POLICY, DEFAULT_THRESHOLD, SHORTEST_POLL, UsageUnavailable
+from policy import DEFAULT_POLICY, DEFAULT_POLICY_NAME, DEFAULT_THRESHOLD, SHORTEST_POLL, UsageUnavailable
 from rpc import Rpc
 from state import RUNTIME, load, read_checkpoint, save, snapshot
 from switchcore.choices import pick
@@ -75,7 +75,7 @@ def load_settings(path=None):
             or not math.isfinite(threshold) or not 1 <= threshold <= 100):
         raise UsageUnavailable("Invalid switcher setting: threshold (a number from 1 to 100)")
     try:
-        policy = pick("policy", value.get("policy", "strict-priority"), POLICIES)(threshold, SHORTEST_POLL)
+        policy = pick("policy", value.get("policy", DEFAULT_POLICY_NAME), POLICIES)(threshold, SHORTEST_POLL)
     except ValueError as error:
         raise UsageUnavailable(str(error)) from error
     return Settings(homes, threshold, policy)

@@ -3,13 +3,14 @@
 import math
 import time
 
-from switchcore.policy import StrictPriorityPolicy
+from switchcore.policy import POLICIES
 from switchcore.quota import Usage, Window
 
 
 DEFAULT_THRESHOLD = 90
 SHORTEST_POLL = 60
-DEFAULT_POLICY = StrictPriorityPolicy(DEFAULT_THRESHOLD, SHORTEST_POLL)
+DEFAULT_POLICY_NAME = "strict-priority"
+DEFAULT_POLICY = POLICIES[DEFAULT_POLICY_NAME](DEFAULT_THRESHOLD, SHORTEST_POLL)
 
 
 class UsageUnavailable(ValueError):
@@ -54,17 +55,22 @@ def to_usage(used_percent, checked_at):
     return Usage(checked_at, (Window("codex", used_percent, None),))
 
 
+def account_usage(account):
+    """The usage a saved state.snapshot holds, or None without one."""
+    return to_usage(account["used_percent"], account["observed_at"]) if account else None
+
+
 def is_available(account, policy, now):
     """Whether a profile with this state.snapshot may be switched to under the rule."""
-    return policy.available(to_usage(account["used_percent"], account["observed_at"]), now)
+    return policy.available(account_usage(account), now)
 
 
-def choose(usages, preferred="company", policy=DEFAULT_POLICY, now=None):
+def choose(usages, preferred="company", policy=DEFAULT_POLICY):
     """The profile to use from fresh used percentages; UsageUnavailable when the rule decides none."""
     if preferred not in ("company", "personal"):
         raise UsageUnavailable("Unknown preferred account")
     order = ("personal", "company") if preferred == "personal" else ("company", "personal")
-    now = time.time() if now is None else now
+    now = time.time()
     readings = {name: to_usage(used, now) for name, used in usages.items()}
     target = policy.choose(order, None, readings, now).target
     if target is None:

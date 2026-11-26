@@ -150,27 +150,17 @@ class PolicyTests(unittest.TestCase):
 
 
 class ChoicesTests(unittest.TestCase):
-    def test_a_setting_names_only_a_built_in_policy(self):
-        """설정은 repo 안 규칙의 이름만 고를 수 있고, 모르는 이름은 쓸 수 있는 이름을 알려 주며 거부한다."""
-        # when
-        chosen = pick('policy', 'priority', POLICIES)
-        with self.assertRaises(ValueError) as raised:
-            pick('policy', 'my_rules:Custom', POLICIES)
-        # then
-        self.assertIs(chosen, PriorityPolicy)
-        self.assertEqual(str(raised.exception),
-                         'Invalid switcher setting: policy=my_rules:Custom '
-                         '(choose from: priority, strict-priority)')
-
-    def test_a_setting_names_only_a_built_in_terminal(self):
-        """터미널도 repo 안 구현의 이름으로만 고른다."""
-        # when
-        chosen = pick('terminal', 'cmux', TERMINALS)
-        with self.assertRaises(ValueError) as raised:
-            pick('terminal', 'tmux', TERMINALS)
-        # then
-        self.assertIs(chosen, CmuxTerminal)
-        self.assertEqual(str(raised.exception), 'Invalid switcher setting: terminal=tmux (choose from: cmux)')
+    def test_a_setting_names_only_a_built_in_implementation(self):
+        """설정은 repo 안 구현의 이름만 고를 수 있고, 모르는 이름은 쓸 수 있는 이름을 알려 주며 거부한다."""
+        cases = [('policy', POLICIES, 'priority', PriorityPolicy, 'my_rules:Custom', 'priority, strict-priority'),
+                 ('terminal', TERMINALS, 'cmux', CmuxTerminal, 'tmux', 'cmux')]
+        for kind, choices, name, chosen, unknown, names in cases:
+            with self.subTest(kind=kind):
+                self.assertIs(pick(kind, name, choices), chosen)
+                with self.assertRaises(ValueError) as raised:
+                    pick(kind, unknown, choices)
+                self.assertEqual(str(raised.exception),
+                                 f'Invalid switcher setting: {kind}={unknown} (choose from: {names})')
 
 
 if __name__ == '__main__':

@@ -22,7 +22,8 @@ class Decision:
 
 
 class SwitchPolicy(Protocol):
-    """A rule a switcher asks; a local setting picks one by name from POLICIES below."""
+    """A rule a switcher asks. A local setting picks one by name from POLICIES below, and the
+    switcher builds it as cls(threshold, shortest_poll)."""
 
     def choose(self, order: Sequence[str], active: str | None, readings: Mapping[str, Usage],
                now: float) -> Decision:
@@ -36,6 +37,11 @@ class SwitchPolicy(Protocol):
         """Seconds until the next usage lookup, from the active account's last reading."""
 
 
+def poll_interval(policy: SwitchPolicy, usage: Usage | None) -> float:
+    """Seconds until the next usage lookup under any rule, never past LONGEST_POLL_SECONDS."""
+    return min(policy.poll_seconds(usage), LONGEST_POLL_SECONDS)
+
+
 class PriorityPolicy:
     """The first account a fresh reading shows below the threshold on every window.
 
@@ -44,8 +50,10 @@ class PriorityPolicy:
     switched accounts every minute or two (36 switches, 2026-11-13 16:47~17:38).
     """
 
-    def __init__(self, threshold, shortest_poll, max_age=90):
-        self.threshold, self.shortest_poll, self.max_age = threshold, shortest_poll, max_age
+    max_age = 90  # seconds a reading stays verified
+
+    def __init__(self, threshold, shortest_poll):
+        self.threshold, self.shortest_poll = threshold, shortest_poll
 
     def choose(self, order, active, readings, now):
         primary, *fallbacks = order
@@ -53,7 +61,7 @@ class PriorityPolicy:
         known_block = (reading is not None and 0 <= now - reading.checked_at <= self.max_age and
                        any((w.blocked or (w.percent is not None and w.percent >= self.threshold))
                            and (w.resets_at is None or w.resets_at > now) for w in reading.windows))
-        if reading is None or (not reading.verified(now, self.max_age) and not known_block):
+        if reading is None or (not self.verified(reading, now) and not known_block):
             return Decision(active, 'primary_unverified')
         if self.available(reading, now):
             return Decision(primary, 'primary_available')
@@ -64,10 +72,17 @@ class PriorityPolicy:
         return Decision(None, 'no_verified_capacity')
 
     def available(self, usage, now):
-        return usage.available(now, self.threshold, self.max_age)
+        return self.verified(usage, now) and all(
+            w.percent < self.threshold and not w.blocked and (w.resets_at is None or w.resets_at > now)
+            for w in usage.windows)
 
     def poll_seconds(self, usage):
-        return _tiered_poll_seconds(_highest_percent(usage), self.threshold, self.shortest_poll)
+        return _tiered_poll_seconds(usage, self.threshold, self.shortest_poll)
+
+    def verified(self, usage, now):
+        """A reading from the last max_age seconds that reports every window's percentage."""
+        return (bool(usage.windows) and 0 <= now - usage.checked_at <= self.max_age
+                and all(w.percent is not None for w in usage.windows))
 
 
 class StrictPriorityPolicy:
@@ -95,20 +110,15 @@ class StrictPriorityPolicy:
             w.percent is not None and w.percent < self.threshold and not w.blocked for w in usage.windows)
 
     def poll_seconds(self, usage):
-        return _tiered_poll_seconds(_highest_percent(usage), self.threshold, self.shortest_poll)
+        return _tiered_poll_seconds(usage, self.threshold, self.shortest_poll)
 
 
-def _highest_percent(usage):
-    if usage is None:
-        return None
-    return max((w.percent for w in usage.windows if w.percent is not None), default=None)
-
-
-def _tiered_poll_seconds(highest, threshold, shortest):
-    """Look up usage less often the further the active account is from the threshold."""
-    if highest is None:
+def _tiered_poll_seconds(usage, threshold, shortest):
+    """Look up usage less often the further the highest window is from the threshold."""
+    percents = [w.percent for w in usage.windows if w.percent is not None] if usage is not None else []
+    if not percents:
         return shortest
-    headroom = threshold - highest
+    headroom = threshold - max(percents)
     return next((max(seconds, shortest) for floor, seconds in POLL_TIERS if headroom >= floor), shortest)
 
 

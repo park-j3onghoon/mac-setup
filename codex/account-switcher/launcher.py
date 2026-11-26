@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-from policy import UsageUnavailable, choose, is_available
+from policy import UsageUnavailable, choose
 from rpc import version_from_initialize
 from runtime import raise_file_limit, server_package_cache
 from profiles import BINARY, DEFAULT_SETTINGS, credentials, load_settings, registered_accounts
@@ -267,7 +267,7 @@ def update_clis():
     return int(failed or not confirmed)
 
 
-def direct_usages(state, settings=DEFAULT_SETTINGS):
+def direct_usages(state, settings):
     homes = settings.homes
     bindings = registered_accounts(homes, RUNTIME, state)
     current = {}
@@ -294,8 +294,11 @@ def direct_usages(state, settings=DEFAULT_SETTINGS):
             fresh = record(saved, sample)
             save(dict(fresh, account_id=current[name]), path)
         usages[name] = fresh['used_percent']
-        if is_available(fresh, settings.policy, time.time()):
-            break
+        try:
+            choose(usages, policy=settings.policy)
+        except UsageUnavailable:
+            continue  # the rule needs the next account's reading
+        break
     return usages
 
 

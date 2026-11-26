@@ -852,7 +852,7 @@ class MonitorTest(unittest.TestCase):
     def test_immediate_request_survives_failure_and_is_consumed_on_success(self):
         """즉시 전환은 일시 오류 뒤 재시도까지 유지하고 성공 뒤에는 자동 규칙으로 돌아온다."""
         clock, forces = [1000], []
-        runtime = Mock(active='company')
+        runtime = Mock(active='company', policy=DEFAULT_POLICY)
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] >= 1183
         stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 61)
@@ -884,7 +884,7 @@ class MonitorTest(unittest.TestCase):
                 stop = Mock()
                 stop.is_set.side_effect = lambda: clock[0] > 1060
                 stop.wait.side_effect = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
-                runtime = Mock(active='company')
+                runtime = Mock(active='company', policy=DEFAULT_POLICY)
                 runtime.select.side_effect = lambda *args, **kwargs: selected.append(clock[0]) or False
                 fresh = {'company': usage(95, 9999, 1000), 'personal': usage(10, 9999, 1000)}
                 state = {}
@@ -907,7 +907,7 @@ class MonitorTest(unittest.TestCase):
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] > 1122
         stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 2)
-        runtime = Mock(active="company")
+        runtime = Mock(active="company", policy=DEFAULT_POLICY)
         runtime.select.return_value = True
         observed_at, polled_at = [], []
         runtime.observe_account.side_effect = lambda: observed_at.append(clock[0])
@@ -1047,7 +1047,7 @@ class MonitorTest(unittest.TestCase):
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] > 1060
         stop.wait.side_effect = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
-        runtime = Mock(active='company')
+        runtime = Mock(active='company', policy=DEFAULT_POLICY)
         runtime.select.return_value = True
         fresh = {'company': usage(10, 9999, 1000), 'personal': usage(10, 9999, 1000)}
         written = []
@@ -1067,7 +1067,7 @@ class MonitorTest(unittest.TestCase):
         stop = Mock()
         stop.is_set.side_effect = lambda: clock[0] >= 1000 + len(batches) * 61
         stop.wait.side_effect = lambda _: clock.__setitem__(0, clock[0] + 61)
-        runtime = Mock(active=None)
+        runtime = Mock(active=None, policy=policy)
         runtime.process.poll.return_value = None
         selected = []
 
@@ -1082,7 +1082,7 @@ class MonitorTest(unittest.TestCase):
              patch('supervisor.poll_delay', return_value=60), \
              patch("supervisor.collect", side_effect=batches), patch("supervisor.save"), \
              patch("supervisor.preference", return_value=requested or {}):
-            monitor(runtime, {}, stop, state, policy)
+            monitor(runtime, {}, stop, state)
         self.runtime = runtime
         return selected, state
 

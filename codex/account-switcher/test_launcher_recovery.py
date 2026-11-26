@@ -1,8 +1,7 @@
 """Recovery contracts at the command and service boundaries."""
-import base64
 from contextlib import ExitStack, redirect_stderr
+from dataclasses import replace
 import io
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -13,9 +12,10 @@ from unittest.mock import patch, Mock
 import launcher
 import service
 import state
-from policy import DEFAULT_POLICY, UsageUnavailable
+from policy import UsageUnavailable
 from profiles import DEFAULT_SETTINGS, Settings
 from switchcore.policy import StrictPriorityPolicy
+from test_profiles import login
 
 
 class LauncherRecoveryTests(unittest.TestCase):
@@ -67,18 +67,12 @@ class DirectSelectionTests(unittest.TestCase):
         self.homes = {name: self.home / name for name in ('company', 'personal')}
         for name, path in self.homes.items():
             path.mkdir()
-            self.login(name, name)
+            login(path, name)
         stack = ExitStack()
         self.addCleanup(stack.close)
         stack.enter_context(patch.object(launcher, 'RUNTIME', self.home))
-        self.settings = Settings(self.homes, 90, DEFAULT_POLICY)
+        self.settings = replace(DEFAULT_SETTINGS, homes=self.homes)
         stack.enter_context(patch.object(launcher, 'load_settings', return_value=self.settings))
-
-    def login(self, name, workspace):
-        claims = {'exp': 1e12, 'https://api.openai.com/auth': {
-            'chatgpt_account_id': workspace, 'chatgpt_plan_type': 'fixture'}}
-        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode()
-        (self.homes[name] / 'auth.json').write_text(json.dumps({'tokens': {'access_token': f'x.{payload}.x'}}))
 
     def sample(self, name, used, observed=1, **additional):
         return {'account_id': name, 'used_percent': used, 'observed_at': observed, 'windows': {}, **additional}
@@ -90,7 +84,7 @@ class DirectSelectionTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in read.call_args_list], [self.homes['company']])
 
     def test_known_duplicate_rejected_without_quota_call(self):
-        self.login('personal', 'company')
+        login(self.homes['personal'], 'company')
         with patch.object(launcher, 'read_snapshot') as read, self.assertRaisesRegex(UsageUnavailable, 'duplicated'):
             launcher.direct_usages({}, self.settings)
         read.assert_not_called()
@@ -107,7 +101,7 @@ class DirectSelectionTests(unittest.TestCase):
     def test_direct_rejects_unregistered_workspace_change(self):
         with patch.object(launcher, 'read_snapshot', return_value=self.sample('company', 1)):
             self.assertEqual(launcher.direct_usages({}, self.settings), {'company': 1})
-            self.login('company', 'replacement')
+            login(self.homes['company'], 'replacement')
             with self.assertRaisesRegex(UsageUnavailable, 'needs registration'):
                 launcher.direct_usages({}, self.settings)
 

@@ -14,7 +14,7 @@ class MetadataRegressionTests(unittest.TestCase):
         response = {'five_hour': {'utilization': 5}, 'limits': [
             {'kind': 'session', 'percent': 100}, {'kind': 'weekly_all', 'percent': 35}]}
         reading = parse_usage(response, 1000)
-        self.assertFalse(reading.available(1000, 90, 90))
+        self.assertFalse(PriorityPolicy(90, 60).available(reading, 1000))
         self.assertEqual(len({window.name for window in reading.windows}), 2)
 
     def test_server_backoff_is_a_lower_bound(self):

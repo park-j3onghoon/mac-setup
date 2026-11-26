@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import launcher
 from policy import UsageUnavailable
+from profiles import DEFAULT_SETTINGS
 from rpc import RpcRejected
 import supervisor
 from runtime import Runtime
@@ -157,13 +158,13 @@ class UpdateTest(unittest.TestCase):
         state = {"runtime_pid": 101, "runtime_pid_start": "old", "upgrade_status": "draining", "restore_account": "personal"}
         calls = []
 
-        def monitor(runtime, profiles, stop, state, policy):
+        def monitor(runtime, profiles, stop, state):
             calls.append((runtime.pid, state.get("upgrade_status"), state["runtime_version"]))
             return runtime is old
 
         with patch("supervisor.Runtime", side_effect=[old, new]), patch("supervisor.save"), \
                 patch("supervisor.monitor", side_effect=monitor):
-            supervisor.run_runtimes({}, Mock(**{"is_set.return_value": False}), state)
+            supervisor.run_runtimes({}, Mock(**{"is_set.return_value": False}), state, DEFAULT_SETTINGS)
 
         self.assertEqual(calls, [(101, "draining", "0.169.0"), (202, None, "0.170.0")])
         new.start.assert_called_once_with(restore_account="personal")

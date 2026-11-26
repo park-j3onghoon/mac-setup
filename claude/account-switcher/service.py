@@ -12,11 +12,11 @@ from macos import KeychainError
 from refresh import DEFAULT_TERMINAL, record_switch
 from storage import LockBusy, SwitcherError, email_key, fingerprint, read_json
 from switchcore.choices import TERMINALS, pick
-from switchcore.policy import LONGEST_POLL_SECONDS, POLICIES, Decision
+from switchcore.policy import POLICIES, Decision, poll_interval
 from switchcore.quota import Usage, Window
 
 
-DEFAULT_POLICY = 'priority'
+DEFAULT_POLICY_NAME = 'priority'
 
 
 def matches_identity(account, actual):
@@ -56,7 +56,7 @@ def validate_config(config):
         if (isinstance(value, bool) or not isinstance(value, (int, float))
                 or not math.isfinite(value) or not low <= value <= high):
             raise SwitcherError(f'Invalid switcher setting: {key}')
-    for kind, choices, default in (('policy', POLICIES, DEFAULT_POLICY),
+    for kind, choices, default in (('policy', POLICIES, DEFAULT_POLICY_NAME),
                                    ('terminal', TERMINALS, DEFAULT_TERMINAL)):
         try:
             pick(kind, config.get(kind, default), choices)
@@ -79,7 +79,7 @@ class Switcher:
         self.config, self.state, self.live = config, state, live
         self.vault, self.api = vault, api
         self.accounts = (config['primary'], config['fallback'])
-        self.policy = pick('policy', config.get('policy', DEFAULT_POLICY), POLICIES)(
+        self.policy = pick('policy', config.get('policy', DEFAULT_POLICY_NAME), POLICIES)(
             config['threshold'], config['poll_seconds'])
 
         self._last_preference = None
@@ -580,7 +580,7 @@ class Switcher:
         # A failed lookup keeps the last windows (marked stale); they still tell how close the
         # account is, so 429 answers do not shrink the interval.
         active = saved_usage(runtime.get('usage', {}).get(runtime.get('active')))
-        wake = now + min(self.policy.poll_seconds(active), LONGEST_POLL_SECONDS)
+        wake = now + poll_interval(self.policy, active)
         if 'saved_credential_unavailable' in runtime.get('errors', {}).values():
             wake = min(wake, now + 60)
         if (runtime.get('target') and runtime['target'] != runtime.get('active')

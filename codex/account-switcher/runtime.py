@@ -67,7 +67,7 @@ def raise_file_limit():
         resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
 
 
-def prepare_home(home=RUNTIME, shared=Path.home() / ".codex", config=DEFAULT_SETTINGS.server_config):
+def prepare_home(home=RUNTIME, shared=Path.home() / ".codex", *, config):
     home = Path(home)
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     home.chmod(0o700)

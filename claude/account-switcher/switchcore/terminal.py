@@ -9,7 +9,8 @@ class TerminalUnavailable(OSError):
 
 
 class Terminal(Protocol):
-    """A terminal a local setting picks by name from TERMINALS in switchcore/choices.py."""
+    """A terminal a local setting picks by name from TERMINALS in switchcore/choices.py; the restart
+    helper builds it as cls()."""
 
     def pane_in(self, environment: Mapping[str, str]) -> str | None:
         """The pane a process with this environment runs in; None outside this terminal."""

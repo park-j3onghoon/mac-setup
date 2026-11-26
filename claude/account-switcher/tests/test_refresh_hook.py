@@ -10,10 +10,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 import refresh_hook
-from refresh import SelfRestart
 from refresh import SessionEnded
 from storage import State, SwitcherError
-from switchcore.cmux import CmuxTerminal
 
 # Before setUp replaces it, so the once-a-minute rule itself can be tested.
 SWEEP_IF_DUE = refresh_hook.sweep_if_due
@@ -62,13 +60,11 @@ class HookTests(unittest.TestCase):
 
         try:
             with patch.object(State, 'lock', first_lock), patch.object(refresh_hook, 'SelfRestart') as restart:
-                receipt = SelfRestart(None, self.state_dir, 'fixture', 'surface', CmuxTerminal()).receipt
-                restart.return_value.receipt = receipt
                 restart.return_value.run.return_value = 'restarted'
                 refresh_hook.helper('fixture', 'surface')
 
             with self.assertRaises(SwitcherError):
-                with original(State(self.state_dir), 'restart-' + receipt.removeprefix('handoff-')):
+                with original(State(self.state_dir), refresh_hook.helper_lock('--helper', 'fixture', 'surface')):
                     pass
         finally:
             for holder in holders:

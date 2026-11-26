@@ -18,7 +18,6 @@ import refresh
 import refresh_hook
 from service import Switcher
 from storage import SwitcherError
-from switchcore.cmux import CmuxTerminal
 from switcher import enroll, measure_and_review, run_app_command, tick_once
 from test_measurement import event, snapshot
 from test_refresh import FakeRunner, SESSION, SessionFixture, limit_error, task_notification
@@ -356,9 +355,8 @@ class BoundaryTests(unittest.TestCase):
     def test_restart_helper_distinguishes_invalid_state_from_another_owner(self):
         """상태 오류는 결과를 남기고 실제 중복 실행은 별도의 오류 결과를 남기지 않는다."""
         self.state.save('session_refresh', [])
-        with patch('refresh_hook.state_dir', return_value=self.state.root), patch('refresh_hook.Path.home', return_value=self.root), patch('switchcore.cmux.find_cmux', return_value='/fixture'):
-            target = refresh.SelfRestart(self.state, self.root, 'session', 'surface', CmuxTerminal())
-            with self.state.lock('restart-' + target.receipt.removeprefix('handoff-')):
+        with patch('refresh_hook.state_dir', return_value=self.state.root), patch('refresh_hook.Path.home', return_value=self.root):
+            with self.state.lock(refresh_hook.helper_lock('--helper', 'session', 'surface')):
                 refresh_hook.helper('session', 'surface')
             log = self.state.root / refresh_hook.LOG
             self.assertFalse(log.exists())

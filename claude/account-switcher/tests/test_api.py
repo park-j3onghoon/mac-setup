@@ -9,6 +9,7 @@ from urllib.request import Request
 from unittest.mock import patch
 
 from api import Anthropic, ApiError, NoRedirect, parse_usage
+from switchcore.policy import PriorityPolicy
 from helpers import NOW
 from storage import SwitcherError, directory_lock
 from pathlib import Path
@@ -25,7 +26,7 @@ class ApiTests(unittest.TestCase):
         # when
         reading = parse_usage(data, NOW)
         # then
-        self.assertTrue(reading.available(NOW, 95, 90))
+        self.assertTrue(PriorityPolicy(95, 60).available(reading, NOW))
         self.assertEqual(len(reading.windows), 2)
 
     def test_refresh_failure_only_retains_a_recognized_oauth_error(self):
@@ -47,7 +48,7 @@ class ApiTests(unittest.TestCase):
         # when
         reading = parse_usage(data, NOW)
         # then
-        self.assertFalse(reading.available(NOW, 95, 90))
+        self.assertFalse(PriorityPolicy(95, 60).available(reading, NOW))
 
     def test_parses_server_reset_time(self):
         """초기화 시각을 로컬 추측이 아닌 서버 값으로 보존한다."""
@@ -76,7 +77,7 @@ class ApiTests(unittest.TestCase):
         # when
         reading = parse_usage(data, NOW)
         # then
-        self.assertFalse(reading.available(NOW, 95, 90))
+        self.assertFalse(PriorityPolicy(95, 60).available(reading, NOW))
 
     def test_null_quota_remains_unknown(self):
         """서버의 null 사용률을 0%로 바꾸지 않는다."""
@@ -85,7 +86,7 @@ class ApiTests(unittest.TestCase):
         # when
         reading = parse_usage(data, NOW)
         # then
-        self.assertFalse(reading.available(NOW, 95, 90))
+        self.assertFalse(PriorityPolicy(95, 60).available(reading, NOW))
 
     def test_redirect_does_not_forward_authorization(self):
         """인증 요청이 다른 주소로 리다이렉트되면 따라가지 않는다."""

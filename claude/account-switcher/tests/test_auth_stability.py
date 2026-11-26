@@ -75,7 +75,7 @@ class AuthStabilityTests(unittest.TestCase):
         with self.assertRaises(ApiError):
             self.app.verify_identity(self.app.vault.read(self.primary), NOW)
         reading = self.app.read_usage(self.primary, self.app.vault.read(self.primary)['oauth'], NOW)
-        self.assertTrue(reading.verified(NOW, 90))
+        self.assertTrue(PriorityPolicy(95, 60).verified(reading, NOW))
 
     def test_read_only_tick_does_not_set_writer_heartbeat(self):
         self.app.writer_daemon = True
@@ -97,17 +97,14 @@ class AuthStabilityTests(unittest.TestCase):
         with self.assertRaises(SwitcherError):
             validate_config(dict(self.app.config, fallback=self.primary.replace('example', 'EXAMPLE')))
 
-    def test_policy_setting_names_a_built_in_rule_or_is_left_out(self):
-        """설정에 규칙 이름이 없으면 지금 규칙이고, repo에 없는 이름은 쓸 수 있는 이름과 함께 거부한다."""
-        validate_config(dict(self.app.config, policy='priority'))
-        with self.assertRaisesRegex(SwitcherError, r'policy=rules\.py:Mine \(choose from: priority, '):
-            validate_config(dict(self.app.config, policy='rules.py:Mine'))
-
-    def test_terminal_setting_names_a_built_in_terminal_or_is_left_out(self):
-        """설정에 터미널 이름이 없으면 cmux이고, repo에 없는 터미널은 쓸 수 있는 이름과 함께 거부한다."""
-        validate_config(dict(self.app.config, terminal='cmux'))
-        with self.assertRaisesRegex(SwitcherError, r'terminal=tmux \(choose from: cmux\)'):
-            validate_config(dict(self.app.config, terminal='tmux'))
+    def test_policy_and_terminal_settings_name_built_in_implementations_or_are_left_out(self):
+        """규칙과 터미널 키는 없어도 되고 repo 안 이름만 받는다. 거부 문구는 ChoicesTests가 맡는다."""
+        self.assertNotIn('policy', self.app.config)
+        validate_config(self.app.config)
+        validate_config(dict(self.app.config, policy='strict-priority', terminal='cmux'))
+        for key, name in (('policy', 'rules.py:Mine'), ('terminal', 'tmux')):
+            with self.subTest(key=key), self.assertRaises(SwitcherError):
+                validate_config(dict(self.app.config, **{key: name}))
 
     def test_mixed_case_domain_uses_existing_saved_account_keys(self):
         actual = self.app.live.read()[1]

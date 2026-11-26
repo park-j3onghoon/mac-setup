@@ -8,8 +8,8 @@ import signal
 import threading
 import time
 
-from policy import DEFAULT_POLICY, UsageUnavailable, choose, is_available
-from profiles import DEFAULT_SETTINGS, Profile, RegistrationMismatch, load_settings, registered_accounts
+from policy import UsageUnavailable, choose, is_available
+from profiles import Profile, RegistrationMismatch, load_settings, registered_accounts
 from runtime import Runtime, prepare_home, server_package_cache
 from service import process_start
 from state import (DRAIN_REPORT, RUNTIME, STATE_FILE, changed_file, known_windows, load, poll_delay,
@@ -56,7 +56,9 @@ def check_upgrade(runtime, state):
         state.pop("upgrade_status", None)
 
 
-def monitor(runtime, profiles, stop, state, policy=DEFAULT_POLICY):
+def monitor(runtime, profiles, stop, state):
+    policy = runtime.policy
+
     def usable(account):
         return is_available(account, policy, time.time())
 
@@ -287,7 +289,7 @@ def monitor(runtime, profiles, stop, state, policy=DEFAULT_POLICY):
         stop.wait(2)
 
 
-def run_runtimes(profiles, stop, state, settings=DEFAULT_SETTINGS):
+def run_runtimes(profiles, stop, state, settings):
     while not stop.is_set():
         runtime = Runtime(profiles, policy=settings.policy, server_config=settings.server_config)
         try:
@@ -301,7 +303,7 @@ def run_runtimes(profiles, stop, state, settings=DEFAULT_SETTINGS):
                 state.pop("restore_account", None)
             state.update(runtime_pid=runtime.pid, runtime_pid_start=runtime.pid_start,
                          runtime_version=runtime.client.version)
-            if not monitor(runtime, profiles, stop, state, settings.policy):
+            if not monitor(runtime, profiles, stop, state):
                 return
         finally:
             runtime.close()

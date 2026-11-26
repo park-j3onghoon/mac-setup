@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import launcher
-from policy import DEFAULT_POLICY, UsageUnavailable
+from policy import UsageUnavailable
 import profiles
 import rpc
 import runtime
@@ -214,7 +215,7 @@ class SwitcherBoundaryTest(unittest.TestCase):
 
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch.object(launcher, 'load_settings', return_value=profiles.Settings(homes, 90, DEFAULT_POLICY)),
+            patch.object(launcher, 'load_settings', return_value=replace(profiles.DEFAULT_SETTINGS, homes=homes)),
             patch.object(launcher, 'RUNTIME', self.home),
             patch.object(launcher, 'raise_file_limit'),
             patch.object(launcher, 'load', side_effect=read),

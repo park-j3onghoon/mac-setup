@@ -1,7 +1,7 @@
 """Look up the built-in implementation a local setting names. Only names in the given table can be
 chosen: both switchers hold two accounts' tokens, so a setting never loads code from outside the repo.
-Each kind keeps its table beside its implementations (POLICIES in policy.py), so a turn-end hook that
-picks a terminal does not load the switching rules."""
+TERMINALS is here and POLICIES at the end of policy.py, so a turn-end hook that picks a terminal does
+not load the switching rules."""
 
 from .cmux import CmuxTerminal
 

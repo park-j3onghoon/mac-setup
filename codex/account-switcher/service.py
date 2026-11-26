@@ -15,7 +15,6 @@ import tempfile
 import time
 
 from policy import UsageUnavailable
-from profiles import DEFAULT_SETTINGS
 from runtime import SOCKET, peer_process, prepare_home, process_start
 from state import RUNTIME, load
 
@@ -172,7 +171,7 @@ def install_registration(destination, watch):
     pending.unlink(missing_ok=True)
 
 
-def ensure(settings=DEFAULT_SETTINGS):
+def ensure(settings):
     prepare_home(config=settings.server_config)
     install_service()
     started_at = time.time()

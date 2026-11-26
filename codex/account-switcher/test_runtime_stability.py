@@ -289,7 +289,7 @@ class RuntimeStabilityTest(unittest.TestCase):
         fixed.write_text('company')
         shared.mkdir()
         (shared / 'config.toml').write_text('old')
-        runtime.prepare_home(shared, self.home, fixed)
+        runtime.prepare_home(shared, self.home, config=fixed)
         self.assertEqual((shared / 'config.toml').readlink(), fixed)
         self.assertEqual(next(shared.glob('previous-config-*/config.toml')).read_text(), 'old')
 

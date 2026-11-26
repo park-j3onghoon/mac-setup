@@ -47,7 +47,7 @@ STATE = 'session_refresh'
 # Access tokens last 8 hours (2026-11-16: refreshed at 04:50 and 08:27, expiring at 12:50 and
 # 16:27); after that every session reads the live login on its next request.
 REFRESH_WINDOW_SECONDS = 8 * 3600
-# Longer than the service's longest usage lookup interval, 9 minutes (policy.POLL_TIERS).
+# Longer than the longest usage lookup interval (switchcore.policy.LONGEST_POLL_SECONDS).
 SWITCH_TIMEOUT_SECONDS = 900
 READY_TIMEOUT_SECONDS = 600
 RESTART_TIMEOUT_SECONDS = 120
