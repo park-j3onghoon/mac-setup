@@ -89,8 +89,8 @@ class StrictPriorityPolicy:
     """The first account in order below the threshold, read in the same cycle.
 
     A failed lookup of an earlier account decides nothing, so the current login stays; with every
-    account at the threshold the preferred one stays the target (the Codex switcher's rule, codex
-    README 「전환과 초기화」).
+    account at the threshold the active account stays, and the preferred one without an active
+    account (the Codex switcher's rule, codex README 「전환과 초기화」).
     """
 
     def __init__(self, threshold, shortest_poll):
@@ -103,7 +103,7 @@ class StrictPriorityPolicy:
                 return Decision(None, 'unverified')
             if self.available(reading, now):
                 return Decision(name, 'available')
-        return Decision(order[0], 'all_at_threshold')
+        return Decision(active or order[0], 'all_at_threshold')
 
     def available(self, usage, now):
         return bool(usage.windows) and all(

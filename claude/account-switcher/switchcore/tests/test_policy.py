@@ -2,7 +2,7 @@ import unittest
 
 from switchcore.choices import TERMINALS, pick
 from switchcore.cmux import CmuxTerminal
-from switchcore.policy import POLICIES, Decision, PriorityPolicy
+from switchcore.policy import POLICIES, Decision, PriorityPolicy, StrictPriorityPolicy
 from switchcore.quota import Usage, Window
 
 
@@ -147,6 +147,15 @@ class PolicyTests(unittest.TestCase):
                    policy.available(usage(20, checked=NOW - 91), NOW)]
         # then
         self.assertEqual(results, [True, False, False])
+
+    def test_strict_priority_keeps_the_active_account_when_every_account_is_at_the_threshold(self):
+        """strict-priority는 모든 계정이 기준 이상이면 지금 계정에 머물고, 지금 계정이 없을 때만 우선 계정을 고른다."""
+        # given
+        policy, readings = StrictPriorityPolicy(90, 60), {'personal': usage(95), 'work': usage(99)}
+        # when
+        decisions = [policy.choose(('personal', 'work'), active, readings, NOW) for active in ('work', None)]
+        # then
+        self.assertEqual(decisions, [Decision('work', 'all_at_threshold'), Decision('personal', 'all_at_threshold')])
 
 
 class ChoicesTests(unittest.TestCase):

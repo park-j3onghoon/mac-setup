@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 from helpers import NOW, make_app
 from storage import SwitcherError, read_json
+from switchcore.policy import StrictPriorityPolicy
 
 
 class ServiceTests(unittest.TestCase):
@@ -204,6 +205,22 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(report['active'], 'work@example.com')
         self.assertFalse(report['switched'])
         self.assertEqual(app.state.load('runtime')['active'], 'work@example.com')
+        self.assertEqual(app.vault.active_writes, 0)
+
+    def test_strict_priority_stays_on_the_active_account_when_both_are_at_the_threshold(self):
+        """strict-priority 규칙에서 두 계정이 모두 기준 이상이면 지금 쓰는 fallback 계정에 머물고 교체를 시도하지 않는다."""
+        # given
+        app = self.app
+        app.policy = StrictPriorityPolicy(app.config['threshold'], app.config['poll_seconds'])
+        external = app.vault.read('work@example.com')
+        app.vault.active['claudeAiOauth'] = external['oauth']
+        app.live.write_account(external['account'])
+        app.api.percent.update({'token-personal': 96, 'token-work': 97})
+        # when
+        report = app.tick(apply=True, now=NOW)
+        # then
+        self.assertEqual((report['active'], report['target'], report['switched']),
+                         ('work@example.com', 'work@example.com', False))
         self.assertEqual(app.vault.active_writes, 0)
 
     def test_switch_reuses_the_verified_target_usage_without_duplicate_api_calls(self):
