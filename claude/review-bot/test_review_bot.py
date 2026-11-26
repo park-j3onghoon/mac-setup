@@ -54,6 +54,13 @@ class ReviewBotTest(unittest.TestCase):
         for name in ('lib', 'skills'):
             (root / 'claude' / name).mkdir(parents=True)
         self.patch('CLAUDE_HOME', root / 'claude')
+        self.clone = root / 'clones/widgets'
+        self.clone.mkdir(parents=True)
+        self.patch('clone_path', lambda repo: self.clone)
+        self.git_calls = []
+        self.ancestor_code = 0
+        self.patch('git', self.git)
+        self.patch('clone_repo', lambda repo, clone: self.git_calls.append('clone'))
         self.url_log = root / 'ai-review-urls.txt'
         self.patch('URL_LOG', self.url_log)
         self.pulls = {7: pull_request()}
@@ -99,6 +106,11 @@ class ReviewBotTest(unittest.TestCase):
         nodes = [search_node(self.pulls[number], **request) for number, request in self.requests.items()]
         chunks = [nodes[start:start + self.page_size] for start in range(0, len(nodes), self.page_size)] or [[]]
         return [{'data': {'search': {'nodes': chunk}}} for chunk in chunks]
+
+    def git(self, clone, *args, check=True):
+        self.git_calls.append(args[0])
+        code = self.ancestor_code if args[0] == 'merge-base' else 0
+        return subprocess.CompletedProcess(['git', *args], code, '', '')
 
     def last_review_commit(self, repo, number, login):
         commits = [sha for reviewed, sha in self.my_reviews if reviewed == number]
@@ -157,13 +169,71 @@ class ReviewBotTest(unittest.TestCase):
         _, settings, run_dir, _ = self.run_claude.call_args.args
         allow = json.loads(settings.read_text())['permissions']['allow']
         readable = [review_bot.rule_path(path) for path in
-                    (review_bot.HOME / 'acme/widgets', run_dir, review_bot.SIMPLE_DESIGN, review_bot.CLAUDE_HOME)]
+                    (self.clone, run_dir, review_bot.SIMPLE_DESIGN, review_bot.CLAUDE_HOME)]
         reads = [rule for rule in allow if rule.startswith('Read(')]
         self.assertEqual([rule for rule in allow if rule.startswith(('Edit(', 'Write('))],
                          [f'Edit({review_bot.rule_path(run_dir)}/**)'])
         self.assertEqual([rule for rule in reads if not rule[len('Read('):].startswith(tuple(readable))], [])
         self.assertEqual([rule for rule in allow if rule.startswith('Bash(gh ')
                           and any(f' {option}' in rule for option in review_bot.GH_WRITE_OPTIONS)], [])
+
+    def test_incremental_diff_commands_are_allowed_in_the_review_session(self):
+        """증분 diff 블록(~/.claude/lib/review/diff.md)이 쓰는 파이프 명령을 모델 세션 권한에 둔다."""
+        self.run_bot()
+
+        allow = json.loads(self.run_claude.call_args.args[1].read_text())['permissions']['allow']
+        self.assertTrue({'Bash(sort -u)', 'Bash(grep -c .)', 'Bash(printf *)'} <= set(allow))
+
+    def test_request_after_my_review_is_reviewed_from_my_last_reviewed_commit(self):
+        """내가 리뷰한 PR에 다시 요청이 오면 클론을 최신화한 뒤 내 마지막 리뷰 커밋부터의 증분으로 리뷰한다."""
+        self.my_reviews[(7, HEAD)] = REVIEW_URL
+        self.pulls[7]['headRefOid'] = NEW_HEAD
+
+        self.run_bot()
+
+        prompt = self.run_claude.call_args.args[0]
+        self.assertIn(f'--draft --since {HEAD}', prompt)
+        self.assertEqual(self.git_calls, ['fetch', 'merge-base'])
+        self.assertEqual(self.entry()['since'], HEAD)
+
+    def test_force_pushed_pull_request_is_reviewed_in_full(self):
+        """내 마지막 리뷰 커밋이 지금 head의 조상이 아니면(강제 push) 처음부터 전체를 리뷰한다."""
+        self.my_reviews[(7, HEAD)] = REVIEW_URL
+        self.pulls[7]['headRefOid'] = NEW_HEAD
+        self.ancestor_code = 1
+
+        self.run_bot()
+
+        self.assertNotIn('--since', self.run_claude.call_args.args[0])
+        self.assertIsNone(self.entry()['since'])
+
+    def test_first_review_has_no_incremental_base(self):
+        """내가 리뷰한 적 없는 PR은 증분 기준 없이 리뷰한다."""
+        self.run_bot()
+
+        self.assertNotIn('--since', self.run_claude.call_args.args[0])
+        self.assertEqual(self.git_calls, ['fetch'])
+
+    def test_missing_clone_is_cloned_before_the_review(self):
+        """리뷰할 레포의 클론이 없으면 리뷰 전에 받아 둔다."""
+        self.clone.rmdir()
+
+        self.run_bot()
+
+        self.assertEqual(self.git_calls, ['clone', 'fetch'])
+        self.run_claude.assert_called_once()
+
+    def test_clone_preparation_failure_fails_the_attempt_without_a_review(self):
+        """클론을 받거나 최신화하지 못하면 리뷰하지 않고 그 시도를 실패로 적는다."""
+        error = subprocess.CalledProcessError(128, ['git', 'fetch'], stderr='fatal: unable to access')
+        self.patch('git', mock.Mock(side_effect=error))
+
+        self.run_bot()
+
+        entry = self.entry()
+        self.run_claude.assert_not_called()
+        self.assertEqual((entry['status'], entry['attempts']), ('failed', 1))
+        self.assertIn('unable to access', entry['note'])
 
     def test_closed_pull_request_is_recorded_without_posting(self):
         """리뷰하는 사이 PR이 닫히면 올리지 않고 closed로 적는다."""

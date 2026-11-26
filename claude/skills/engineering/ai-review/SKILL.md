@@ -1,14 +1,14 @@
 ---
 name: ai-review
 description: 다른 사람의 PR에 리뷰를 달아 달라고 할 때, PR을 위험도에 맞춘 리뷰어로 리뷰하고 코드는 고치지 않은 채 결과를 GitHub 리뷰 한 건으로 단다. CRITICAL이 없으면 승인하며 나머지 코멘트를 달고, 있으면 CRITICAL 코멘트만 달아 수정을 요청한다. 올리기 전에 초안을 승인받는다. 내 PR을 고치는 리뷰와 GitHub에 올리지 않는 읽기 전용 리뷰에는 쓰지 않는다.
-argument-hint: "[PR URL] [--draft]"
+argument-hint: "[PR URL] [--draft] [--since 커밋]"
 ---
 
 ## 1. 리뷰 준비
 
 코드는 읽기만 하고, PR에는 3단계에서 승인받은 리뷰 한 건만 올린다. 스코프 체크·보안 레벨·이슈 리포트는 3단계 초안으로만 보여 준다.
 
-`~/.claude/lib/review/prepare.md`를 Read하고 수행한다.
+`~/.claude/lib/review/prepare.md`를 Read하고 수행한다. 인자에 `--since {커밋}`이 있으면 그 커밋을 직전 리뷰의 끝 커밋으로 넘긴다.
 
 → 완료: 그 문서의 완료 기준을 만족했다.
 
@@ -22,7 +22,7 @@ argument-hint: "[PR URL] [--draft]"
 
 2단계 이슈 리포트에서 남김을 뺀 발견으로 리뷰 한 건을 만들고, 승인받은 뒤 올린다. 인자에 `--draft`가 있으면 초안만 만드는 리뷰 봇 실행이다. 4번은 올릴 초안(event, 리뷰 본문, 줄 코멘트마다 `file:line`과 본문)을 보여 주기만 하고 묻지 않는다. 5번은 건너뛰고, 6번은 리뷰를 `{스크래치}/review.json`으로 쓰기만 한다(올리지도, URL을 더하지도 않는다).
 
-`--draft`로 만든 세션을 사람이 이어 받아 올리라고 하면 4번 승인부터 이어 간다.
+`--draft`로 만든 세션을 사람이 이어 받아 올리라고 하면 4번 승인부터 이어 간다. 5번에서 headRefOid가 review.json의 `commit_id`와 다르면 그 `commit_id`를 `--since`로 삼아 1단계부터 새 커밋만 리뷰하고, 고친 초안으로 4번 승인을 다시 받는다.
 
 1. event와 달 발견을 정한다.
    - CRITICAL 발견이 있으면 event는 `COMMENT`이고 CRITICAL 발견만 단다.

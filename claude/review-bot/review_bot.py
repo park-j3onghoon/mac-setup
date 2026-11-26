@@ -42,6 +42,8 @@ MAX_ATTEMPTS = 2
 RECORD_DAYS = 7
 POLL_FAILURES_TO_NOTIFY = 3
 COMMAND_TIMEOUT_SECONDS = 60
+# 처음 보는 큰 레포(앱 13개가 든 모노레포)의 클론과 오래 쉰 클론의 fetch도 끝나게 한다.
+GIT_TIMEOUT_SECONDS = 30 * 60
 REVIEW_TIMEOUT_SECONDS = 90 * 60
 MODEL_ARGS = ('--model', 'opus', '--effort', 'xhigh')
 TOOLS = 'Read,Grep,Glob,Edit,Write,Bash,Agent'
@@ -73,6 +75,8 @@ NOTICES = {
 }
 GIT_READ_VERBS = ('log', 'diff', 'show', 'rev-parse', 'merge-base', 'rev-list', 'ls-files', 'ls-tree', 'cat-file',
                   'blame', 'grep', 'status', 'describe')
+# ~/.claude/lib/review/diff.md의 증분 블록이 파이프에서 쓰는 명령.
+DIFF_PIPE_COMMANDS = ('sort -u', 'grep -c .', 'printf *')
 # 읽기 명령에 붙어도 파일을 쓰거나(--output), 저장소 밖 파일을 읽거나(--no-index, --contents), 명령을 실행한다(-O).
 GIT_DENIED_OPTIONS = ('--output', '--no-index', '--contents', '-O', '--open-files-in-pager')
 GH_WRITE_OPTIONS = ('-X', '--method', '-f', '-F', '--field', '--raw-field', '--input')
@@ -167,7 +171,7 @@ def poll(requesters, auto_repos, state_dir):
             elif request['requester'] in requesters:
                 handle(request, mode_of(request, auto_repos), state, state_dir, login)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-        detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
+        detail = failure_detail(error)
         state['poll_failures'] += 1
         log(state_dir, f'GitHub 조회 실패 {state["poll_failures"]}번째: {detail}')
         if state['poll_failures'] == POLL_FAILURES_TO_NOTIFY:
@@ -189,13 +193,16 @@ def handle(request, mode, state, state_dir, login):
             start_running(state, state_dir, key, Path(entry['runDir']), entry['session'])
             finish(key, deliver(request, entry, state, state_dir), state, state_dir)
         elif entry['status'] == Status.FAILED and entry['attempts'] < MAX_ATTEMPTS:
-            review(request, mode, entry['attempts'] + 1, state, state_dir)
+            since = last_review_commit(request['repo'], request['number'], login)
+            review(request, mode, entry['attempts'] + 1, since, state, state_dir)
     elif request['fork']:
         skip(request, mode, 'fork PR은 봇이 head를 받지 못해 손수 리뷰해 주세요.', state, state_dir)
-    elif last_review_commit(request['repo'], request['number'], login) == request['head']:
-        skip(request, mode, '같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.', state, state_dir)
     else:
-        review(request, mode, 1, state, state_dir)
+        since = last_review_commit(request['repo'], request['number'], login)
+        if since == request['head']:
+            skip(request, mode, '같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.', state, state_dir)
+        else:
+            review(request, mode, 1, since, state, state_dir)
 
 
 def mode_of(request, auto_repos):
@@ -244,7 +251,7 @@ def review_now(repo, number, state_dir):
                     if request['key'] == key), {})
     request = {'key': key, 'repo': repo, 'number': number, 'title': pull['title'], 'url': pull['url'],
                'head': pull['headRefOid'], 'request': waiting.get('request'), 'requester': waiting.get('requester')}
-    review(request, Mode.DRAFT, 1, state, state_dir)
+    review(request, Mode.DRAFT, 1, last_review_commit(repo, number, login), state, state_dir)
 
 
 def install(requesters, auto_repos, state_dir):
@@ -274,15 +281,16 @@ def options(flag, values):
     return [arg for value in values for arg in (flag, value)]
 
 
-def review(request, mode, attempt, state, state_dir):
-    """PR 하나를 초안으로 리뷰하고, 자동 레포면 이어서 올린 뒤 결과를 기록하고 알린다."""
-    entry = draft_review(request, mode, attempt, state, state_dir)
+def review(request, mode, attempt, since, state, state_dir):
+    """PR 하나를 초안으로 리뷰하고, 자동 레포면 이어서 올린 뒤 결과를 기록하고 알린다.
+    since는 내가 마지막으로 리뷰한 커밋이고, 있으면 그 뒤의 커밋만 리뷰한다."""
+    entry = draft_review(request, mode, attempt, since, state, state_dir)
     if mode is Mode.AUTO:
         entry = deliver(request, entry, state, state_dir)
     finish(request['key'], entry, state, state_dir)
 
 
-def draft_review(request, mode, attempt, state, state_dir):
+def draft_review(request, mode, attempt, since, state, state_dir):
     """ai-review --draft로 초안을 만든다. 올리기 전에 죽어도 다음 실행이 맞출 수 있게 결과를 바로 기록한다."""
     key, repo, number, head = request['key'], request['repo'], request['number'], request['head']
     started = datetime.datetime.now()
@@ -293,12 +301,34 @@ def draft_review(request, mode, attempt, state, state_dir):
     settings = run_dir / 'settings.json'
     settings.write_text(json.dumps(sandbox_settings(repo, number, run_dir, codex), ensure_ascii=False, indent=1))
     start_running(state, state_dir, key, run_dir, session)
-    run = run_claude(review_prompt(request['url'], run_dir, codex), settings, run_dir, session)
-    entry = record(request, mode, runDir=str(run_dir), session=session, attempts=attempt, **judge(run, run_dir))
-    log(state_dir, f'{key} {head[:8]} {entry["status"]} {entry["note"]} · 거부 {len(run.denied)}개 · {run_dir}')
+    try:
+        since = prepare_clone(repo, since, head)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        result, denied = failure(f'클론 준비 실패: {failure_detail(error)}'), ()
+    else:
+        run = run_claude(review_prompt(request['url'], since, run_dir, codex), settings, run_dir, session)
+        result, denied = judge(run, run_dir), run.denied
+    entry = record(request, mode, since=since, runDir=str(run_dir), session=session, attempts=attempt, **result)
+    log(state_dir, f'{key} {head[:8]} {entry["status"]} {entry["note"]} · 거부 {len(denied)}개 · {run_dir}')
     state['prs'][key] = entry
     save_state(state_dir, state)
     return entry
+
+
+def prepare_clone(repo, since, head):
+    """리뷰 전에 ai-review가 쓰는 메인 클론을 받아 두고 최신화한다. since가 head의 조상일 때만 증분 기준으로
+    돌려준다. 강제 push로 조상이 아니거나 옛 커밋이 클론에 없으면 전체를 리뷰한다."""
+    clone = clone_path(repo)
+    if not clone.exists():
+        clone_repo(repo, clone)
+    git(clone, 'fetch', 'origin', '--quiet')
+    if since is None or git(clone, 'merge-base', '--is-ancestor', since, head, check=False).returncode:
+        return None
+    return since
+
+
+def failure_detail(error):
+    return error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) and error.stderr else str(error)
 
 
 def record(request, mode, **fields):
@@ -356,7 +386,7 @@ def deliver(request, entry, state, state_dir):
     entry = post(request, entry)
     if is_moved(entry):
         moved = {**request, 'head': entry['head']}
-        entry = post(request, draft_review(moved, Mode.AUTO, entry['attempts'], state, state_dir))
+        entry = post(request, draft_review(moved, Mode.AUTO, entry['attempts'], entry['since'], state, state_dir))
     if is_moved(entry):
         return {**entry, 'mode': Mode.DRAFT.value, 'note': '올리기 직전에 새 커밋이 또 와서 초안으로 둠'}
     return entry
@@ -432,11 +462,12 @@ def parse_utc(text):
     return datetime.datetime.strptime(text, '%Y-%m-%dT%H:%M:%S%z')
 
 
-def review_prompt(url, run_dir, codex):
+def review_prompt(url, since, run_dir, codex):
+    arguments = f'{url} --draft' + (f' --since {since}' if since else '')
     lines = [
         '리뷰 봇 실행이다. 이 실행은 리뷰 초안만 만들고 GitHub에 올리지 않으며, 질문에 답할 사람이 없다.',
         '1. `~/.claude/CLAUDE.md`와 그 파일의 `@` 줄이 가리키는 파일을 Read하고 따른다.',
-        f'2. `~/.claude/skills/ai-review/SKILL.md`를 Read하고 인자 `{url} --draft`로 수행한다. `{{스크래치}}`는 `{run_dir}`이다.',
+        f'2. `~/.claude/skills/ai-review/SKILL.md`를 Read하고 인자 `{arguments}`로 수행한다. `{{스크래치}}`는 `{run_dir}`이다.',
         '실행 환경: Bash는 허용한 꼴만 돈다. 경로는 따옴표 없는 절대경로로 쓰고, `cd` 대신 `git -C {경로}`를 쓴다.',
     ]
     if codex:
@@ -469,6 +500,7 @@ def sandbox_settings(repo, number, run_dir, codex):
         *(f'git -C {w} checkout --detach *' for w in spellings(worktree)),
         *(f'git -C {p} {verb}{rest}' for p in (*spellings(clone), *spellings(worktree)) for verb in GIT_READ_VERBS
           for rest in ('', ' *')),
+        *DIFF_PIPE_COMMANDS,
     ]
     deny = [*(f'Read({pattern})' for pattern in SECRET_FILES), *(f'Bash(git * {option}*)' for option in GIT_DENIED_OPTIONS),
             *(f'Bash(gh api repos/* {option}*)' for option in GH_WRITE_OPTIONS)]
@@ -590,9 +622,17 @@ def send_review(repo, number, draft):
     raise ReviewRejected(int(status.group(1)) if status else None, (result.stdout or result.stderr).strip()[:500])
 
 
-def gh(*args):
-    return subprocess.run(['gh', *args], env=ENV, capture_output=True, text=True, check=True,
-                          timeout=COMMAND_TIMEOUT_SECONDS).stdout
+def gh(*args, timeout=COMMAND_TIMEOUT_SECONDS):
+    return subprocess.run(['gh', *args], env=ENV, capture_output=True, text=True, check=True, timeout=timeout).stdout
+
+
+def clone_repo(repo, clone):
+    gh('repo', 'clone', repo, str(clone), timeout=GIT_TIMEOUT_SECONDS)
+
+
+def git(clone, *args, check=True):
+    return subprocess.run(['git', '-C', str(clone), *args], env=ENV, capture_output=True, text=True, check=check,
+                          timeout=GIT_TIMEOUT_SECONDS)
 
 
 def run_claude(prompt, settings, run_dir, session):
