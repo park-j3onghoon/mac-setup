@@ -3,6 +3,7 @@ import fcntl
 import importlib.util
 import io
 import json
+import datetime
 from pathlib import Path
 import re
 import subprocess
@@ -22,6 +23,9 @@ REPO = 'acme/widgets'
 HEAD = 'a' * 40
 NEW_HEAD = 'b' * 40
 REVIEW_URL = 'https://github.com/acme/widgets/pull/7#pullrequestreview-11'
+REQUESTED_AT = '2026-11-25T01:00:00Z'
+REQUESTED_AGAIN_AT = '2026-11-25T03:00:00Z'
+NOW = datetime.datetime(2026, 11, 26, tzinfo=datetime.timezone.utc)
 
 
 class Crash(Exception):
@@ -29,7 +33,16 @@ class Crash(Exception):
 
 
 def pull_request(number=7, head=HEAD, state='OPEN'):
-    return {'number': number, 'headRefOid': head, 'url': f'https://github.com/{REPO}/pull/{number}', 'state': state}
+    return {'number': number, 'headRefOid': head, 'url': f'https://github.com/{REPO}/pull/{number}', 'state': state,
+            'title': f'PR {number}'}
+
+
+def search_node(pull, requester, requested_at, fork=False):
+    """GraphQL 검색 결과의 PR 노드. 팀에 온 요청은 `... on User` 조각이 비어 login이 없다."""
+    events = [{'createdAt': '2026-11-01T00:00:00Z', 'actor': {'login': requester}, 'requestedReviewer': {}},
+              {'createdAt': requested_at, 'actor': {'login': requester}, 'requestedReviewer': {'login': 'me'}}]
+    return {'number': pull['number'], 'title': pull['title'], 'url': pull['url'], 'headRefOid': pull['headRefOid'],
+            'isCrossRepository': fork, 'repository': {'nameWithOwner': REPO}, 'timelineItems': {'nodes': events}}
 
 
 class ReviewBotTest(unittest.TestCase):
@@ -44,7 +57,9 @@ class ReviewBotTest(unittest.TestCase):
         self.url_log = root / 'ai-review-urls.txt'
         self.patch('URL_LOG', self.url_log)
         self.pulls = {7: pull_request()}
-        self.requested = [7]
+        self.requests = {7: {'requester': 'bob', 'requested_at': REQUESTED_AT}}
+        self.page_size = 100
+        self.now = NOW
         self.draft = {'event': 'APPROVE', 'body': 'LGTM!',
                       'comments': [{'path': 'app.py', 'line': 3, 'side': 'RIGHT', 'body': '이름을 바꾸면 좋겠습니다.'}]}
         self.result_line = '초안 · APPROVE · CRITICAL 0 · INFO 1'
@@ -54,7 +69,9 @@ class ReviewBotTest(unittest.TestCase):
         self.send_failures = []
         self.crashes_after_post = False
         self.sent = []
-        self.patch('list_review_requests', lambda repo: [dict(self.pulls[number]) for number in self.requested])
+        self.fetch_pages = self.patch('fetch_review_request_pages', mock.Mock(side_effect=self.search_pages))
+        self.patch('last_review_commit', self.last_review_commit)
+        self.patch('now', lambda: self.now)
         self.patch('view_pull_request', lambda repo, number: dict(self.pulls[number]))
         self.patch('current_login', lambda: 'me')
         self.patch('review_url_on', lambda repo, number, sha, login: self.my_reviews.get((number, sha)))
@@ -78,6 +95,15 @@ class ReviewBotTest(unittest.TestCase):
             self.pulls[number]['headRefOid'] = self.heads_after_review.pop(0)
         return review_bot.ClaudeRun(0, f'초안 전문\n\n{self.result_line}', ())
 
+    def search_pages(self):
+        nodes = [search_node(self.pulls[number], **request) for number, request in self.requests.items()]
+        chunks = [nodes[start:start + self.page_size] for start in range(0, len(nodes), self.page_size)] or [[]]
+        return [{'data': {'search': {'nodes': chunk}}} for chunk in chunks]
+
+    def last_review_commit(self, repo, number, login):
+        commits = [sha for reviewed, sha in self.my_reviews if reviewed == number]
+        return commits[-1] if commits else None
+
     def send_review(self, repo, number, review):
         self.sent.append(review)
         if self.send_failures:
@@ -93,7 +119,7 @@ class ReviewBotTest(unittest.TestCase):
             return review_bot.main(['--state-dir', str(self.state_dir), *args])
 
     def run_bot(self, auto=False):
-        return self.bot('run', '--repo', REPO, *(('--auto-repo', REPO) if auto else ()))
+        return self.bot('run', '--requester', 'bob', '--requester', 'alice', *(('--auto-repo', REPO) if auto else ()))
 
     def state(self):
         return json.loads((self.state_dir / 'state.json').read_text())
@@ -222,7 +248,7 @@ class ReviewBotTest(unittest.TestCase):
         self.crashes_after_post = True
         with self.assertRaises(Crash):
             self.run_bot(auto=True)
-        self.requested = []
+        self.requests = {}
 
         self.run_bot(auto=True)
 
@@ -248,6 +274,7 @@ class ReviewBotTest(unittest.TestCase):
         """내 리뷰가 있는 커밋으로 다시 요청되면 다시 리뷰하지 않고, 몇 번을 돌아도 한 번만 알린다."""
         self.run_bot(auto=True)
         self.notify.reset_mock()
+        self.requests[7]['requested_at'] = REQUESTED_AGAIN_AT
 
         self.run_bot(auto=True)
         self.run_bot(auto=True)
@@ -256,31 +283,136 @@ class ReviewBotTest(unittest.TestCase):
         self.notify.assert_called_once()
         self.assertEqual(self.entry()['status'], 'skipped')
 
-    def test_failed_review_is_retried_up_to_the_limit_and_again_on_a_new_commit(self):
-        """실패한 리뷰는 같은 커밋에서 정한 횟수까지만 다시 하고, 새 커밋이 올라오면 다시 한다."""
+    def test_failed_review_is_retried_up_to_the_limit_and_again_on_a_new_request(self):
+        """실패한 리뷰는 같은 요청에서 정한 횟수까지만 다시 하고, 다시 요청이 오면 처음부터 다시 한다."""
         self.writes_draft = False
 
         for _ in range(review_bot.MAX_ATTEMPTS + 1):
             self.run_bot()
-        calls_on_first_commit = self.run_claude.call_count
-        self.pulls[7]['headRefOid'] = NEW_HEAD
+        calls_on_first_request = self.run_claude.call_count
+        self.requests[7]['requested_at'] = REQUESTED_AGAIN_AT
         self.run_bot()
 
         entry = self.entry()
-        self.assertEqual(calls_on_first_commit, review_bot.MAX_ATTEMPTS)
+        self.assertEqual(calls_on_first_request, review_bot.MAX_ATTEMPTS)
         self.assertEqual(self.run_claude.call_count, review_bot.MAX_ATTEMPTS + 1)
-        self.assertEqual((entry['head'], entry['status'], entry['attempts']), (NEW_HEAD, 'failed', 1))
+        self.assertEqual((entry['request'], entry['status'], entry['attempts']), (REQUESTED_AGAIN_AT, 'failed', 1))
 
-    def test_install_skips_requests_waiting_before_install_until_their_commit_changes(self):
-        """설치 전부터 기다리던 요청은 리뷰하지 않고, 그 PR에 새 커밋이 올라오면 리뷰한다."""
-        self.bot('install', '--repo', REPO)
+    def test_requests_from_other_people_are_neither_reviewed_nor_recorded(self):
+        """Bob, Alice가 아닌 사람이 보낸 요청은 리뷰하지 않고 기록도 남기지 않는다."""
+        self.requests[7]['requester'] = 'someone'
 
         self.run_bot()
+
+        self.run_claude.assert_not_called()
+        self.assertEqual(self.state()['prs'], {})
+
+    def test_new_commit_on_the_same_request_only_updates_the_head(self):
+        """같은 요청에 새 커밋만 오면 다시 리뷰하지 않고 head만 갱신해, 초안이 옛 커밋을 보았다는 것을 남긴다."""
+        self.run_bot()
         self.pulls[7]['headRefOid'] = NEW_HEAD
+
+        self.run_bot()
+
+        entry = self.entry()
+        self.assertEqual(self.run_claude.call_count, 1)
+        self.assertEqual((entry['status'], entry['sha'], entry['head']), ('draft', HEAD, NEW_HEAD))
+
+    def test_request_sent_again_is_reviewed_again(self):
+        """같은 PR에 새 시각의 요청이 오면 다시 리뷰한다."""
+        self.run_bot()
+        self.pulls[7]['headRefOid'] = NEW_HEAD
+        self.requests[7]['requested_at'] = REQUESTED_AGAIN_AT
+
+        self.run_bot()
+
+        entry = self.entry()
+        self.assertEqual(self.run_claude.call_count, 2)
+        self.assertEqual((entry['request'], entry['sha']), (REQUESTED_AGAIN_AT, NEW_HEAD))
+
+    def test_fork_pull_request_is_left_for_a_manual_review(self):
+        """fork PR은 리뷰 worktree에 head를 받을 수 없어 리뷰하지 않고 손수 리뷰하라고 한 번 알린다."""
+        self.requests[7]['fork'] = True
+
+        self.run_bot()
+        self.run_bot()
+
+        self.run_claude.assert_not_called()
+        self.assertEqual(self.entry()['status'], 'skipped')
+        self.notify.assert_called_once()
+        self.assertIn('fork', self.notify.call_args.args[0])
+
+    def test_requests_on_every_search_page_are_handled(self):
+        """검색 결과가 여러 페이지로 나뉘어도 모든 페이지의 요청을 처리한다."""
+        self.pulls[8] = pull_request(8)
+        self.requests[8] = {'requester': 'alice', 'requested_at': REQUESTED_AT}
+        self.page_size = 1
+
+        self.run_bot()
+
+        self.assertEqual(self.run_claude.call_count, 2)
+        self.assertEqual(sorted(self.state()['prs']), [f'{REPO}#7', f'{REPO}#8'])
+
+    def test_failed_request_lookup_leaves_the_records_unchanged(self):
+        """요청 조회가 실패하면(응답의 errors 포함) 그 실행은 기록을 바꾸거나 지우지 않는다."""
+        self.run_bot()
+        before = self.state()['prs']
+        self.now = NOW + datetime.timedelta(days=30)
+        self.fetch_pages.side_effect = subprocess.CalledProcessError(1, ['gh'], stderr='gh: Something went wrong')
+
+        self.run_bot()
+
+        self.assertEqual(self.state()['prs'], before)
+        self.assertEqual(self.state()['poll_failures'], 1)
+
+    def test_records_gone_from_the_request_list_for_seven_days_are_removed(self):
+        """요청 목록에 없고 마지막 기록이 7일 지난 기록은 지우고, 7일이 안 된 기록은 둔다."""
+        self.run_bot()
+        self.now = NOW + datetime.timedelta(days=3)
+        self.pulls[8] = pull_request(8)
+        self.requests = {8: {'requester': 'alice', 'requested_at': REQUESTED_AT}}
+        self.run_bot()
+        self.requests = {}
+        self.now = NOW + datetime.timedelta(days=8)
+
+        self.run_bot()
+
+        self.assertEqual(list(self.state()['prs']), [f'{REPO}#8'])
+
+    def test_first_install_skips_waiting_requests_and_reinstall_keeps_records(self):
+        """처음 설치할 때 기다리던 요청은 리뷰하지 않고, 다시 설치하면 그사이 온 요청도 그대로 리뷰한다."""
+        self.bot('install', '--requester', 'bob')
+        self.run_bot()
+        self.pulls[8] = pull_request(8)
+        self.requests[8] = {'requester': 'bob', 'requested_at': REQUESTED_AGAIN_AT}
+        self.bot('install', '--requester', 'bob')
+
+        self.run_bot()
+
+        self.assertEqual(self.entry(7)['status'], 'skipped')
+        self.assertEqual(self.entry(8)['status'], 'draft')
+        self.assertEqual(self.run_claude.call_count, 1)
+        self.assertEqual(self.register.call_count, 2)
+
+    def test_records_from_the_old_commit_based_bot_are_removed(self):
+        """요청 시각이 없는 옛 꼴 기록은 지운다."""
+        self.state_dir.mkdir(parents=True)
+        old = {'prs': {f'{REPO}#1': {'sha': HEAD, 'status': 'skipped', 'attempts': 0, 'note': '설치 전부터 대기',
+                                     'at': '2026-11-24T11:47:00'}}, 'poll_failures': 0}
+        (self.state_dir / 'state.json').write_text(json.dumps(old))
+
+        self.run_bot()
+
+        self.assertNotIn(f'{REPO}#1', self.state()['prs'])
+
+    def test_manual_review_settles_the_waiting_request(self):
+        """손수 리뷰한 PR은 그때 기다리던 요청 시각을 적어, 다음 실행이 같은 요청을 다시 리뷰하지 않는다."""
+        self.bot('review', '--repo', REPO, '7')
+
         self.run_bot()
 
         self.assertEqual(self.run_claude.call_count, 1)
-        self.register.assert_called_once()
+        self.assertEqual(self.entry()['request'], REQUESTED_AT)
 
     def test_run_reviews_nothing_while_another_run_holds_the_lock(self):
         """다른 실행이 잠금을 잡고 있으면 리뷰하지 않고 끝난다."""
@@ -294,8 +426,7 @@ class ReviewBotTest(unittest.TestCase):
 
     def test_notifies_once_when_github_lookups_keep_failing(self):
         """GitHub 조회가 연속으로 실패하면 정한 횟수째에 한 번만 알린다."""
-        error = subprocess.CalledProcessError(1, ['gh'], stderr='HTTP 401: Bad credentials')
-        self.patch('list_review_requests', mock.Mock(side_effect=error))
+        self.fetch_pages.side_effect = subprocess.CalledProcessError(1, ['gh'], stderr='HTTP 401: Bad credentials')
 
         for _ in range(review_bot.POLL_FAILURES_TO_NOTIFY + 1):
             self.run_bot()
