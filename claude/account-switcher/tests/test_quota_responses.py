@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
 from api import Anthropic, ApiError, parse_usage
-from policy import poll_seconds
+from switchcore.policy import PriorityPolicy
+from switchcore.quota import Usage, Window
 
 
 class MetadataRegressionTests(unittest.TestCase):
@@ -31,5 +32,7 @@ class MetadataRegressionTests(unittest.TestCase):
             api.request('https://api.anthropic.com/fixture')
 
     def test_polling_does_not_slow_as_the_threshold_approaches(self):
-        intervals = [poll_seconds(p, 90, 300) for p in (55,75,85,86,90)]
+        policy = PriorityPolicy(90, 300)
+        intervals = [policy.poll_seconds(Usage(1000, (Window('five_hour', p, None),)))
+                     for p in (55, 75, 85, 86, 90)]
         self.assertEqual(intervals, sorted(intervals, reverse=True))

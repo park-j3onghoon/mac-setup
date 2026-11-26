@@ -1,6 +1,7 @@
 import unittest
 
-from policy import Decision, Usage, Window, choose_account, poll_seconds
+from switchcore.policy import Decision, PriorityPolicy
+from switchcore.quota import Usage, Window
 
 
 NOW = 2_000_000_000.0
@@ -11,13 +12,17 @@ def usage(percent=10, *, reset=NOW + 300, checked=NOW, weekly=10):
                            Window('seven_day', weekly, NOW + 86400)))
 
 
+def choose(active, readings):
+    return PriorityPolicy(95, 60).choose(('personal', 'work'), active, readings, NOW)
+
+
 class PolicyTests(unittest.TestCase):
     def test_prefers_primary_even_when_fallback_has_more_quota(self):
         """회사 계정에 여유가 더 있어도 개인 계정을 우선한다."""
         # given
         readings = {'personal': usage(90), 'work': usage(1)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result, Decision('personal', 'primary_available'))
 
@@ -26,7 +31,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(95), 'work': usage(20)}
         # when
-        result = choose_account('personal', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('personal', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -35,7 +40,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(94.9), 'work': usage(20)}
         # when
-        result = choose_account('personal', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('personal', readings)
         # then
         self.assertEqual(result.target, 'personal')
 
@@ -44,7 +49,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(95, reset=NOW - 1), 'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -53,7 +58,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(0), 'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'personal')
 
@@ -62,7 +67,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(0, weekly=99), 'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -71,7 +76,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(100), 'work': usage(100)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result, Decision(None, 'no_verified_capacity'))
 
@@ -80,7 +85,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'personal': usage(0, checked=NOW - 91), 'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -90,7 +95,7 @@ class PolicyTests(unittest.TestCase):
         readings = {'personal': Usage(NOW, (Window('seven_day', None, NOW + 60),)),
                     'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -99,7 +104,7 @@ class PolicyTests(unittest.TestCase):
         # given
         readings = {'work': usage(20)}
         # when
-        result = choose_account('work', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('work', readings)
         # then
         self.assertEqual(result.target, 'work')
 
@@ -109,19 +114,37 @@ class PolicyTests(unittest.TestCase):
         cases = ((20, 540), (60, 540), (61, 300), (75, 300), (76, 120), (85, 120), (86, 60), (None, 60))
         for percent, seconds in cases:
             with self.subTest(percent=percent):
+                reading = Usage(NOW, (Window('five_hour', percent, None),))
                 # when
-                result = poll_seconds(percent, 90, 60)
+                result = PriorityPolicy(90, 60).poll_seconds(reading)
                 # then
                 self.assertEqual(result, seconds)
+
+    def test_poll_interval_without_a_reading_is_the_shortest(self):
+        """아직 사용량을 한 번도 읽지 못했으면 가장 짧은 간격으로 다시 본다."""
+        # when
+        result = PriorityPolicy(90, 60).poll_seconds(None)
+        # then
+        self.assertEqual(result, 60)
 
     def test_failed_primary_read_does_not_leave_the_primary(self):
         """개인 계정을 쓰는 중 개인 조회가 실패(HTTP 429)해도 한도 도달로 보지 않고 개인 계정을 유지한다."""
         # given
         readings = {'work': usage(20)}
         # when
-        result = choose_account('personal', 'personal', 'work', readings, NOW, 95, 90)
+        result = choose('personal', readings)
         # then
         self.assertEqual(result.target, 'personal')
+
+    def test_availability_needs_a_fresh_reading_below_the_threshold(self):
+        """전환 직전 다시 묻는 판단도 같은 규칙이다: 90초 안에 읽은 사용량이 모든 창에서 기준 미만이어야 한다."""
+        # given
+        policy = PriorityPolicy(95, 60)
+        # when
+        results = [policy.available(usage(20), NOW), policy.available(usage(95), NOW),
+                   policy.available(usage(20, checked=NOW - 91), NOW)]
+        # then
+        self.assertEqual(results, [True, False, False])
 
 
 if __name__ == '__main__':

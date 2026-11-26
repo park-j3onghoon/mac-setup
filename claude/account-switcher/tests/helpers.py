@@ -2,9 +2,9 @@ from contextlib import contextmanager
 import copy
 from pathlib import Path
 
-from policy import Usage, Window
 from service import Switcher
 from storage import LiveClaude, State, write_json
+from switchcore.quota import Usage, Window
 
 
 NOW = 2_000_000_000.0

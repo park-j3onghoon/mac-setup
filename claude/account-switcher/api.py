@@ -11,8 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import (Request, HTTPSHandler, HTTPRedirectHandler,
                             ProxyHandler, build_opener)
 
-from policy import Usage, Window
 from storage import SwitcherError
+from switchcore.quota import Usage, Window
 
 
 class ApiError(SwitcherError):

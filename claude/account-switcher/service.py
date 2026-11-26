@@ -9,9 +9,10 @@ import time
 from api import ApiError
 from compatibility import check as check_compatibility
 from macos import KeychainError
-from policy import Decision, choose_account, poll_seconds
 from refresh import record_switch
 from storage import LockBusy, SwitcherError, email_key, fingerprint, read_json
+from switchcore.policy import LONGEST_POLL_SECONDS, Decision, PriorityPolicy
+from switchcore.quota import Usage, Window
 
 
 def matches_identity(account, actual):
@@ -53,12 +54,22 @@ def validate_config(config):
             raise SwitcherError(f'Invalid switcher setting: {key}')
 
 
+def saved_usage(value):
+    """The last reading runtime.json keeps for an account, stale or not; None before the first."""
+    if not value:
+        return None
+    return Usage(value.get('checked_at', 0), tuple(
+        Window(w.get('name', ''), w.get('percent'), w.get('resets_at'), w.get('blocked', False))
+        for w in value.get('windows', [])))
+
+
 class Switcher:
     def __init__(self, config, state, live, vault, api):
         validate_config(config)
         self.config, self.state, self.live = config, state, live
         self.vault, self.api = vault, api
         self.accounts = (config['primary'], config['fallback'])
+        self.policy = PriorityPolicy(config['threshold'], config['poll_seconds'])
 
         self._last_preference = None
 
@@ -340,7 +351,7 @@ class Switcher:
             reading = self.read_usage(target_email, target['oauth'], now)
         elif fingerprint(target['oauth']) != token_id:
             raise SwitcherError('Target credential changed after the quota reading; retry later')
-        if not reading.available(clock(), self.config['threshold'], 90):
+        if not self.policy.available(reading, clock()):
             raise SwitcherError('Target account no longer has verified capacity')
         with self.state.lock('preference', blocking=True), self.live.locked():
             blob, account = self.live.read()
@@ -352,7 +363,7 @@ class Switcher:
             if self.vault.read(outgoing) != before:
                 self.vault.write(outgoing, before)
             committed_at = clock()
-            if not reading.available(committed_at, self.config['threshold'], 90):
+            if not self.policy.available(reading, committed_at):
                 raise SwitcherError('Target account no longer has verified capacity')
             if preference is not None and self.preference() != preference:
                 return False
@@ -501,12 +512,11 @@ class Switcher:
             raise SwitcherError('Preferred account is not configured')
         fallback = next(candidate for candidate in self.accounts if candidate != preferred)
         now = clock()
-        decision = choose_account(email, preferred, fallback, readings, now,
-                                  self.config['threshold'], 90)
+        decision = self.policy.choose((preferred, fallback), email, readings, now)
         if active_error is not None:
             other = next(key for key in self.accounts if key != email)
             if (active_error.status == 401 and self.vault.read(email) == active and other in readings
-                    and readings[other].available(now, self.config['threshold'], 90)):
+                    and self.policy.available(readings[other], now)):
                 decision = Decision(other, 'active_reauthentication_required')
             else:
                 decision = Decision(None, 'active_authentication_unverified')
@@ -558,11 +568,8 @@ class Switcher:
         runtime = self.state.load('runtime')
         # A failed lookup keeps the last windows (marked stale); they still tell how close the
         # account is, so 429 answers do not shrink the interval.
-        active = runtime.get('usage', {}).get(runtime.get('active'), {})
-        percents = [w['percent'] for w in active.get('windows', [])
-                    if isinstance(w.get('percent'), (int, float))]
-        wake = now + poll_seconds(max(percents, default=None), self.config['threshold'],
-                                  self.config['poll_seconds'])
+        active = saved_usage(runtime.get('usage', {}).get(runtime.get('active')))
+        wake = now + min(self.policy.poll_seconds(active), LONGEST_POLL_SECONDS)
         if 'saved_credential_unavailable' in runtime.get('errors', {}).values():
             wake = min(wake, now + 60)
         if (runtime.get('target') and runtime['target'] != runtime.get('active')

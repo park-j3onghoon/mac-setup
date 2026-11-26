@@ -13,9 +13,10 @@ from unittest.mock import Mock, patch
 from api import ApiError
 from helpers import NOW, make_app
 from macos import KeychainError, NativeKeychain, TransientKeychainError
-from policy import Window, Usage, choose_account
 from service import validate_config
 from storage import LockBusy, State, SwitcherError, directory_lock
+from switchcore.policy import PriorityPolicy
+from switchcore.quota import Window, Usage
 import storage
 import switcher
 
@@ -89,8 +90,8 @@ class AuthStabilityTests(unittest.TestCase):
     def test_known_exhaustion_overrides_unknown_second_window(self):
         reads = {self.primary: Usage(NOW, (Window('five_hour', 100, None), Window('seven_day', None, None))),
                  self.fallback: Usage(NOW, (Window('five_hour', 10, None),))}
-        self.assertEqual(choose_account(self.primary, self.primary, self.fallback,
-                                        reads, NOW, 90, 90).target, self.fallback)
+        self.assertEqual(PriorityPolicy(90, 60).choose((self.primary, self.fallback), self.primary,
+                                                       reads, NOW).target, self.fallback)
 
     def test_rejects_two_roles_for_same_email_domain(self):
         with self.assertRaises(SwitcherError):
