@@ -20,6 +20,7 @@ import time
 from macos import system_awake
 from switchcore.terminal import TerminalUnavailable
 
+DEFAULT_TERMINAL = 'cmux'
 # managed_session.py sets these on the sessions it reopens itself after a switch.
 MANAGED_ENVIRONMENT = ('MAC_SETUP_MANAGED_CLAUDE_SESSION_ID', 'MAC_SETUP_MANAGED_CLAUDE_PID')
 # What to check before going on, after a restart or an interruption.

@@ -184,6 +184,30 @@ class HookTests(unittest.TestCase):
         self.assertEqual([call.args[0][2:] for call in popen.call_args_list],
                          [['--sweep'], ['--sweep']])
 
+    def test_an_unknown_terminal_setting_is_logged_and_starts_nothing(self):
+        """설정의 터미널 이름이 repo에 없으면 훅은 아무것도 띄우지 않고 재시작 기록에 설정 오류를 남긴다."""
+        # given
+        State(self.state_dir).save('config', {'terminal': 'tmux'})
+        with patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=True)), \
+                patch('subprocess.Popen') as popen:
+            # when
+            result = refresh_hook.hook()
+        # then
+        popen.assert_not_called()
+        log = (self.state_dir / refresh_hook.LOG).read_text()
+        self.assertEqual((result, json.loads(log)['outcome']), (0, 'config_error:terminal'))
+
+    def test_the_helper_gets_the_terminal_the_hook_chose(self):
+        """훅이 고른 터미널 이름을 도우미에 넘겨, 그 사이 설정이 바뀌어도 둘이 같은 터미널을 쓴다."""
+        # given
+        State(self.state_dir).save('config', {'terminal': 'cmux'})
+        with patch.object(refresh_hook, 'SelfRestart', restart_stub(needed=True)), \
+                patch('subprocess.Popen') as popen:
+            # when
+            refresh_hook.hook()
+        # then
+        self.assertEqual(popen.call_args.kwargs['env']['CLAUDE_SWITCHER_TERMINAL'], 'cmux')
+
     def test_hook_does_nothing_without_a_restart_or_a_limit_stop(self):
         """재시작 대상도 아니고 한도에 멈추지도 않았으면 도우미를 띄우지 않고 바로 끝낸다."""
         # given

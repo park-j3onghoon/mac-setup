@@ -9,7 +9,7 @@ import time
 from api import ApiError
 from compatibility import check as check_compatibility
 from macos import KeychainError
-from refresh import record_switch
+from refresh import DEFAULT_TERMINAL, record_switch
 from storage import LockBusy, SwitcherError, email_key, fingerprint, read_json
 from switchcore.choices import pick
 from switchcore.policy import LONGEST_POLL_SECONDS, Decision
@@ -56,10 +56,11 @@ def validate_config(config):
         if (isinstance(value, bool) or not isinstance(value, (int, float))
                 or not math.isfinite(value) or not low <= value <= high):
             raise SwitcherError(f'Invalid switcher setting: {key}')
-    try:
-        pick('policy', config.get('policy', DEFAULT_POLICY))
-    except ValueError as error:
-        raise SwitcherError(str(error)) from error
+    for kind, default in (('policy', DEFAULT_POLICY), ('terminal', DEFAULT_TERMINAL)):
+        try:
+            pick(kind, config.get(kind, default))
+        except ValueError as error:
+            raise SwitcherError(str(error)) from error
 
 
 def saved_usage(value):

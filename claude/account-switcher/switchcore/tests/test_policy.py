@@ -1,6 +1,7 @@
 import unittest
 
 from switchcore.choices import pick
+from switchcore.cmux import CmuxTerminal
 from switchcore.policy import Decision, PriorityPolicy
 from switchcore.quota import Usage, Window
 
@@ -160,6 +161,16 @@ class ChoicesTests(unittest.TestCase):
         self.assertEqual(str(raised.exception),
                          'Invalid switcher setting: policy=my_rules:Custom '
                          '(choose from: priority, strict-priority)')
+
+    def test_a_setting_names_only_a_built_in_terminal(self):
+        """터미널도 repo 안 구현의 이름으로만 고른다."""
+        # when
+        chosen = pick('terminal', 'cmux')
+        with self.assertRaises(ValueError) as raised:
+            pick('terminal', 'tmux')
+        # then
+        self.assertIs(chosen, CmuxTerminal)
+        self.assertEqual(str(raised.exception), 'Invalid switcher setting: terminal=tmux (choose from: cmux)')
 
 
 if __name__ == '__main__':

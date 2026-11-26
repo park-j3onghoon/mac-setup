@@ -103,6 +103,12 @@ class AuthStabilityTests(unittest.TestCase):
         with self.assertRaisesRegex(SwitcherError, r'policy=rules\.py:Mine \(choose from: priority, '):
             validate_config(dict(self.app.config, policy='rules.py:Mine'))
 
+    def test_terminal_setting_names_a_built_in_terminal_or_is_left_out(self):
+        """설정에 터미널 이름이 없으면 cmux이고, repo에 없는 터미널은 쓸 수 있는 이름과 함께 거부한다."""
+        validate_config(dict(self.app.config, terminal='cmux'))
+        with self.assertRaisesRegex(SwitcherError, r'terminal=tmux \(choose from: cmux\)'):
+            validate_config(dict(self.app.config, terminal='tmux'))
+
     def test_mixed_case_domain_uses_existing_saved_account_keys(self):
         actual = self.app.live.read()[1]
         self.app.live.write_account(dict(actual, emailAddress=self.primary.replace('example', 'EXAMPLE')))

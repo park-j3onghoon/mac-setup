@@ -1,11 +1,13 @@
 """The built-in implementations a local setting may name. Only names listed here can be chosen:
 both switchers hold two accounts' tokens, so a setting never loads code from outside the repo."""
 
+from .cmux import CmuxTerminal
 from .policy import PriorityPolicy, StrictPriorityPolicy
 
 
 POLICIES = {'priority': PriorityPolicy, 'strict-priority': StrictPriorityPolicy}
-CHOICES = {'policy': POLICIES}
+TERMINALS = {'cmux': CmuxTerminal}
+CHOICES = {'policy': POLICIES, 'terminal': TERMINALS}
 
 
 def pick(kind, name):
