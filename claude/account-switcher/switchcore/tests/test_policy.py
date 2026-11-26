@@ -1,5 +1,6 @@
 import unittest
 
+from switchcore.choices import pick
 from switchcore.policy import Decision, PriorityPolicy
 from switchcore.quota import Usage, Window
 
@@ -145,6 +146,19 @@ class PolicyTests(unittest.TestCase):
                    policy.available(usage(20, checked=NOW - 91), NOW)]
         # then
         self.assertEqual(results, [True, False, False])
+
+
+class ChoicesTests(unittest.TestCase):
+    def test_a_setting_names_only_a_built_in_policy(self):
+        """설정은 repo 안 규칙의 이름만 고를 수 있고, 모르는 이름은 쓸 수 있는 이름을 알려 주며 거부한다."""
+        # when
+        chosen = pick('policy', 'priority')
+        with self.assertRaises(ValueError) as raised:
+            pick('policy', 'my_rules:Custom')
+        # then
+        self.assertIs(chosen, PriorityPolicy)
+        self.assertEqual(str(raised.exception),
+                         'Invalid switcher setting: policy=my_rules:Custom (choose from: priority)')
 
 
 if __name__ == '__main__':

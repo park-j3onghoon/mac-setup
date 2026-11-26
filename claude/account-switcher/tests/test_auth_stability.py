@@ -97,6 +97,12 @@ class AuthStabilityTests(unittest.TestCase):
         with self.assertRaises(SwitcherError):
             validate_config(dict(self.app.config, fallback=self.primary.replace('example', 'EXAMPLE')))
 
+    def test_policy_setting_names_a_built_in_rule_or_is_left_out(self):
+        """설정에 규칙 이름이 없으면 지금 규칙이고, repo에 없는 이름은 쓸 수 있는 이름과 함께 거부한다."""
+        validate_config(dict(self.app.config, policy='priority'))
+        with self.assertRaisesRegex(SwitcherError, r'policy=rules\.py:Mine \(choose from: priority\)'):
+            validate_config(dict(self.app.config, policy='rules.py:Mine'))
+
     def test_mixed_case_domain_uses_existing_saved_account_keys(self):
         actual = self.app.live.read()[1]
         self.app.live.write_account(dict(actual, emailAddress=self.primary.replace('example', 'EXAMPLE')))
