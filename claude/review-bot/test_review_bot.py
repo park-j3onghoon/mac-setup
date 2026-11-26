@@ -68,7 +68,6 @@ class ReviewBotTest(unittest.TestCase):
         self.weekly = [{'percent': 40}, {'percent': 30}]
         self.switcher_answers = True
         self.end_codex = self.patch('end_codex_session', mock.Mock())
-        self.running_during_review = []
         self.url_log = root / 'ai-review-urls.txt'
         self.patch('URL_LOG', self.url_log)
         self.pulls = {7: pull_request()}
@@ -85,11 +84,10 @@ class ReviewBotTest(unittest.TestCase):
         self.crashes_after_post = False
         self.sent = []
         self.fetch_pages = self.patch('fetch_review_request_pages', mock.Mock(side_effect=self.search_pages))
-        self.patch('last_review_commit', self.last_review_commit)
         self.patch('now', lambda: self.now)
         self.patch('view_pull_request', lambda repo, number: dict(self.pulls[number]))
         self.patch('current_login', lambda: 'me')
-        self.patch('review_url_on', lambda repo, number, sha, login: self.my_reviews.get((number, sha)))
+        self.patch('my_reviews', self.reviews_on)
         self.patch('send_review', self.send_review)
         self.run_claude = self.patch('run_claude', mock.Mock(side_effect=self.claude))
         self.notify = self.patch('notify', mock.Mock())
@@ -102,7 +100,6 @@ class ReviewBotTest(unittest.TestCase):
 
     def claude(self, prompt, settings, run_dir, session):
         """ai-review --draft처럼 리뷰할 때의 head로 review.json을 쓰고 결과 줄을 낸다."""
-        self.running_during_review.append(self.state()['running'])
         number = int(re.search(r'/pull/(\d+) ', prompt).group(1))
         if self.writes_draft:
             draft = {'commit_id': self.pulls[number]['headRefOid'], **self.draft}
@@ -139,9 +136,8 @@ class ReviewBotTest(unittest.TestCase):
         code = self.ancestor_code if args[0] == 'merge-base' else 0
         return subprocess.CompletedProcess(['git', *args], code, '', '')
 
-    def last_review_commit(self, repo, number, login):
-        commits = [sha for reviewed, sha in self.my_reviews if reviewed == number]
-        return commits[-1] if commits else None
+    def reviews_on(self, repo, number, login):
+        return [(sha, url) for (reviewed, sha), url in self.my_reviews.items() if reviewed == number]
 
     def send_review(self, repo, number, review):
         self.sent.append(review)
@@ -374,14 +370,15 @@ class ReviewBotTest(unittest.TestCase):
     def test_running_record_lives_while_reviewing_and_codex_is_cleaned_after_every_run(self):
         """리뷰 중에는 running이 있고 끝나면 지워지며, 성공과 실패와 시간 초과 모두 끝에 Codex를 정리한다."""
         results = [review_bot.ClaudeRun(None, '', ()), review_bot.ClaudeRun(1, '', ())]
-        self.run_claude.side_effect = lambda *args: (self.running_during_review.append(self.state()['running'])
+        seen = []
+        self.run_claude.side_effect = lambda *args: (seen.append(self.state()['running'])
                                                      or results.pop(0))
 
         self.run_bot()
         self.run_bot()
 
         worktree = str(self.clone / '.claude/worktrees/review-7')
-        self.assertEqual([running['worktree'] for running in self.running_during_review], [worktree, worktree])
+        self.assertEqual([running['worktree'] for running in seen], [worktree, worktree])
         self.assertIsNone(self.state()['running'])
         self.assertEqual([call.args[0] for call in self.end_codex.call_args_list], [Path(worktree), Path(worktree)])
 
@@ -615,14 +612,14 @@ class ReviewBotTest(unittest.TestCase):
         self.assertEqual(self.run_claude.call_count, 1)
         self.assertEqual(self.register.call_count, 2)
 
-    def test_records_from_the_old_commit_based_bot_are_removed(self):
-        """요청 시각이 없는 옛 꼴 기록은 지운다."""
+    def test_first_install_removes_records_from_the_old_commit_based_bot(self):
+        """처음 설치할 때 요청 시각이 없는 옛 꼴 기록을 지운다."""
         self.state_dir.mkdir(parents=True)
         old = {'prs': {f'{REPO}#1': {'sha': HEAD, 'status': 'skipped', 'attempts': 0, 'note': '설치 전부터 대기',
                                      'at': '2026-11-24T11:47:00'}}, 'poll_failures': 0}
         (self.state_dir / 'state.json').write_text(json.dumps(old))
 
-        self.run_bot()
+        self.bot('install', '--requester', 'bob')
 
         self.assertNotIn(f'{REPO}#1', self.state()['prs'])
 

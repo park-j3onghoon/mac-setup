@@ -214,11 +214,11 @@ def handle(request, mode, state, state_dir, login):
             return request, mode, entry['attempts'] + 1, last_review_commit(request['repo'], request['number'], login)
         return None
     if request['fork']:
-        skip(request, mode, 'fork PR은 봇이 head를 받지 못해 손수 리뷰해 주세요.', state, state_dir)
+        finish(key, record(request, mode, note='fork PR은 봇이 head를 받지 못해 손수 리뷰해 주세요.'), state, state_dir)
         return None
     since = last_review_commit(request['repo'], request['number'], login)
     if since == request['head']:
-        skip(request, mode, '같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.', state, state_dir)
+        finish(key, record(request, mode, note='같은 커밋으로 리뷰를 다시 요청받았습니다. 직접 확인해 주세요.'), state, state_dir)
         return None
     return request, mode, 1, since
 
@@ -310,13 +310,6 @@ def mode_of(request, auto_repos):
     return Mode.AUTO if request['repo'] in auto_repos else Mode.DRAFT
 
 
-def skip(request, mode, note, state, state_dir):
-    state['prs'][request['key']] = record(request, mode, note=note)
-    save_state(state_dir, state)
-    log(state_dir, f'{request["key"]} 건너뜀: {note}')
-    notify(f'{short_name(request["key"])} {note}')
-
-
 def prune(state, requests):
     """요청 목록에 없고 마지막 기록이 RECORD_DAYS 지난 기록을 지운다. 리뷰 폴더와 세션 파일은 남긴다."""
     listed = {request['key'] for request in requests}
@@ -334,7 +327,7 @@ def recover(state, login, state_dir):
     entry = state['prs'].get(running['key'])
     if entry is not None and entry['status'] == Status.DRAFT:
         repo, number = running['key'].rsplit('#', 1)
-        url = review_url_on(repo, int(number), entry['sha'], login)
+        url = next((url for sha, url in my_reviews(repo, int(number), login) if sha == entry['sha']), None)
         if url:
             state['prs'][running['key']] = {**entry, 'status': Status.POSTED.value, 'reviewUrl': url,
                                             'note': '앞 실행이 올린 뒤 멈춰 다음 실행이 기록함', 'at': now_utc()}
@@ -361,6 +354,8 @@ def install(requesters, auto_repos, state_dir):
     리뷰하지 않는다. 다시 설치할 때는 기록을 건드리지 않아 그사이 온 요청도 그대로 리뷰한다."""
     state = load_state(state_dir)
     if state['installedAt'] is None:
+        # 요청 시각이 없는 옛 꼴(커밋 기준 봇) 기록은 새 기준으로 읽을 수 없어 버린다.
+        state['prs'] = {key: entry for key, entry in state['prs'].items() if 'request' in entry}
         for request in parse_review_requests(fetch_review_request_pages(), current_login()):
             if request['requester'] in requesters:
                 waiting = record(request, mode_of(request, auto_repos), note='설치 전부터 대기')
@@ -658,7 +653,7 @@ def read_json(path):
 def write_json(path, value):
     """읽는 쪽이 반쯤 쓴 파일을 보지 않게 임시 파일에 쓴 뒤 이름을 바꾼다."""
     temporary = path.with_name(f'.{path.name}.review-bot')
-    temporary.write_text(json.dumps(value))
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=1))
     temporary.replace(path)
 
 
@@ -667,19 +662,13 @@ def pause(seconds):
 
 
 def load_state(state_dir):
-    """state.json. 요청 시각이 없는 옛 꼴(커밋 기준 봇) 기록은 버린다."""
     path = state_dir / 'state.json'
     saved = json.loads(path.read_text()) if path.exists() else {}
-    state = {'prs': {}, 'running': None, 'quota': None, 'installedAt': None, 'polledAt': None, 'poll_failures': 0, **saved}
-    state['prs'] = {key: entry for key, entry in state['prs'].items() if 'request' in entry}
-    return state
+    return {'prs': {}, 'running': None, 'quota': None, 'installedAt': None, 'polledAt': None, 'poll_failures': 0, **saved}
 
 
 def save_state(state_dir, state):
-    path = state_dir / 'state.json'
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=1))
-    temporary.replace(path)
+    write_json(state_dir / 'state.json', state)
 
 
 def log(state_dir, message):
@@ -724,31 +713,33 @@ def current_login():
 
 def last_review_commit(repo, number, login):
     """내가 그 PR에 마지막으로 단 리뷰의 커밋. 없으면 None."""
-    query = f'.[] | select(.user.login == "{login}") | .commit_id'
-    commits = gh('api', f'repos/{repo}/pulls/{number}/reviews', '--paginate', '--jq', query).split()
-    return commits[-1] if commits else None
+    reviews = my_reviews(repo, number, login)
+    return reviews[-1][0] if reviews else None
 
 
-def review_url_on(repo, number, sha, login):
-    """그 커밋에 단 내 리뷰의 주소. 없으면 None."""
-    query = f'.[] | select(.user.login == "{login}" and .commit_id == "{sha}") | .html_url'
-    urls = gh('api', f'repos/{repo}/pulls/{number}/reviews', '--paginate', '--jq', query).split()
-    return urls[0] if urls else None
+def my_reviews(repo, number, login):
+    """내가 그 PR에 단 리뷰들의 (커밋, 주소). 단 순서대로다."""
+    query = f'.[] | select(.user.login == "{login}") | [.commit_id, .html_url] | @tsv'
+    lines = gh('api', f'repos/{repo}/pulls/{number}/reviews', '--paginate', '--jq', query).splitlines()
+    return [tuple(line.split('\t')) for line in lines if line]
 
 
 def send_review(repo, number, draft):
     """리뷰 한 건을 올려 주소를 돌려준다. 거절되면 응답 본문을 담은 ReviewRejected."""
-    result = subprocess.run(['gh', 'api', '-X', 'POST', f'repos/{repo}/pulls/{number}/reviews', '--input', '-'],
-                            input=json.dumps(draft, ensure_ascii=False), env=ENV, capture_output=True, text=True,
-                            timeout=COMMAND_TIMEOUT_SECONDS)
+    result = run_command(['gh', 'api', '-X', 'POST', f'repos/{repo}/pulls/{number}/reviews', '--input', '-'],
+                         input=json.dumps(draft, ensure_ascii=False), check=False)
     if result.returncode == 0:
         return json.loads(result.stdout)['html_url']
     status = re.search(r'HTTP (\d{3})', result.stderr)
     raise ReviewRejected(int(status.group(1)) if status else None, (result.stdout or result.stderr).strip()[:500])
 
 
+def run_command(command, input=None, check=True, timeout=COMMAND_TIMEOUT_SECONDS):
+    return subprocess.run(command, input=input, env=ENV, capture_output=True, text=True, check=check, timeout=timeout)
+
+
 def gh(*args, timeout=COMMAND_TIMEOUT_SECONDS):
-    return subprocess.run(['gh', *args], env=ENV, capture_output=True, text=True, check=True, timeout=timeout).stdout
+    return run_command(['gh', *args], timeout=timeout).stdout
 
 
 def clone_repo(repo, clone):
@@ -756,8 +747,7 @@ def clone_repo(repo, clone):
 
 
 def git(clone, *args, check=True):
-    return subprocess.run(['git', '-C', str(clone), *args], env=ENV, capture_output=True, text=True, check=check,
-                          timeout=GIT_TIMEOUT_SECONDS)
+    return run_command(['git', '-C', str(clone), *args], check=check, timeout=GIT_TIMEOUT_SECONDS)
 
 
 def run_claude(prompt, settings, run_dir, session):
@@ -791,8 +781,7 @@ def end_codex_session(worktree, session, state_dir):
         return
     hook = ['node', str(script.with_name('session-lifecycle-hook.mjs')), 'SessionEnd']
     try:
-        result = subprocess.run(hook, input=json.dumps({'cwd': str(worktree), 'session_id': session}), env=ENV,
-                                capture_output=True, text=True, timeout=COMMAND_TIMEOUT_SECONDS)
+        result = run_command(hook, input=json.dumps({'cwd': str(worktree), 'session_id': session}), check=False)
     except subprocess.TimeoutExpired:
         log(state_dir, f'Codex 정리가 {COMMAND_TIMEOUT_SECONDS}초 안에 끝나지 않음: {worktree}')
         return
