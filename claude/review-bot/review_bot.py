@@ -469,6 +469,9 @@ def review_prompt(url, since, run_dir, codex):
         '1. `~/.claude/CLAUDE.md`와 그 파일의 `@` 줄이 가리키는 파일을 Read하고 따른다.',
         f'2. `~/.claude/skills/ai-review/SKILL.md`를 Read하고 인자 `{arguments}`로 수행한다. `{{스크래치}}`는 `{run_dir}`이다.',
         '실행 환경: Bash는 허용한 꼴만 돈다. 경로는 따옴표 없는 절대경로로 쓰고, `cd` 대신 `git -C {경로}`를 쓴다.',
+        # 권한 검사는 값을 미리 알 수 없는 셸 변수 사용("$RANGE")과 반복문을 막는다(11-26 권한 시험).
+        '셸 변수를 쓰는 명령과 반복문은 막힌다. `~/.claude/lib/review/diff.md`의 블록도 앞 명령에서 얻은 해시를 글자로 넣어 '
+        '명령마다 따로 실행하고, merge 커밋은 하나씩 `git -C {클론} show --cc`로 보고 출력이 있을 때만 diff 파일 끝에 붙인다.',
     ]
     if codex:
         lines.append(f'Codex 동반 스크립트는 `node {codex} ... --cwd {{작업 디렉토리}}`로 부른다.')
