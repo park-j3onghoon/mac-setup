@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Keeps company names out of personal repositories. install-company-guard.sh registers this script
 # as git hooks for personal repos only, and it checks:
-#   pre-commit   the staged lines and file paths
+#   pre-commit   the staged lines and file paths, and the author and committer
 #   commit-msg   the commit message
-#   pre-push     every commit the push sends (messages, added lines, paths)
+#   pre-push     every commit the push sends (authors, messages, added lines, paths)
 # The names live outside git in private/git/company-terms, one extended regex per line, matched
 # without case; a line starting with "=" keeps its case. This public file holds none of them, and
 # without the list it refuses, because an empty list would let everything through.
@@ -39,7 +39,8 @@ refuse_names() {
 
 case "${1:-}" in
   pre-commit)
-    git diff --cached --no-ext-diff --no-textconv -U0 --diff-filter=ACMR | added | refuse_names "the staged changes" || exit 1
+    { git var GIT_AUTHOR_IDENT; git var GIT_COMMITTER_IDENT
+      git diff --cached --no-ext-diff --no-textconv -U0 --diff-filter=ACMR | added; } | refuse_names "the staged changes" || exit 1
     ;;
   commit-msg)
     # git drops everything below the scissors line of `commit -v`, and the # comment lines.
@@ -54,7 +55,7 @@ case "${1:-}" in
       else
         range=("$local_sha" --not --remotes)
       fi
-      { git log --format='message: %B' "${range[@]}"
+      { git log --format='identity: %an <%ae> / %cn <%ce>%nmessage: %B' "${range[@]}"
         git log -p --no-ext-diff --no-textconv --format= "${range[@]}" | added; } | refuse_names "the commits for $remote_ref" || exit 1
     done
     ;;
