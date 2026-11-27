@@ -7,7 +7,8 @@
 #   2. Oh My Zsh + zsh 플러그인 설치
 #   3. ~/.zshrc, ~/.zprofile symlink
 #   4. ~/.claude/ 및 ~/.codex/ 설정 파일 symlink
-#   5. 후속 수동 단계 안내
+#   5. 개인 repo에 회사 이름이 들어가지 않게 막는 git 훅
+#   6. 후속 수동 단계 안내
 #
 # 특징: 멱등성 보장 (여러 번 실행해도 같은 결과).
 
@@ -197,7 +198,12 @@ else
   warn "VSCode가 아직 설치되지 않았습니다. Brewfile 설치 후 다시 실행하세요"
 fi
 
-# ---- 7. 마무리 안내 ----
+# ---- 7. 개인 repo 회사 이름 차단 ----
+# 개인 repo(이 repo와 같은 GitHub 계정, ~/git 아래)에만 커밋·push 검사 훅을 건다. 이름 목록은 private/git/company-terms.
+log "개인 repo 회사 이름 차단 훅"
+bash "$REPO_DIR/mac/git/install-company-guard.sh" && ok "company-guard: ~/.config/git/personal.gitconfig"
+
+# ---- 8. 마무리 안내 ----
 cat <<'EOF'
 
 ========================================================

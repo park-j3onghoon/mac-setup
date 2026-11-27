@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Keeps company names out of personal repositories. install-company-guard.sh registers this script
+# as git hooks for personal repos only, and it checks:
+#   pre-commit   the staged lines and file paths
+#   commit-msg   the commit message
+#   pre-push     every commit the push sends (messages, added lines, paths)
+# The names live outside git in private/git/company-terms, one extended regex per line, matched
+# without case; a line starting with "=" keeps its case. This public file holds none of them, and
+# without the list it refuses, because an empty list would let everything through.
+set -u
+
+root=$(cd "$(dirname "$0")/../.." && pwd -P)
+terms=${COMPANY_GUARD_TERMS:-$root/private/git/company-terms}
+any_case=$(grep -vE '^[[:space:]]*(#|$)' "$terms" 2>/dev/null | grep -v '^=')
+exact_case=$(grep -E '^=' "$terms" 2>/dev/null | cut -c2-)
+if [ -z "$any_case$exact_case" ]; then
+  echo "company-guard: no company names at $terms; refusing until the list exists" >&2
+  exit 1
+fi
+
+# A diff's added lines as "path: line", and each file path once as "path: <path>".
+added() {
+  awk '/^\+\+\+ b\// { path = substr($0, 7); print "path: " path; next }
+       /^\+/ && !/^\+\+\+ / { print path ": " substr($0, 2) }'
+}
+
+# Exits 1 and shows the lines naming the company in the text on stdin; $1 says where they are.
+refuse_names() {
+  local text found
+  text=$(cat)
+  found=$({ [ -z "$any_case" ] || printf '%s\n' "$text" | grep -iE -f <(printf '%s\n' "$any_case")
+            [ -z "$exact_case" ] || printf '%s\n' "$text" | grep -E -f <(printf '%s\n' "$exact_case"); } | sort -u | head -10)
+  [ -z "$found" ] && return 0
+  echo "company-guard: company names in $1; refused." >&2
+  printf '%s\n' "$found" | cut -c1-160 | sed 's/^/  /' >&2
+  echo "Use neutral names (alice, repo, my-session), or keep company values in private/ outside git." >&2
+  return 1
+}
+
+case "${1:-}" in
+  pre-commit)
+    git diff --cached --no-ext-diff --no-textconv -U0 --diff-filter=ACMR | added | refuse_names "the staged changes" || exit 1
+    ;;
+  commit-msg)
+    # git drops everything below the scissors line of `commit -v`, and the # comment lines.
+    sed '/^# -\{24\} >8 -\{24\}$/,$d' "${2:?commit message file}" | grep -v '^#' | refuse_names "the commit message" || exit 1
+    ;;
+  pre-push)
+    zero=0000000000000000000000000000000000000000
+    while read -r local_ref local_sha remote_ref remote_sha; do
+      [ "$local_sha" = "$zero" ] && continue  # deleting a remote branch sends nothing
+      if [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha" 2>/dev/null; then
+        range=("$remote_sha..$local_sha")
+      else
+        range=("$local_sha" --not --remotes)
+      fi
+      { git log --format='message: %B' "${range[@]}"
+        git log -p --no-ext-diff --no-textconv --format= "${range[@]}" | added; } | refuse_names "the commits for $remote_ref" || exit 1
+    done
+    ;;
+  *)
+    echo "usage: company-guard pre-commit | commit-msg <file> | pre-push" >&2
+    exit 2
+    ;;
+esac
